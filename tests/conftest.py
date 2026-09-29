@@ -4,6 +4,9 @@ from functools import partial
 # Must be set before `main` is imported: it loads settings at import time.
 # Forced (not setdefault) so a developer's real key is never used by tests.
 os.environ["VT_API_KEY"] = "test-key"
+# Never let the legacy test suite write to a developer's configured
+# monitoring database, even when their local .env enables the feature.
+os.environ["MONITORING_ENABLED"] = "0"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
