@@ -75,7 +75,9 @@ def test_successful_dispatch_is_saved_and_never_repeated(db):
     )
     assert first.status == "sent"
     assert first.sent_at is not None
-    assert first.delivery_outcomes == [{"channel": "email", "status": "sent"}]
+    assert len(first.delivery_outcomes) == 1
+    assert first.delivery_outcomes[0]["status"] == "sent"
+    assert len(first.delivery_outcomes[0]["recipient_id"]) == 64
 
     second = dispatch_monthly_report(
         db, report, settings=settings,
@@ -109,11 +111,66 @@ def test_failed_or_unconfigured_delivery_is_recorded_and_can_retry(db):
 
     failed = dispatch_monthly_report(db, report, settings=settings, email_sender=broken_sender)
     assert failed.status == "failed"
-    assert failed.delivery_outcomes == [
-        {"channel": "email", "status": "failed", "error_type": "TimeoutError"}
-    ]
+    assert failed.delivery_outcomes[0]["status"] == "failed"
+    assert failed.delivery_outcomes[0]["error_type"] == "TimeoutError"
     assert "secret SMTP details" not in repr(failed.delivery_outcomes)
 
     sent = dispatch_monthly_report(db, report, settings=settings, email_sender=lambda *_: None)
     assert sent.status == "sent"
     assert sent.sent_at is not None
+
+
+def test_partial_delivery_retries_only_unsent_administrators(db):
+    client, _ = fake_llm()
+    report = prepare_monthly_report(db, 2026, 9, llm_client=client, model="test-model")
+    settings = NotificationSettings(
+        smtp_host="smtp.example", smtp_from="reports@example.org",
+        admin_emails=("first@example.org", "second@example.org", "first@example.org"),
+    )
+    deliveries = []
+
+    def partial_sender(recipients, *_):
+        deliveries.append(recipients)
+        if recipients == ("second@example.org",):
+            raise TimeoutError("recipient temporarily unreachable")
+
+    first = dispatch_monthly_report(db, report, settings=settings, email_sender=partial_sender)
+    assert first.status == "failed"
+    assert [entry["status"] for entry in first.delivery_outcomes] == ["sent", "failed"]
+    assert "example.org" not in repr(first.delivery_outcomes)
+    db.expire_all()
+
+    # A temporary missing configuration must not erase a successful handoff.
+    unavailable = dispatch_monthly_report(db, report, settings=NotificationSettings())
+    assert unavailable.status == "failed"
+    assert unavailable.delivery_outcomes[0]["status"] == "sent"
+    assert unavailable.delivery_outcomes[1]["status"] == "skipped"
+
+    second = dispatch_monthly_report(
+        db, report, settings=settings, email_sender=lambda recipients, *_: deliveries.append(recipients),
+    )
+    assert second.status == "sent"
+    assert deliveries == [("first@example.org",), ("second@example.org",), ("second@example.org",)]
+    assert all(item["status"] == "sent" for item in second.delivery_outcomes)
+
+
+def test_dispatch_refreshes_stale_status_before_sending(db):
+    """A long-lived session must notice that another worker already sent it."""
+    client, _ = fake_llm()
+    report = prepare_monthly_report(db, 2026, 9, llm_client=client, model="test-model")
+    with Session(db.get_bind()) as other:
+        saved = other.get(MonthlyReportRecord, report.id)
+        saved.status = "sent"
+        saved.sent_at = datetime.now(timezone.utc)
+        other.commit()
+    assert report.status == "draft"
+    deliveries = []
+    result = dispatch_monthly_report(
+        db, report,
+        settings=NotificationSettings(
+            smtp_host="smtp.example", smtp_from="reports@example.org", admin_emails=("admin@example.org",),
+        ),
+        email_sender=lambda *args: deliveries.append(args),
+    )
+    assert result.status == "sent"
+    assert deliveries == []

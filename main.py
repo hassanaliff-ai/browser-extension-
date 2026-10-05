@@ -1,8 +1,10 @@
-"""SecureScope VirusTotal API with optional administrator monitoring."""
+"""ExtSecure VirusTotal API with optional administrator monitoring."""
 
 from __future__ import annotations
 
 import logging
+import hashlib
+import hmac
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -14,7 +16,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from urllib.parse import urlsplit, urlunsplit
 
 from app.config import get_settings
 from app.services.cache import TTLCache
@@ -77,6 +80,73 @@ class HealthResponse(BaseModel):
     service: str
 
 
+class ExtensionScanRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    target: str = Field(min_length=1, max_length=4096)
+
+    @field_validator('target')
+    @classmethod
+    def private_url(cls, value):
+        try:
+            parsed = urlsplit(value)
+            if parsed.scheme not in {'http', 'https'} or not parsed.hostname:
+                raise ValueError()
+            if parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise ValueError()
+            parsed.port
+        except ValueError:
+            raise ValueError('Use an HTTP(S) URL without credentials, query strings or fragments') from None
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path or '/', '', ''))
+
+
+def _extension_record(monitor, target, verdict, actor):
+    from alba_security.models import PersonalScan
+    payload = _monitoring_payload(ScanRequest(target=target), verdict)
+    payload = payload.model_copy(update={
+        'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
+        'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
+        'extension_name': 'ExtSecure', 'extension_version': '0.6.0',
+    })
+    with monitor.state.session_factory() as db:
+        result = monitor.state.record_scan(payload, db, notify=True)
+        db.add(PersonalScan(scan_id=result['id'], username=actor))
+        db.commit()
+        return result
+
+
+async def extension_scan(body: ExtensionScanRequest, request: Request):
+    monitor = request.app.state.monitoring_app
+    if monitor is None:
+        raise HTTPException(503, 'Approved-account monitoring must be configured before extension scans')
+    # A machine ingest token cannot impersonate a signed-in extension user.
+    if not request.headers.get('authorization', '').startswith('Bearer '):
+        raise HTTPException(401, 'Approved account sign-in required')
+    actor = await run_in_threadpool(_authorize_scan, monitor, request)
+    if actor is None:
+        raise HTTPException(401, 'Personal account sign-in required')
+    retry_after = request.app.state.extension_scan_limit.retry_after(actor)
+    if retry_after:
+        raise HTTPException(429, 'Scan limit reached. Try again shortly.', headers={'Retry-After':str(retry_after)})
+    cache = request.app.state.cache
+    key = ('url', body.target)
+    result = cache.get(key)
+    cached = result is not None
+    if result is None:
+        try:
+            result = await request.app.state.vt.scan_url(body.target)
+        except VirusTotalError as error:
+            if isinstance(error, InvalidTargetError):
+                raise
+            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor)
+            record['lookup'] = {'status':'unavailable', 'reason':_ERROR_STATUS.get(type(error),(502,'Lookup unavailable'))[1]}
+            return JSONResponse(record, headers={'Cache-Control':'no-store'})
+        cache.set(key, result)
+    record = await run_in_threadpool(_extension_record, monitor, body.target, result.verdict, actor)
+    record['lookup'] = {'status':'complete', 'cached':cached, 'malicious':result.malicious,
+                        'suspicious':result.suspicious, 'harmless':result.harmless, 'undetected':result.undetected}
+    return JSONResponse(record, status_code=201, headers={'Cache-Control':'no-store'})
+
+
 _ERROR_STATUS: dict[type[VirusTotalError], tuple[int, str]] = {
     InvalidTargetError: (422, "The target is not valid for this scan type."),
     NotFoundError: (404, "VirusTotal has no record of this target."),
@@ -94,11 +164,11 @@ async def virustotal_error_handler(_: Request, exc: VirusTotalError) -> JSONResp
 
 
 async def root() -> HealthResponse:
-    return HealthResponse(status="ok", service="SecureScope API")
+    return HealthResponse(status="ok", service="ExtSecure API")
 
 
 async def health() -> HealthResponse:
-    return HealthResponse(status="ok", service="SecureScope API")
+    return HealthResponse(status="ok", service="ExtSecure API")
 
 
 def _monitoring_payload(body: ScanRequest, verdict: str | None):
@@ -134,12 +204,36 @@ def _monitoring_payload(body: ScanRequest, verdict: str | None):
     )
 
 
-def _record_monitoring_scan(monitoring_app: FastAPI, body: ScanRequest, verdict: str | None) -> None:
+def _authorize_scan(monitoring_app: FastAPI, request: Request) -> str | None:
+    supplied = request.headers.get('x-ingest-token', '')
+    if supplied and hmac.compare_digest(supplied.encode(), monitoring_app.state.ingest_token.encode()):
+        return None  # Trusted machine identity, not a personal account.
+    authorization = request.headers.get('authorization', '')
+    if not authorization.startswith('Bearer '):
+        raise HTTPException(401, 'Approved account sign-in required')
+    with monitoring_app.state.session_factory() as db:
+        directory = monitoring_app.state.admin_directory
+        actor = directory.actor(db, authorization[7:])
+        if not actor:
+            raise HTTPException(401, 'Approved account sign-in required')
+        if directory.role(db, actor) not in {'head_administrator', 'administrator', 'normal_user'}:
+            raise HTTPException(403, 'Your role does not permit scan submission')
+        return actor
+
+
+def _record_monitoring_scan(monitoring_app: FastAPI, body: ScanRequest, verdict: str | None, owner: str | None = None) -> None:
     payload = _monitoring_payload(body, verdict)
+    if owner:
+        payload = payload.model_copy(update={'device_id':'user-'+hashlib.sha256(owner.encode()).hexdigest()[:32],
+                                              'device_name':'Personal scan checks'})
     with monitoring_app.state.session_factory() as db:
         # The public endpoint has no verified device identity. Persist the scan
         # for administrators, but do not send email or webhooks for public calls.
-        monitoring_app.state.record_scan(payload, db, notify=False)
+        result = monitoring_app.state.record_scan(payload, db, notify=False)
+        if owner:
+            from alba_security.models import PersonalScan
+            db.add(PersonalScan(scan_id=result['id'], username=owner))
+            db.commit()
 
 
 async def scan(body: ScanRequest, request: Request) -> ScanResponse:
@@ -147,6 +241,7 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
     vt: VirusTotalClient = request.app.state.vt
     cache: TTLCache[ScanResult] = request.app.state.cache
     monitor: FastAPI | None = request.app.state.monitoring_app
+    owner = await run_in_threadpool(_authorize_scan, monitor, request) if monitor is not None else None
 
     cache_key = (body.scan_type, body.target)
     result = cache.get(cache_key)
@@ -159,7 +254,7 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
         except VirusTotalError as exc:
             if monitor is not None and not isinstance(exc, InvalidTargetError):
                 try:
-                    await run_in_threadpool(_record_monitoring_scan, monitor, body, None)
+                    await run_in_threadpool(_record_monitoring_scan, monitor, body, None, owner)
                 except Exception:
                     # The upstream error and its existing HTTP mapping take priority.
                     logger.exception("Could not record an unknown monitoring result")
@@ -167,7 +262,7 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
 
     if monitor is not None:
         try:
-            await run_in_threadpool(_record_monitoring_scan, monitor, body, result.verdict)
+            await run_in_threadpool(_record_monitoring_scan, monitor, body, result.verdict, owner)
         except Exception as exc:
             logger.exception("Could not record a successful monitoring result")
             raise HTTPException(status_code=503, detail="Scan result could not be recorded.") from exc
@@ -193,9 +288,9 @@ def create_app() -> FastAPI:
     # Load the same project file without replacing explicit process settings.
     load_dotenv(dotenv_path=Path(__file__).with_name(".env"), override=False)
     application = FastAPI(
-        title="SecureScope API",
-        description="Backend API for SecureScope, a security scanning service.",
-        version="0.1.0",
+        title="ExtSecure API",
+        description="Backend API for ExtSecure, a security scanning service.",
+        version="0.3.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,
@@ -212,6 +307,9 @@ def create_app() -> FastAPI:
     application.add_api_route("/", root, response_model=HealthResponse, methods=["GET"], tags=["Health"])
     application.add_api_route("/health", health, response_model=HealthResponse, methods=["GET"], tags=["Health"])
     application.add_api_route("/scan", scan, response_model=ScanResponse, methods=["POST"], tags=["Scan"])
+    from alba_security.request_limits import SignInRateLimit
+    application.state.extension_scan_limit = SignInRateLimit(max_attempts=12, window_seconds=60)
+    application.add_api_route('/extension/scan', extension_scan, methods=['POST'], tags=['Extension'])
 
     application.state.monitoring_app = None
     monitoring_enabled = os.getenv("MONITORING_ENABLED", "1").strip().lower() not in {"0", "false", "off"}

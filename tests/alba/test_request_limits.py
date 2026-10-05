@@ -3,6 +3,7 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.testclient import TestClient
 from starlette.responses import JSONResponse
+import pytest
 
 from alba_security.request_limits import DownloadRequestLimit
 
@@ -53,3 +54,31 @@ def test_stream_limit_runs_before_multipart_upload_is_parsed():
             content=(chunk for chunk in chunks),
         )
     assert response.status_code == 413
+
+
+@pytest.mark.parametrize("route", ["/api/downloads/scan-file", "/api/admin/downloads/scan-file"])
+@pytest.mark.parametrize("chunked", [False, True])
+def test_mounted_monitoring_uploads_remain_size_limited(route, chunked):
+    app = FastAPI()
+    app.mount("/monitor", DownloadRequestLimit(_consume_request, max_bytes=5))
+    with TestClient(app) as client:
+        body = (chunk for chunk in (b"abc", b"def")) if chunked else b"abcdef"
+        response = client.post("/monitor" + route, content=body)
+        assert response.status_code == 413
+        assert response.json()["detail"] == "Download scan request exceeds the size limit"
+
+
+@pytest.mark.parametrize("route", ["/api/downloads/scan-file", "/api/admin/downloads/scan-file"])
+def test_exact_limit_succeeds_under_nested_mount(route):
+    app = FastAPI()
+    inner = FastAPI()
+    inner.mount("/monitor", DownloadRequestLimit(_consume_request, max_bytes=5))
+    app.mount("/security", inner)
+    with TestClient(app) as client:
+        assert client.post("/security/monitor" + route, content=b"abcde").status_code == 200
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, 1.5])
+def test_invalid_limit_rejected_at_startup(limit):
+    with pytest.raises(ValueError):
+        DownloadRequestLimit(_consume_request, max_bytes=limit)

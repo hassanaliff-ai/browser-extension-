@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import os
 import re
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 
 import httpx
 from sqlalchemy import DateTime, Integer, String, select
@@ -82,7 +84,22 @@ class FileVerdict:
 
 
 def _aware(value: datetime) -> datetime:
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _retry_after(value: str, now: datetime) -> int:
+    """Accept provider delay seconds or HTTP dates without trusting headers."""
+    value = value.strip()
+    if re.fullmatch(r"[0-9]+", value):
+        # Avoid converting arbitrary thousands of untrusted digits to int.
+        if len(value) > 8:
+            return 3600
+        return min(3600, max(1, int(value)))
+    try:
+        delay = math.ceil((_aware(parsedate_to_datetime(value)) - now).total_seconds())
+        return min(3600, max(1, delay))
+    except (TypeError, ValueError, OverflowError):
+        return 60
 
 
 def _quota_reserve(db: Session, now: datetime, minute_limit: int, day_limit: int) -> int | None:
@@ -160,22 +177,24 @@ def lookup_file_hash(
     day_limit: int = 500,
 ) -> FileVerdict:
     """Look up an existing file report by hash; never upload file contents."""
-    if not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
+    if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
         raise ValueError("A 64-character SHA-256 hash is required")
+    if any(not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 for limit in (minute_limit, day_limit)):
+        raise ValueError("VirusTotal quota limits must be positive integers")
     sha256 = sha256.lower()
-    now = now or utc_now()
+    now = _aware(now or utc_now())
     cached = db.get(FileReputationCache, sha256)
     if cached and _aware(cached.expires_at) > now:
         return FileVerdict(
             cached.verdict, cached.malicious_count,
-            cached.suspicious_count, cache_hit=True,
+            cached.suspicious_count,
+            reason="not_found" if cached.verdict == "unknown" else None,
+            cache_hit=True,
         )
 
     api_key = api_key or os.getenv("VT_API_KEY")
     if not api_key:
         return FileVerdict("unknown", reason="not_configured")
-    if minute_limit < 1 or day_limit < 1:
-        raise ValueError("VirusTotal quota limits must be positive")
     delay = _quota_reserve(db, now, minute_limit, day_limit)
     if delay is not None:
         return FileVerdict("unknown", reason="rate_limited", retry_after_seconds=delay)
@@ -202,7 +221,7 @@ def lookup_file_hash(
         return verdict
     if response.status_code == 429:
         retry_header = response.headers.get("Retry-After", "60")
-        retry_seconds = min(3600, max(1, int(retry_header))) if retry_header.isdigit() else 60
+        retry_seconds = _retry_after(retry_header, now)
         quota = db.get(VirusTotalQuota, 1)
         if quota:
             quota.blocked_until = now + timedelta(seconds=retry_seconds)
@@ -214,14 +233,23 @@ def lookup_file_hash(
         return FileVerdict("unknown", reason="lookup_failed")
 
     try:
-        stats = response.json()["data"]["attributes"]["last_analysis_stats"]
+        data = response.json()["data"]
+        # Provider analysis must refer to the requested file, not just contain
+        # plausible engine counts. VirusTotal identifies file objects by SHA-256.
+        if not isinstance(data, dict) or data.get("type") != "file" or data.get("id") != sha256:
+            raise ValueError
+        stats = data["attributes"]["last_analysis_stats"]
+        if not isinstance(stats, dict):
+            raise ValueError
         malicious = stats["malicious"]
         suspicious = stats["suspicious"]
-        if not isinstance(malicious, int) or isinstance(malicious, bool) or malicious < 0:
+        # Validate every returned count. bool is an int subclass but is not a
+        # valid engine count; huge values also cannot fit our SQL Integer.
+        if any(type(value) is not int or not 0 <= value <= 2_147_483_647 for value in stats.values()):
             raise ValueError
-        if not isinstance(suspicious, int) or isinstance(suspicious, bool) or suspicious < 0:
-            raise ValueError
-        if not any(isinstance(value, int) and value > 0 for value in stats.values()):
+        # Timeout/failure/unsupported engines are not completed analyses and
+        # cannot establish a clear result, even when their count is positive.
+        if not any(stats.get(category, 0) > 0 for category in ("malicious", "suspicious", "harmless", "undetected")):
             raise ValueError
     except (KeyError, TypeError, ValueError):
         return FileVerdict("unknown", reason="invalid_response")

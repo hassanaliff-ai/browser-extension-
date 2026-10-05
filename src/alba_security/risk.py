@@ -25,6 +25,7 @@ SignalCode = Literal[
 SignalStatus = Literal["detected", "clear", "unknown"]
 RiskSeverity = Literal["Unknown", "Low", "Medium", "High", "Critical"]
 Completeness = Literal["complete", "partial", "unknown"]
+RISK_POLICY_VERSION = "2026-09-30.1"
 
 
 class SignalInput(BaseModel):
@@ -106,7 +107,47 @@ def _severity(score: int) -> RiskSeverity:
     return "Low"
 
 
-def assess(signals: list[SignalInput]) -> RiskResult:
+def risk_policy() -> dict:
+    """Describe the scoring policy so interfaces can explain each decision.
+
+    Return fresh containers, keeping callers from changing server-side rules.
+    The policy is a transparent heuristic, not a probability of compromise.
+    """
+    return {
+        "version": RISK_POLICY_VERSION,
+        "score_cap": 100,
+        "severity_bands": [
+            {"severity": "Low", "min_score": 0, "max_score": 29},
+            {"severity": "Medium", "min_score": 30, "max_score": 59},
+            {"severity": "High", "min_score": 60, "max_score": 79},
+            {"severity": "Critical", "min_score": 80, "max_score": 100},
+        ],
+        "signals": [
+            {"code": code, "title": _TITLES[code], "points": points, "description": _DEFAULT_DETAILS[code]}
+            for code, points in _WEIGHTS.items()
+        ],
+        "unknown_policy": "Unassessed checks remain Unknown. Partial results retain their confirmed findings; a zero score does not establish safety.",
+    }
+
+
+def suggested_action(result: RiskResult) -> str:
+    """Give clear next steps without claiming to block a browser or file."""
+    actions = {
+        "Unknown": "Retry the unavailable checks before trusting this destination or file.",
+        "Low": "No scored threat was found in the completed checks. Continue monitoring.",
+        "Medium": "Review the findings and confirm the destination or file is expected before continuing.",
+        "High": "Avoid opening the destination or file until an administrator reviews the findings.",
+        "Critical": "Stop interacting with the destination or file and ask an administrator to investigate immediately.",
+    }
+    action = actions[result.severity]
+    if result.severity == "Low" and result.findings:
+        action = "Review the detected indicators and keep monitoring for additional findings."
+    if result.completeness == "partial":
+        action += " Some checks are unavailable; retry them to complete the assessment."
+    return action
+
+
+def assess(signals: list[SignalInput], policy: dict | None = None) -> RiskResult:
     """Score unique signals and state whether any checks could not be assessed.
 
     A duplicate code is rejected even when its statuses differ. This prevents a
@@ -117,6 +158,7 @@ def assess(signals: list[SignalInput]) -> RiskResult:
     findings: list[RiskFinding] = []
     unknown_codes: list[SignalCode] = []
     assessed_count = 0
+    weights = {item["code"]: item["points"] for item in (policy or risk_policy())["signals"]}
 
     for item in signals:
         signal = SignalInput.model_validate(item)
@@ -135,7 +177,7 @@ def assess(signals: list[SignalInput]) -> RiskResult:
                     code=signal.code,
                     title=_TITLES[signal.code],
                     detail=signal.detail or _DEFAULT_DETAILS[signal.code],
-                    points=_WEIGHTS[signal.code],
+                    points=weights[signal.code],
                 )
             )
 
@@ -149,9 +191,11 @@ def assess(signals: list[SignalInput]) -> RiskResult:
         )
 
     score = min(100, sum(finding.points for finding in findings))
+    bands = (policy or risk_policy())["severity_bands"]
+    label = next(band["severity"] for band in bands if band["min_score"] <= score <= band["max_score"])
     return RiskResult(
         score=score,
-        severity=_severity(score),
+        severity=label,
         completeness="partial" if unknown_codes else "complete",
         findings=findings,
         unknown_codes=unknown_codes,

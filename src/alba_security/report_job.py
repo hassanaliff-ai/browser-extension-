@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from alba_security.models import Base, new_id, utc_now
 from alba_security.notifications import EmailSender, NotificationSettings, send_monthly_report
-from alba_security.reports import generate_monthly_report
+from alba_security.reports import _month_bounds, generate_monthly_report
 
 
 class MonthlyReportRecord(Base):
@@ -48,8 +48,7 @@ def prepare_monthly_report(
     A unique period constraint is the final guard if two workers prepare the
     same month concurrently. The API must import this module before create_all.
     """
-    if not 2000 <= year <= 2100 or not 1 <= month <= 12:
-        raise ValueError("year must be 2000–2100 and month must be 1–12")
+    _month_bounds(year, month)
     period = f"{year:04d}-{month:02d}"
     existing = db.scalar(select(MonthlyReportRecord).where(MonthlyReportRecord.period == period))
     if existing is not None:
@@ -98,6 +97,7 @@ def dispatch_monthly_report(
         select(MonthlyReportRecord)
         .where(MonthlyReportRecord.id == record.id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if report is None:
         raise ValueError("Monthly report is not stored")
@@ -108,6 +108,7 @@ def dispatch_monthly_report(
         {"subject": report.subject, "body": report.body},
         settings=settings,
         email_sender=email_sender,
+        previous_outcomes=report.delivery_outcomes,
     )
     report.delivery_outcomes = outcomes
     if outcomes and all(item["status"] == "sent" for item in outcomes):

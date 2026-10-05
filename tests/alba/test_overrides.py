@@ -126,10 +126,13 @@ def test_deactivation_is_audited_and_transactional(engine):
     ("domain", "https://example.org/path"),
     ("domain", "org"),
     ("domain", "127.0.0.1"),
+    ("domain", "example.org.."),
+    ("domain", "example\u200d.org"),
     ("url", "file:///private/file"),
     ("url", "https://example.org/bad path"),
     ("url", "https://example.org:bad/path"),
     ("url", "https://example.org\\@evil.test/path"),
+    ("url", "https://example.org../path"),
 ])
 def test_invalid_targets_are_rejected_without_audit(engine, kind, target):
     with Session(engine) as session:
@@ -149,3 +152,23 @@ def test_reason_actor_and_expiry_are_validated(engine):
         with pytest.raises(ValueError, match="future"):
             create_override(session, "domain", "example.org", "False positive", "admin-1", utc_now() - timedelta(seconds=1))
         assert session.scalars(select(Override)).all() == []
+
+
+def test_unicode_override_does_not_whitelist_a_different_ascii_domain(engine):
+    with Session(engine) as session:
+        item = create_override(session, "domain", "faß.de", "Approved international site", "admin-1")
+        session.commit()
+        assert item.match_key == "xn--fa-hia.de"
+        assert match_override(session, "https://faß.de/page").id == item.id
+        assert match_override(session, "https://xn--fa-hia.de/page").id == item.id
+        assert match_override(session, "https://fass.de/page") is None
+
+
+def test_url_precedence_keeps_domain_scope_and_query_boundaries(engine):
+    with Session(engine) as session:
+        domain = create_override(session, "domain", "example.org", "Approved host", "admin-1")
+        url = create_override(session, "url", "https://example.org/a?case=1", "Approved exact URL", "admin-1")
+        session.commit()
+        assert match_override(session, "https://example.org/a?case=1").id == url.id
+        assert match_override(session, "https://example.org/a?case=2").id == domain.id
+        assert match_override(session, "https://example.org@evil.test/a?case=1") is None

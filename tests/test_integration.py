@@ -28,9 +28,10 @@ def integrated_client(monkeypatch):
     monkeypatch.setenv("ADMIN_USERNAME", "test-admin")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", _PASSWORD_HASH)
     monkeypatch.setenv("ADMIN_TOTP_SECRET", _TOTP_SECRET)
-    monkeypatch.delenv("INGEST_TOKEN", raising=False)
+    monkeypatch.setenv("INGEST_TOKEN", "trusted-integration-machine")
     application = main.create_app()
     with TestClient(application) as client:
+        client.headers['X-Ingest-Token'] = 'trusted-integration-machine'
         yield client, application.state.monitoring_app
 
 
@@ -52,10 +53,91 @@ def test_mounted_monitor_requires_admin_and_ingest_auth(integrated_client):
     assert monitor is not None
     assert client.get("/monitor/health").json() == {"status": "ok"}
     assert client.get("/monitor/api/overview").status_code == 401
-    unauthenticated = client.post("/monitor/api/scans", json={})
+    unauthenticated = client.post("/monitor/api/scans", headers={'X-Ingest-Token':''}, json={})
     assert unauthenticated.status_code == 401
     assert client.post("/monitor/api/scans", headers={"X-Ingest-Token": "guessed"}, json={}).status_code == 401
     assert "synthetic-test-password" not in client.get("/monitor/openapi.json").text
+
+
+def test_mounted_auth_responses_never_cache_challenges_or_denials(integrated_client):
+    client, _ = integrated_client
+    successful = client.post('/monitor/api/admin/login', json={'username':'test-admin','password':'synthetic-test-password'})
+    assert successful.status_code == 200
+    assert successful.headers['cache-control'] == 'no-store'
+    assert 'challenge_token' in successful.json() and 'access_token' not in successful.json()
+    denied = client.get('/monitor/api/admin/me')
+    assert denied.status_code == 401 and denied.headers['cache-control'] == 'no-store'
+
+
+def test_mounted_registration_never_caches_authenticator_setup(integrated_client):
+    from io import BytesIO
+    from PIL import Image
+    import zxingcpp
+    import pyotp
+    from alba_security.authenticator_qr import authenticator_qr_png
+    client, _ = integrated_client
+    result = client.post('/monitor/api/admin/register', json={'username':'qr-test-user','password':'Synthetic enrollment passphrase 2026'})
+    assert result.status_code == 201 and result.headers['cache-control'] == 'no-store'
+    enrollment = result.json()
+    image = Image.open(BytesIO(authenticator_qr_png(enrollment['provisioning_uri'], secret=enrollment['totp_secret'])))
+    scanned = pyotp.parse_uri(zxingcpp.read_barcode(image).text)
+    verified = client.post('/monitor/api/admin/register/verify', json={'enrollment_token':enrollment['enrollment_token'],'totp_code':scanned.now()})
+    assert verified.status_code == 200 and verified.headers['cache-control'] == 'no-store'
+    assert verified.json()['status'] == 'pending_review' and 'access_token' not in verified.json()
+
+
+def test_legacy_scan_requires_approved_identity_when_monitoring_is_enabled(integrated_client, respx_mock):
+    client, monitor = integrated_client
+    result = client.post('/scan',headers={'X-Ingest-Token':''},json={'target':'8.8.8.8','scan_type':'ip'})
+    assert result.status_code == 401
+    assert _records(monitor,Scan) == []
+    assert respx_mock.calls.call_count == 0
+
+
+def test_legacy_scan_rejects_pending_accounts_and_manager_scan_submission(integrated_client,respx_mock):
+    from datetime import timedelta
+    from alba_security.admin_auth import AdminSession, _digest
+    from alba_security.models import utc_now
+    from alba_security.registration import RegisteredAdmin
+    client, monitor = integrated_client
+    directory = monitor.state.admin_directory
+    with monitor.state.session_factory() as db:
+        for username, state in [('pending-manager','pending_review'),('approved-manager','active')]:
+            db.add(RegisteredAdmin(username=username,password_hash=_PASSWORD_HASH,
+                totp_encrypted=directory.cipher().encrypt(_TOTP_SECRET.encode()).decode(),
+                status=state,role='manager',approved_by=directory.primary.username if state == 'active' else None))
+            db.add(AdminSession(token_hash=_digest(username+'-session-token'),username=username,
+                expires_at=utc_now()+timedelta(minutes=10)))
+        db.commit()
+    for username, expected in [('pending-manager',401),('approved-manager',403)]:
+        result = client.post('/scan',headers={'X-Ingest-Token':'','Authorization':'Bearer '+username+'-session-token'},
+            json={'target':'8.8.8.8','scan_type':'ip'})
+        assert result.status_code == expected
+    assert respx_mock.calls.call_count == 0
+
+
+def test_approved_normal_scan_is_linked_to_personal_history(integrated_client,respx_mock):
+    from datetime import timedelta
+    from alba_security.admin_auth import AdminSession, _digest
+    from alba_security.models import PersonalScan, utc_now
+    from alba_security.registration import RegisteredAdmin
+    client, monitor = integrated_client
+    directory = monitor.state.admin_directory
+    token='test-approved-normal-session'
+    with monitor.state.session_factory() as db:
+        db.add(RegisteredAdmin(username='normal',password_hash=_PASSWORD_HASH,
+            totp_encrypted=directory.cipher().encrypt(_TOTP_SECRET.encode()).decode(),status='active',
+            role='normal_user',approved_by=directory.primary.username))
+        db.add(AdminSession(token_hash=_digest(token),username='normal',expires_at=utc_now()+timedelta(minutes=10)))
+        db.commit()
+    respx_mock.get(f'{VT_BASE}/files/{_SHA256}').mock(return_value=Response(200,json=object_payload(harmless=10)))
+    response=client.post('/scan',headers={'X-Ingest-Token':'','Authorization':'Bearer '+token},
+        json={'target':_SHA256,'scan_type':'hash'})
+    assert response.status_code == 200
+    with monitor.state.session_factory() as db:
+        owner=db.scalar(select(PersonalScan))
+        assert owner.username == 'normal'
+        assert db.get(Scan,owner.scan_id).device_id.startswith('user-')
 
 
 @pytest.mark.parametrize(

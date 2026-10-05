@@ -3,9 +3,71 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from collections import OrderedDict, deque
+import math
+import threading
+import time
 from typing import Any
 
 from starlette.responses import JSONResponse
+
+
+class SignInRateLimit:
+    """Bound sign-in work per client using a shared sliding window.
+
+    One instance covers both password and TOTP endpoints. The caller supplies
+    the connection's client address, never a client-controlled forwarded
+    header. State is thread-safe and bounded, but process-local; multi-worker
+    deployments should also enforce a shared limit at their ingress.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_attempts: int = 20,
+        window_seconds: int = 60,
+        max_clients: int = 4096,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if any(type(value) is not int or value < 1 for value in (max_attempts, window_seconds, max_clients)):
+            raise ValueError("Sign-in limits must be positive integers")
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self.max_clients = max_clients
+        self.clock = clock
+        self._attempts: OrderedDict[str, deque[float]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def retry_after(self, client_id: str) -> int:
+        """Consume an attempt and return 0, or reject with a wait in seconds."""
+        if not isinstance(client_id, str) or not client_id or len(client_id) > 256:
+            raise ValueError("A bounded client identifier is required")
+        with self._lock:
+            now = self.clock()
+            cutoff = now - self.window_seconds
+            # Entries are ordered by their last accepted attempt, allowing
+            # expired clients to be retired without sweeping the whole map.
+            while self._attempts:
+                oldest = next(iter(self._attempts.values()))
+                if oldest[-1] > cutoff:
+                    break
+                self._attempts.popitem(last=False)
+            attempts = self._attempts.get(client_id)
+            if attempts is None:
+                if len(self._attempts) >= self.max_clients:
+                    # Do not evict active identities: cycling through clients
+                    # must not reset existing limits or grow memory forever.
+                    oldest = next(iter(self._attempts.values()))
+                    return max(1, math.ceil(oldest[-1] + self.window_seconds - now))
+                attempts = deque()
+                self._attempts[client_id] = attempts
+            while attempts and attempts[0] <= cutoff:
+                attempts.popleft()
+            if len(attempts) >= self.max_attempts:
+                return max(1, math.ceil(attempts[0] + self.window_seconds - now))
+            attempts.append(now)
+            self._attempts.move_to_end(client_id)
+            return 0
 
 
 class _RequestTooLarge(Exception):
@@ -16,11 +78,21 @@ class DownloadRequestLimit:
     """Bound the complete multipart request, including chunked transfers."""
 
     def __init__(self, app: Callable[..., Awaitable[Any]], *, max_bytes: int) -> None:
+        if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes < 1:
+            raise ValueError("Upload limit must be a positive integer")
         self.app = app
         self.max_bytes = max_bytes
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
-        if scope["type"] != "http" or scope.get("path") != "/api/downloads/scan-file":
+        path = scope.get("path", "")
+        root_path = scope.get("root_path", "").rstrip("/")
+        # Mounted ASGI apps retain the full request path. Match the route
+        # relative to the mount, so the integrated /monitor service is guarded.
+        if root_path and path.startswith(root_path + "/"):
+            path = path[len(root_path):]
+        if scope["type"] != "http" or path not in {
+            "/api/downloads/scan-file", "/api/admin/downloads/scan-file",
+        }:
             await self.app(scope, receive, send)
             return
 

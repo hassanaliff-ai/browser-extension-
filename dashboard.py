@@ -9,12 +9,20 @@ short-lived bearer session after both steps succeed.
 from __future__ import annotations
 
 import os
+import json
+import re
+from html import escape
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import altair as alt
 import httpx
+import pandas as pd
 import streamlit as st
+from functools import partial
+from dashboard_governance import render as render_governance
+from alba_security.authenticator_qr import authenticator_qr_png
 
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/monitor").strip().rstrip("/")
@@ -24,6 +32,20 @@ SESSION_TOKEN_KEY = "admin_session_token"
 SESSION_EXPIRES_KEY = "admin_session_expires_at"
 CHALLENGE_TOKEN_KEY = "admin_challenge_token"
 CHALLENGE_EXPIRES_KEY = "admin_challenge_expires_at"
+SEVERITY_COLORS = {"Critical": "#b4233a", "High": "#c34a10", "Medium": "#916400", "Low": "#087c69", "Informational": "#306b9b", "Unknown": "#64748b"}
+MAX_FILE_BYTES = 32 * 1024 * 1024
+BRAND = '''<div class="scope-brand"><svg class="scope-logo" viewBox="0 0 40 46" aria-hidden="true"><path d="M20 2L37 9v14c0 10-9 17-17 21C12 40 3 33 3 23V9Z" fill="#007f78"/><path d="m11 22 6 6 13-14" fill="none" stroke="#b9ffed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><div><strong>ExtSecure</strong><small>Security operations</small></div></div>'''
+
+
+def page_heading(title: str, description: str) -> None:
+    st.header(title)
+    st.caption(description)
+
+
+def risk_badge(value: Any) -> None:
+    label = severity(value)
+    color = SEVERITY_COLORS.get(label, SEVERITY_COLORS["Unknown"])
+    st.markdown(f'<span class="scope-pill" style="color:{color};background:{color}0d">{escape(label)} risk</span>', unsafe_allow_html=True)
 
 
 def _expires_at(value: Any) -> datetime | None:
@@ -49,8 +71,15 @@ def _clear_challenge() -> None:
 
 
 def _clear_session() -> None:
-    st.session_state.pop(SESSION_TOKEN_KEY, None)
-    st.session_state.pop(SESSION_EXPIRES_KEY, None)
+    # Clear unsent investigation notes and governance form values too, so the
+    # next administrator on a shared browser does not inherit private drafts.
+    for key in list(st.session_state):
+        st.session_state.pop(key, None)
+
+
+def _open_case_for_scan(scan_id: str) -> None:
+    st.session_state['case_source_id'] = scan_id
+    st.session_state['workspace_view'] = 'Incident cases'
 
 
 def _auth_post(path: str, payload: dict[str, str] | None = None, token: str | None = None) -> httpx.Response | None:
@@ -63,7 +92,7 @@ def _auth_post(path: str, payload: dict[str, str] | None = None, token: str | No
             timeout=TIMEOUT_SECONDS,
         )
     except httpx.RequestError:
-        st.sidebar.error("The dashboard could not reach the backend. Check that the API is running.")
+        st.error("The security service is unavailable. Check the connection and try again.")
         return None
 
 
@@ -73,14 +102,148 @@ def _auth_payload(response: httpx.Response, token_field: str) -> tuple[str, str]
     except ValueError:
         payload = None
     if not isinstance(payload, dict):
-        st.sidebar.error("The backend returned an invalid sign-in response.")
+        st.error("The service returned an invalid sign-in response. Please try again.")
         return None
     token = payload.get(token_field)
     expires_at = payload.get("expires_at")
     if not isinstance(token, str) or not token or _expired(expires_at):
-        st.sidebar.error("The backend returned an invalid or expired sign-in response.")
+        st.error("The service returned an invalid or expired sign-in response. Please try again.")
         return None
     return token, expires_at
+
+
+def admin_register() -> None:
+    st.caption('Create an account and verify your authenticator.')
+    enrollment = st.session_state.get('registration_enrollment')
+    if isinstance(enrollment, dict) and _expired(enrollment.get('expires_at')):
+        st.session_state.pop('registration_enrollment', None)
+        enrollment = None
+        st.warning('Enrollment expired. Start registration again.')
+    if isinstance(enrollment, dict):
+        st.write('Scan this QR code with your authenticator app, then enter its six-digit code below.')
+        try:
+            qr_image = authenticator_qr_png(enrollment.get('provisioning_uri', ''), secret=enrollment.get('totp_secret', ''))
+        except ValueError as error:
+            st.error(str(error))
+            st.session_state.pop('registration_enrollment', None)
+            return
+        st.image(qr_image, width=280, caption='ExtSecure · Authenticator setup QR code')
+        st.caption('In your authenticator app, choose Add account → Scan QR code. Keep this QR code and setup key private.')
+        with st.expander('Cannot scan? Enter the setup key manually'):
+            st.write('Choose a time-based account, use your ExtSecure username, and paste this key. This sets up the same authenticator as the QR code.')
+            st.code(enrollment['totp_secret'], language=None)
+        st.caption('Setup expires after 15 minutes. Access still requires approval from the Head of Administrator.')
+        with st.form('register_verify_form', clear_on_submit=True):
+            code = st.text_input('Registration verification code', type='password', max_chars=6)
+            submit = st.form_submit_button('Verify and create account', type='primary')
+        if st.button('Cancel enrollment'):
+            result = _auth_post('/api/admin/register/cancel', {'enrollment_token':enrollment['enrollment_token']})
+            if result is not None and not result.is_error:
+                st.session_state.pop('registration_enrollment', None)
+                st.rerun()
+        if submit:
+            result = _auth_post('/api/admin/register/verify', {'enrollment_token':enrollment['enrollment_token'], 'totp_code':code.strip()})
+            if result is not None:
+                if result.is_error:
+                    st.error('Enrollment could not be verified. Check the code; expired enrollments need to be restarted.')
+                else:
+                    st.session_state.pop('registration_enrollment', None)
+                    st.session_state['registration_complete'] = True
+                    st.rerun()
+        return
+    st.info('After authenticator setup, the Head of Administrator must approve access and assign your role.')
+    with st.form('register_start_form', clear_on_submit=True):
+        username = st.text_input('New username', max_chars=80)
+        password = st.text_input('New password', type='password', autocomplete='new-password')
+        confirm = st.text_input('Confirm password', type='password', autocomplete='new-password')
+        submit = st.form_submit_button('Set up authenticator', type='primary')
+    if submit:
+        if password != confirm:
+            st.error('Passwords must match.')
+        elif len(password) < 12:
+            st.error('Use a password with at least 12 characters.')
+        else:
+            result = _auth_post('/api/admin/register', {'username':username.strip().lower(), 'password':password})
+            if result is not None:
+                if result.is_error:
+                    st.error('Registration could not start. Check the username and password, or wait for an existing enrollment to expire.')
+                else:
+                    issued = _auth_payload(result, 'enrollment_token')
+                    if issued:
+                        payload = result.json()
+                        if isinstance(payload.get('totp_secret'), str) and isinstance(payload.get('provisioning_uri'), str):
+                            st.session_state['registration_enrollment'] = payload
+                            st.rerun()
+                        else:
+                            st.error('The service did not return authenticator setup details.')
+
+
+def show_accounts(token: str) -> None:
+    page_heading('Accounts', 'Head of Administrator · Review access requests and assign permissions.')
+    st.info('Every account requires your approval. Choose the minimum role needed. All roles use password and authenticator verification.')
+    roles = {'normal_user':'Normal user', 'manager':'Manager', 'administrator':'Administrator'}
+    show_table([
+        {'Role':'Normal user','Privileges':'Personal file checks, own results, account and security guidance'},
+        {'Role':'Manager','Privileges':'Monitoring, reports and ML review, alert reviews and incident cases'},
+        {'Role':'Administrator','Privileges':'Security operations, scans, exceptions, policies, privacy and report delivery'},
+        {'Role':'Head of Administrator','Privileges':'All workflows plus account approval, roles and access revocation'},
+    ], '')
+    requests = fetch('/api/admin/registrations', token, list)
+    accounts = fetch('/api/admin/accounts', token, list)
+    if requests is not None:
+        st.subheader('Pending access requests')
+        show_table(requests, 'No accounts are waiting for approval.')
+        if requests:
+            chosen = st.selectbox('Registration to review', [r['username'] for r in requests])
+            confirmed = st.checkbox('I verified this person’s identity and authorized their access')
+            with st.form('review_registration'):
+                role = st.selectbox('Approved role', list(roles), format_func=roles.get)
+                reason = st.text_area('Account review reason', max_chars=500)
+                approve = st.form_submit_button('Approve access', disabled=not confirmed)
+                reject = st.form_submit_button('Reject registration')
+            if approve or reject:
+                action = 'approve' if approve else 'reject'
+                if post_admin('/api/admin/registrations/'+chosen+'/'+action, token, {'reason':reason,'role':role}) is not None: st.rerun()
+    if accounts is not None:
+        st.subheader('Approved accounts')
+        show_table(accounts, 'No accounts available.')
+        editable = [r['username'] for r in accounts if r.get('role') != 'head_administrator']
+        if editable:
+            chosen = st.selectbox('Account to manage', editable)
+            current = next(r.get('role','normal_user') for r in accounts if r['username'] == chosen)
+            with st.form('account_role_change'):
+                role = st.selectbox('New role', list(roles), index=list(roles).index(current), format_func=roles.get)
+                reason = st.text_area('Reason for changing access', max_chars=500)
+                change = st.form_submit_button('Save role and revoke existing sessions')
+            if change:
+                if post_admin('/api/admin/accounts/'+chosen+'/role', token, {'reason':reason,'role':role}) is not None: st.rerun()
+            confirmed = st.checkbox('Revoke this account’s access and all existing sessions')
+            if st.button('Disable account', disabled=not confirmed):
+                if post_admin('/api/admin/accounts/'+chosen+'/disable', token) is not None: st.rerun()
+
+
+def show_my_account(token: str) -> None:
+    account = st.session_state.get('account_profile', {})
+    page_heading('My account', 'Your access is assigned by the Head of Administrator.')
+    st.write('**Account:** ' + account.get('display_name', ''))
+    st.write('**Username:** ' + account.get('username', ''))
+    st.write('**Role:** ' + account.get('role_label', ''))
+    st.success('Password and authenticator verification completed for this session.')
+    st.write('Your available workspaces are listed in the sidebar. Contact the main administrator if your responsibilities change.')
+
+
+def show_personal_history(token: str) -> None:
+    page_heading('My file history', 'Only checks submitted through your own account appear here.')
+    rows = fetch('/api/my/scans', token, list)
+    if rows is None: return
+    show_table(rows, 'No personal file checks have been recorded.')
+    if rows:
+        scan_id = st.selectbox('Your scan to review', [r['id'] for r in rows])
+        result = fetch('/api/my/scans/'+scan_id, token, dict)
+        if result:
+            risk_badge(result.get('severity'))
+            st.write(result.get('suggested_action', ''))
+            show_table(result.get('findings', []), 'No confirmed findings.')
 
 
 def admin_sign_in() -> str | None:
@@ -89,31 +252,40 @@ def admin_sign_in() -> str | None:
     if token and _expired(st.session_state.get(SESSION_EXPIRES_KEY)):
         _clear_session()
         token = None
-        st.sidebar.warning("Your administrator session expired. Please sign in again.")
+        st.warning("Your administrator session expired. Please sign in again.")
     if token:
-        st.sidebar.success("Signed in with two-factor authentication")
+        st.sidebar.caption("Account · 2FA verified")
         if st.sidebar.button("Sign out", key="admin_sign_out"):
             response = _auth_post("/api/admin/logout", token=token)
             _clear_session()
             _clear_challenge()
             if response is None or response.status_code >= 500:
-                st.sidebar.warning("The backend could not confirm sign-out. The session may remain active until it expires.")
-            return None
+                st.session_state["auth_notice"] = "Local sign-out completed. The service could not confirm session revocation; it will expire automatically."
+            st.rerun()
         return token
 
     challenge = st.session_state.get(CHALLENGE_TOKEN_KEY)
     if challenge and _expired(st.session_state.get(CHALLENGE_EXPIRES_KEY)):
         _clear_challenge()
         challenge = None
-        st.sidebar.warning("The sign-in code step expired. Enter your password again.")
+        st.warning("The sign-in code step expired. Enter your password again.")
 
-    st.sidebar.subheader("Administrator sign-in")
+    st.subheader("Sign in to ExtSecure")
+    if st.session_state.pop('registration_complete', False):
+        st.session_state['account_access'] = 'Log in'
+        st.success('Registration completed. The main administrator must approve access before you can log in.')
+    if not challenge:
+        access = st.radio('Account access', ['Log in', 'Register new account'], horizontal=True, key='account_access')
+        if access == 'Register new account':
+            admin_register()
+            return None
     if challenge:
-        st.sidebar.caption("Step 2 of 2 · Enter the six-digit code from your authenticator app.")
-        with st.sidebar.form("admin_totp_form", clear_on_submit=True):
+        st.caption("STEP 02 / 02 · Verify your identity")
+        st.write("Enter the six-digit code from your authenticator app.")
+        with st.form("admin_totp_form", clear_on_submit=True):
             code = st.text_input("One-time code", type="password", max_chars=6, autocomplete="one-time-code")
-            verify = st.form_submit_button("Verify and sign in")
-        if st.sidebar.button("Start sign-in again", key="admin_restart_sign_in"):
+            verify = st.form_submit_button("Verify and sign in", type="primary", use_container_width=True)
+        if st.button("Start sign-in again", key="admin_restart_sign_in"):
             _clear_challenge()
             st.rerun()
         if verify:
@@ -124,12 +296,12 @@ def admin_sign_in() -> str | None:
             if response is not None:
                 if response.status_code in (401, 403, 422):
                     _clear_challenge()
-                    st.sidebar.error("The code was invalid or expired. Sign in again to request a new code step.")
+                    st.error("The code was invalid or expired. Sign in again to request a new code step.")
                 elif response.status_code == 429:
                     _clear_challenge()
-                    st.sidebar.error("Too many sign-in attempts. Please try again later.")
+                    st.error("Too many sign-in attempts. Please try again later.")
                 elif response.is_error:
-                    st.sidebar.error(f"Sign-in failed with HTTP {response.status_code}.")
+                    st.error(f"Sign-in failed with HTTP {response.status_code}.")
                 else:
                     issued = _auth_payload(response, "access_token")
                     if issued is not None:
@@ -139,20 +311,20 @@ def admin_sign_in() -> str | None:
                         st.rerun()
         return None
 
-    st.sidebar.caption("Step 1 of 2 · Enter your administrator credentials.")
-    with st.sidebar.form("admin_password_form", clear_on_submit=True):
+    st.caption("STEP 01 / 02 · Your credentials")
+    with st.form("admin_password_form", clear_on_submit=True):
         username = st.text_input("Username", autocomplete="username")
         password = st.text_input("Password", type="password", autocomplete="current-password")
-        begin = st.form_submit_button("Continue")
+        begin = st.form_submit_button("Continue securely", type="primary", use_container_width=True)
     if begin:
         response = _auth_post("/api/admin/login", {"username": username.strip(), "password": password})
         if response is not None:
             if response.status_code in (401, 403, 422):
-                st.sidebar.error("The username or password was not accepted.")
+                st.error("The username or password was not accepted.")
             elif response.status_code == 429:
-                st.sidebar.error("Too many sign-in attempts. Please try again later.")
+                st.error("Too many sign-in attempts. Please try again later.")
             elif response.is_error:
-                st.sidebar.error(f"Sign-in failed with HTTP {response.status_code}.")
+                st.error(f"Sign-in failed with HTTP {response.status_code}.")
             else:
                 issued = _auth_payload(response, "challenge_token")
                 if issued is not None:
@@ -220,8 +392,10 @@ def fetch(path: str, token: str, expected: type) -> Any | None:
 
     if response.status_code in (401, 403):
         _clear_session()
+        _clear_challenge()
         st.error("Your administrator session was denied or expired. Please sign in again.")
-        return None
+        st.button("Return to sign-in", key="denied_fetch")
+        st.stop()
     if response.is_error:
         st.error(f"The backend returned HTTP {response.status_code} for this view.")
         return None
@@ -237,23 +411,26 @@ def fetch(path: str, token: str, expected: type) -> Any | None:
     return payload
 
 
-def post_admin(path: str, token: str, payload: dict[str, Any] | None = None) -> dict[str, Any] | None:
+def post_admin(path: str, token: str, payload: dict[str, Any] | None = None,
+               *, upload: tuple[str, bytes, str] | None = None) -> dict[str, Any] | None:
     """Submit an administrator change using the verified backend session."""
-    timeout = 90.0 if path.endswith("/generate") else 30.0 if path.endswith("/send") else TIMEOUT_SECONDS
+    timeout = 90.0 if path.endswith("/generate") else 60.0 if "/downloads/" in path else 30.0 if path.endswith("/send") else TIMEOUT_SECONDS
+    body = {"data": payload, "files": {"file": upload}} if upload else {"json": payload}
     try:
         response = httpx.post(
             f"{API_BASE_URL}{path}",
             headers={"Authorization": f"Bearer {token}"},
-            json=payload,
+            **body,
             timeout=timeout,
         )
     except httpx.RequestError:
         st.error("The dashboard could not reach the backend. Check that the API is running.")
         return None
-    if response.status_code in (401, 403):
+    if response.status_code == 401:
         _clear_session()
-        st.error("Your administrator session was denied or expired. Please sign in again.")
-        return None
+        _clear_challenge()
+        st.session_state["auth_notice"] = "Your administrator session was denied or expired. Please sign in again."
+        st.rerun()
     if response.is_error:
         try:
             detail = response.json().get("detail")
@@ -304,7 +481,14 @@ def search_filter(items: list[dict[str, Any]], fields: tuple[str, ...], key: str
 
 def show_table(rows: list[dict[str, Any]], empty_message: str) -> None:
     if rows:
-        st.dataframe(rows, hide_index=True, use_container_width=True)
+        frame = pd.DataFrame(rows)
+        severity_columns = [name for name in ("Severity", "Highest severity") if name in frame.columns]
+        if severity_columns:
+            def style_risk(value):
+                color = SEVERITY_COLORS.get(str(value), SEVERITY_COLORS["Unknown"])
+                return f"color: {color}; background-color: {color}12; font-weight: 700"
+            frame = frame.style.map(style_risk, subset=severity_columns)
+        st.dataframe(frame, hide_index=True, use_container_width=True)
     else:
         st.info(empty_message)
 
@@ -318,6 +502,10 @@ def show_event_table(items: list[dict[str, Any]]) -> None:
             "Score": display(item.get("score")),
             "Completeness": display(item.get("completeness")),
             "Message": display(item.get("message")),
+            "Administrator": display(item.get("actor")),
+            "Review note": display(item.get("reason")),
+            "Status": display(item.get("status")),
+            "Channel": display(item.get("channel")),
             "Device ID": display(item.get("device_id")),
             "Scan ID": display(item.get("scan_id")),
             "Event ID": display(item.get("id")),
@@ -341,21 +529,39 @@ def show_severity_counts(data: dict[str, Any]) -> None:
 
 
 def show_overview(token: str) -> None:
-    st.header("Overview")
+    st.markdown('<div class="scope-hero"><div class="scope-eyebrow">Security overview</div><h1>Focus on what needs attention.</h1><p>Follow confirmed threats, inspect the evidence, and keep a clear record of every decision.</p></div>', unsafe_allow_html=True)
     data = fetch("/api/overview", token, dict)
     if data is None:
         return
 
-    first = st.columns(3)
+    pending = count(data.get("pending_alerts", data.get("open_alerts")))
+    if isinstance(pending, int) and pending > 0:
+        st.warning(f"{pending} alert{'s' if pending != 1 else ''} need review. Open Alerts to acknowledge, investigate, or resolve them.")
+    elif pending == 0:
+        st.info("No alerts are waiting for review. Scan activity and incomplete checks remain available below.")
+    first = st.columns(5)
     first[0].metric("Total scans", count(data.get("total_scans")))
     first[1].metric("High-risk scans", count(data.get("high_risk")))
-    first[2].metric("Open alerts", count(data.get("open_alerts")))
-    second = st.columns(2)
-    second[0].metric("Devices", count(data.get("devices")))
-    second[1].metric("Extensions", count(data.get("extensions")))
+    first[2].metric("Awaiting review", pending)
+    first[3].metric("Devices seen", count(data.get("devices")))
+    first[4].metric("Extensions seen", count(data.get("extensions")))
+    st.caption("Lifetime totals from recorded scans. A low score describes available evidence; it does not guarantee safety.")
 
     st.subheader("Risk severity")
     show_severity_counts(data)
+
+    activity = records(data.get("daily_activity", []))
+    if activity:
+        st.subheader("Activity over the last 14 days")
+        chart = alt.Chart(alt.Data(values=activity)).transform_fold(
+            ["scans", "high_risk"], as_=["Series", "Count"]
+        ).mark_line(point=True, strokeWidth=2.5).encode(
+            x=alt.X("date:T", title=None, axis=alt.Axis(format="%d %b")),
+            y=alt.Y("Count:Q", title="Scans", scale=alt.Scale(domainMin=0), axis=alt.Axis(tickMinStep=1)),
+            color=alt.Color("Series:N", title=None, scale=alt.Scale(domain=["scans", "high_risk"], range=["#007f78", "#b4233a"])),
+            tooltip=[alt.Tooltip("date:T", title="Day (UTC)"), "Series:N", "Count:Q"],
+        ).properties(height=210)
+        st.altair_chart(chart, use_container_width=True)
 
     st.subheader("Recent security events")
     recent_events = data.get("recent_events")
@@ -379,22 +585,21 @@ def show_risk_levels(token: str) -> None:
                 {"Severity": label, "Scans": count(raw_counts.get(label, 0))}
                 for label in ("Low", "Medium", "High", "Critical", "Unknown")
             ]
-            chart = alt.Chart(alt.Data(values=chart_data)).mark_bar(color="#39D3A2").encode(
+            chart = alt.Chart(alt.Data(values=chart_data)).mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5).encode(
                 x=alt.X("Severity:N", sort=["Low", "Medium", "High", "Critical", "Unknown"]),
                 y=alt.Y("Scans:Q", scale=alt.Scale(domainMin=0), axis=alt.Axis(tickMinStep=1)),
                 tooltip=["Severity:N", "Scans:Q"],
+                color=alt.Color("Severity:N", scale=alt.Scale(domain=list(SEVERITY_COLORS), range=list(SEVERITY_COLORS.values())), legend=None),
             ).properties(height=190)
             st.altair_chart(chart, use_container_width=True)
 
-    with st.expander("How the risk score works"):
-        st.table([
-            {"Score": "0–29", "Level": "Low", "Action": "Review during normal monitoring"},
-            {"Score": "30–59", "Level": "Medium", "Action": "Investigate the finding"},
-            {"Score": "60–79", "Level": "High", "Action": "Prioritize investigation; alert created"},
-            {"Score": "80–100", "Level": "Critical", "Action": "Investigate urgently; alert created"},
-            {"Score": "No assessable checks", "Level": "Unknown", "Action": "Retry or review the failed checks"},
-        ])
-        st.caption("Confirmed signals: sensitive permission +20, broad host access +15, obfuscated code +25, external data transfer +25, malicious URL +80, suspicious URL +30, new domain +15, malicious downloaded-file hash +90, suspicious downloaded-file hash +40.")
+    policy = fetch("/api/risk-policy", token, dict)
+    if policy is not None:
+        with st.expander("How the risk score works"):
+            st.caption(f"Policy {display(policy.get('version'))} · Score capped at {display(policy.get('score_cap'))}")
+            show_table([{"Severity": item.get("severity"), "From": item.get("min_score"), "To": item.get("max_score")} for item in records(policy.get("severity_bands", []))], "Risk bands are unavailable.")
+            st.write(display(policy.get("unknown_policy")))
+            show_table([{"Signal": item.get("title"), "Points": item.get("points"), "Meaning": item.get("description")} for item in records(policy.get("signals", []))], "Signal definitions are unavailable.")
 
     st.subheader("Device risk")
     devices = fetch("/api/devices", token, list)
@@ -427,7 +632,7 @@ def show_risk_levels(token: str) -> None:
 
 
 def show_devices(token: str) -> None:
-    st.header("Devices")
+    page_heading("Devices", "Devices observed in submitted scans, with their most severe recorded result. Last seen reflects scan activity, not continuous connectivity.")
     data = fetch("/api/devices", token, list)
     if data is None:
         return
@@ -448,7 +653,7 @@ def show_devices(token: str) -> None:
 
 
 def show_extensions(token: str) -> None:
-    st.header("Extensions")
+    page_heading("Extensions", "Review extensions reported by connected clients and trace their findings back to a device.")
     data = fetch("/api/extensions", token, list)
     if data is None:
         return
@@ -474,7 +679,7 @@ def show_extensions(token: str) -> None:
 
 
 def show_findings(token: str) -> None:
-    st.header("Findings")
+    page_heading("Findings", "Confirmed signals behind each risk score. Use the scan reference to investigate the full assessment.")
     data = fetch("/api/findings", token, list)
     if data is None:
         return
@@ -512,7 +717,7 @@ def show_findings(token: str) -> None:
 
 
 def show_scans(token: str) -> None:
-    st.header("Scan history")
+    page_heading("Scan history", "Trace assessed URLs, addresses, extensions, and file hashes. Partial and Unknown results need further evidence.")
     data = fetch("/api/scans", token, list)
     if data is None:
         return
@@ -540,10 +745,29 @@ def show_scans(token: str) -> None:
         for item in items
     ]
     show_table(rows, "No scans match this selection.")
+    if items:
+        st.subheader("Inspect scan evidence")
+        selected = st.selectbox("Scan to inspect", range(len(items)),
+            format_func=lambda index: f"{severity(items[index].get('severity'))} · {display(items[index].get('target_display'))} · {display(items[index].get('created_at'))}", key="scan_evidence")
+        st.button("Investigate in a case", key="case_from_scan", on_click=_open_case_for_scan, args=(items[selected]['id'],))
+        if st.button("Open evidence", key="open_scan_evidence"):
+            detail = fetch(f"/api/scans/{items[selected]['id']}", token, dict)
+            if detail is not None:
+                with st.container(border=True):
+                    risk_badge(detail.get("severity"))
+                    st.write(display(detail.get("suggested_action")))
+                    st.caption(f"Policy: {display(detail.get('risk_policy_version'))} · Completeness: {display(detail.get('completeness'))}")
+                    show_table([{"Signal": value.get("code"), "Outcome": value.get("status")} for value in records(detail.get("signals", []))], "No signal details are available.")
+                    show_table([{"Finding": value.get("title"), "Severity": value.get("severity"), "Points": value.get("points"), "Evidence": value.get("detail")} for value in records(detail.get("findings", []))], "No confirmed findings were recorded. Review completeness before drawing conclusions.")
+                    st.markdown("**Related events**")
+                    show_event_table(records(detail.get("events", [])))
 
 
 def show_alerts(token: str) -> None:
-    st.header("Alerts")
+    page_heading("Alerts", "Triage High and Critical findings. Every status change requires a reason and is recorded in the security event log.")
+    notice = st.session_state.pop("alert_change_notice", None)
+    if notice:
+        st.success(notice)
     data = fetch("/api/alerts", token, list)
     if data is None:
         return
@@ -566,10 +790,37 @@ def show_alerts(token: str) -> None:
         for item in items
     ]
     show_table(rows, "No alerts match this selection.")
+    actionable = [item for item in items if item.get("status") in {"open", "acknowledged", "resolved"} and isinstance(item.get("id"), str)]
+    if actionable:
+        st.subheader("Review an alert")
+        chosen = st.selectbox("Alert to review", range(len(actionable)),
+            format_func=lambda index: f"{severity(actionable[index].get('severity'))} · {display(actionable[index].get('message'))} · {actionable[index]['id'][:8]}", key="triage_alert")
+        selected = actionable[chosen]
+        risk_badge(selected.get("severity"))
+        st.caption(f"Current status: {display(selected.get('status')).title()} · Scan: {display(selected.get('scan_id'))}")
+        if isinstance(selected.get('scan_id'), str):
+            st.button("Investigate in a case", key="case_from_alert", on_click=_open_case_for_scan, args=(selected['scan_id'],))
+        with st.form("alert_triage"):
+            current = selected["status"]
+            statuses = [value for value in ("acknowledged", "resolved", "open") if value != current]
+            new_status = st.selectbox("Next status", statuses, format_func=lambda value: {"acknowledged": "Acknowledge — investigation started", "resolved": "Resolve — review completed", "open": "Reopen — needs another review"}[value])
+            reason = st.text_area("Review note", max_chars=500, help="Describe the investigation or decision in 8–500 characters. Avoid private browsing data.")
+            submitted = st.form_submit_button("Save review", type="primary")
+        if submitted:
+            if len(reason.strip()) < 8:
+                st.error("Add a review note of at least 8 characters.")
+            else:
+                changed = post_admin(f"/api/alerts/{selected['id']}/status", token,
+                    {"status": new_status, "reason": reason.strip(), "expected_status": current})
+                if changed is not None:
+                    st.session_state["alert_change_notice"] = f"Alert marked {display(changed.get('status'))}."
+                    st.rerun()
+    if any(item.get("status") == "suppressed" for item in items):
+        st.caption("Suppressed alerts are governed by an exception. Review the exception in Whitelist & overrides; the recorded risk remains unchanged.")
 
 
 def show_events(token: str) -> None:
-    st.header("Security event log")
+    page_heading("Security event log", "A chronological record of scan outcomes, threats, administrator decisions, and notification delivery. Times are shown in UTC.")
     data = fetch("/api/events", token, list)
     if data is None:
         return
@@ -579,7 +830,7 @@ def show_events(token: str) -> None:
     if selected_type != "All":
         items = [item for item in items if display(item.get("event_type")) == selected_type]
     items = severity_filter(items, "event_severity")
-    items = search_filter(items, ("id", "event_type", "message", "scan_id"), "event_search")
+    items = search_filter(items, ("id", "event_type", "message", "scan_id", "actor", "reason", "status"), "event_search")
     show_event_table(items)
 
 
@@ -762,15 +1013,34 @@ def show_monthly_reports(token: str) -> None:
                 else:
                     st.info("No results for this category.")
 
+    st.subheader('Machine-learning activity review')
+    st.caption('Learns from the 90 days before the selected month. Flags unusual daily activity for review; it does not change scan risk scores.')
+    if st.button('Run monthly ML analysis', key='monthly_ml_run'):
+        analysis = fetch(f'/api/reports/monthly/ml?year={year}&month={month}', token, dict)
+        if analysis is not None:
+            st.session_state['monthly_ml_result'] = analysis
+    analysis = st.session_state.get('monthly_ml_result')
+    if isinstance(analysis, dict) and analysis.get('period') == period:
+        if analysis.get('status') == 'ready':
+            st.metric('Unusual activity days', len(analysis.get('unusual_days', [])))
+            st.caption(f"Model: {analysis['model']} · Active historical days: {analysis['active_training_days']}")
+            st.dataframe(analysis['daily_results'], hide_index=True, use_container_width=True)
+            st.info(analysis['limitation'])
+        else:
+            st.warning(analysis.get('reason', 'Machine-learning analysis is unavailable.'))
+        st.download_button('Download ML evidence', json.dumps(analysis, indent=2), file_name=f'extsecure-ml-{period}.json', mime='application/json')
+
     reports_data = fetch("/api/reports/monthly", token, list)
     if reports_data is None:
         return
     reports = records(reports_data)
     selected = next((item for item in reports if item.get("period") == period), None)
     st.subheader("Saved report")
+    if not st.session_state.get("account_profile", {}).get("can_manage_reports"):
+        st.caption("Manager access: review reports and ML evidence. Administrators prepare and send reports.")
     if selected is None:
         st.info("No report has been generated for this month.")
-        if st.button("Generate LLM draft", key="generate_monthly_report"):
+        if st.session_state.get("account_profile", {}).get("can_manage_reports") and st.button("Generate LLM draft", key="generate_monthly_report"):
             generated = post_admin(
                 "/api/reports/monthly/generate", token, {"year": year, "month": month}
             )
@@ -794,7 +1064,7 @@ def show_monthly_reports(token: str) -> None:
         )
         if selected.get("status") != "sent":
             st.caption("Sending uses this saved draft. Review it before choosing Send.")
-            if st.button("Send report to administrators", type="primary", key="send_monthly_report"):
+            if st.session_state.get("account_profile", {}).get("can_manage_reports") and st.button("Send report to administrators", type="primary", key="send_monthly_report"):
                 result = post_admin(f"/api/reports/monthly/{period}/send", token)
                 if result is not None:
                     st.session_state["report_notice"] = {"status": result.get("status")}
@@ -829,42 +1099,150 @@ def show_monthly_reports(token: str) -> None:
     show_table(previous_rows, "No monthly reports have been generated yet.")
 
 
+def show_downloads(token: str) -> None:
+    page_heading("Downloaded-file checks", "Look up a file's SHA-256 reputation and keep the result in scan history. Files are never executed.")
+    st.info("Hash checks only identify files already known to the reputation provider. Unknown means the lookup could not establish a verdict; it does not mean the file is safe.")
+    mode = st.radio("Check method", ("SHA-256 hash", "Upload a file"), horizontal=True, key="download_mode")
+    with st.form("download_scan", clear_on_submit=True):
+        if mode == "SHA-256 hash":
+            digest = st.text_input("SHA-256 hash", max_chars=64, placeholder="64 hexadecimal characters")
+            uploaded = None
+            st.caption("Only the hash is sent to the backend and the reputation provider.")
+        else:
+            uploaded = st.file_uploader("Downloaded file", help="Maximum 32 MB. File content is sent to the backend to compute SHA-256, then discarded; only the hash is sent to VirusTotal.")
+            digest = ""
+            st.caption("Up to 32 MB. The backend computes the hash and discards the file content. VirusTotal receives only the hash.")
+        if st.session_state.get('account_profile', {}).get('role') == 'normal_user':
+            device_id, device_name = 'personal-workbench', 'Personal file checks'
+            st.caption('This result is linked to your account. Device identity is assigned by the backend.')
+        else:
+            device_id = st.text_input("Device reference", value="admin-workbench", max_chars=100, help="Use the device's registered reference to associate this review with its history.")
+            device_name = st.text_input("Device name", value="Administrator workbench", max_chars=120)
+        submit = st.form_submit_button("Check file reputation", type="primary")
+    if submit:
+        # Always clear a previous verdict before a new attempt, including invalid input.
+        st.session_state.pop("download_result", None)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,99}", device_id.strip()) or not device_name.strip():
+            st.error("Enter a device name and a valid reference using letters, numbers, dots, colons, underscores, or hyphens.")
+        elif mode == "SHA-256 hash" and not re.fullmatch(r"[0-9a-fA-F]{64}", digest.strip()):
+            st.error("Enter a valid SHA-256 hash containing exactly 64 hexadecimal characters.")
+        elif mode == "Upload a file" and uploaded is None:
+            st.error("Choose a file before starting the check.")
+        elif uploaded is not None and uploaded.size > MAX_FILE_BYTES:
+            st.error("The file exceeds the 32 MB limit. Use its SHA-256 hash instead.")
+        else:
+            metadata = {"device_id": device_id.strip(), "device_name": device_name.strip()}
+            with st.spinner("Checking reputation and recording the assessment…"):
+                if uploaded is not None:
+                    result = post_admin("/api/admin/downloads/scan-file", token, metadata,
+                        upload=("download.bin", uploaded.getvalue(), "application/octet-stream"))
+                else:
+                    result = post_admin("/api/admin/downloads/scan", token,
+                        {**metadata, "sha256": digest.strip().lower()})
+            if result is not None:
+                st.session_state["download_result"] = result
+    result = st.session_state.get("download_result")
+    if isinstance(result, dict):
+        with st.container(border=True):
+            st.subheader("Latest assessment")
+            risk_badge(result.get("severity"))
+            columns = st.columns(3)
+            columns[0].metric("Risk score / 100", display(result.get("score")))
+            columns[1].metric("Completeness", display(result.get("completeness")).title())
+            lookup = result.get("file_lookup") if isinstance(result.get("file_lookup"), dict) else {}
+            columns[2].metric("Reputation", display(lookup.get("verdict")).title())
+            if result.get("severity") == "Unknown" or result.get("completeness") != "complete":
+                st.warning("The assessment is incomplete. Keep the file under review and retry when reputation data is available.")
+            elif result.get("severity") in {"High", "Critical"}:
+                st.error("A high-risk reputation result was recorded. Avoid opening the file and review the linked alert.")
+            else:
+                st.info("This lookup found no high-severity result. A reputation check alone cannot guarantee file safety.")
+            if lookup.get("reason"):
+                st.caption(f"Lookup detail: {display(lookup.get('reason')).replace('_', ' ')}")
+            if lookup.get("retry_after_seconds") is not None:
+                st.caption(f"Suggested retry delay: {display(lookup.get('retry_after_seconds'))} seconds.")
+            st.caption(f"Scan reference: {display(result.get('id'))} · {'Cached reputation' if lookup.get('cache_hit') else 'Provider lookup'}")
+            show_table([{"Finding": item.get("title"), "Points": item.get("points"), "Evidence": item.get("detail")} for item in records(result.get("findings", []))], "No confirmed findings were recorded for this assessment.")
+
+
 def main() -> None:
-    st.set_page_config(page_title="Security Analyzer Admin", page_icon="🛡️", layout="wide")
-    st.title("Browser Extension Security Analyzer")
-    st.caption("Administrator dashboard · scan results, risks, alerts, and security history")
+    st.set_page_config(page_title="ExtSecure · Security console", page_icon="🛡️", layout="wide", initial_sidebar_state="auto")
+    style = Path(__file__).with_name("dashboard.css").read_text(encoding="utf-8")
+    st.markdown(f"<style>{style}</style>", unsafe_allow_html=True)
+    if os.getenv("EXTSECURE_DEMO") == "1":
+        st.info("Demonstration workspace · Synthetic data and simulated reputation results. External notifications are disabled.")
 
-    st.sidebar.header("Dashboard")
-    view = st.sidebar.radio(
-        "View",
-        ("Overview", "Risk levels", "Devices", "Extensions", "Scan history", "Findings", "Alerts", "Security events", "Whitelist & overrides", "Monthly reports"),
-    )
-    st.sidebar.caption(f"API: {API_BASE_URL}")
-    token = admin_sign_in()
-
-    if not token:
-        st.info("Sign in with your administrator password and authenticator code to view security data.")
+    # A local expiry check is for presentation only; every data request is still
+    # authorized by the backend. No dashboard-wide credential is used.
+    if st.session_state.get(SESSION_TOKEN_KEY) and _expired(st.session_state.get(SESSION_EXPIRES_KEY)):
+        _clear_session()
+        _clear_challenge()
+        st.session_state["auth_notice"] = "Your administrator session expired. Please sign in again."
+    if not st.session_state.get(SESSION_TOKEN_KEY):
+        notice = st.session_state.pop("auth_notice", None)
+        if notice:
+            st.warning(notice)
+        left, right = st.columns([1.3, 1], gap="large")
+        with left:
+            st.markdown(BRAND, unsafe_allow_html=True)
+            st.markdown('''<div class="scope-login"><div class="scope-eyebrow">Your security workspace</div><h1>Clarity for every security decision.</h1><p>Bring risk signals, file checks, and administrator actions together in one focused workspace.</p><div class="scope-proof"><i>01</i><div><b>Evidence before action</b><span>Trace every finding back to the original assessment.</span></div></div><div class="scope-proof"><i>02</i><div><b>Controlled access</b><span>Approved roles with password and authenticator verification.</span></div></div><div class="scope-proof"><i>03</i><div><b>Accountable decisions</b><span>Review alerts, manage exceptions, and prepare reports.</span></div></div></div>''', unsafe_allow_html=True)
+        with right:
+            admin_sign_in()
+            st.caption("Use your approved account and authenticator. New accounts need approval from the Head of Administrator.")
         return
 
-    st.sidebar.button("Refresh data")
-
-    notice = st.session_state.pop("override_change_notice", None)
-    if notice:
-        st.success(notice)
-
+    st.sidebar.markdown(BRAND, unsafe_allow_html=True)
+    token = admin_sign_in()
+    if not token:
+        return
+    account = fetch('/api/admin/me', token, dict)
+    if account is None or not isinstance(account.get('views'), list):
+        st.error('Your account permissions could not be loaded. Refresh to try again.')
+        return
+    previous = st.session_state.get('account_profile', {})
+    if previous and previous.get('role') != account.get('role'):
+        for key in ('download_result', 'monthly_ml_result', 'report_notice'):
+            st.session_state.pop(key, None)
+    st.session_state['account_profile'] = account
+    st.sidebar.caption(account.get('display_name', '') + ' · ' + account.get('role_label', ''))
     views = {
+        "Website access": lambda token: st.info('Website approvals are managed in the Chrome extension. Open ExtSecure, choose Open console, then Website access.'),
+        "My account": show_my_account,
+        "My file history": show_personal_history,
         "Overview": show_overview,
+        "Alerts": show_alerts,
+        "Findings": show_findings,
         "Risk levels": show_risk_levels,
+        "Downloaded-file checks": show_downloads,
+        "Scan history": show_scans,
         "Devices": show_devices,
         "Extensions": show_extensions,
-        "Scan history": show_scans,
-        "Findings": show_findings,
-        "Alerts": show_alerts,
         "Security events": show_events,
         "Whitelist & overrides": show_overrides,
         "Monthly reports": show_monthly_reports,
+        "Accounts": show_accounts,
     }
+    for governance_view in (
+        "Incident cases", "Security policies", "Privacy governance", "Detection evaluation",
+        "Usability and accessibility", "Security guidance",
+    ):
+        views[governance_view] = partial(render_governance, governance_view, fetch=fetch, post=post_admin)
+    views = {name: action for name, action in views.items() if name in account['views']}
+    if not views:
+        st.error('No workspace access has been assigned.')
+        return
+    if st.session_state.get('workspace_view') not in views:
+        st.session_state['workspace_view'] = 'Overview' if 'Overview' in views else next(iter(views))
+    st.sidebar.divider()
+    view = st.sidebar.radio("Workspace", tuple(views), key="workspace_view", label_visibility="collapsed")
+    st.sidebar.divider()
+    st.sidebar.button("Refresh data", use_container_width=True)
+    st.sidebar.caption("Evidence stays visible. Exceptions change notification handling, never the recorded risk.")
+    notice = st.session_state.pop("override_change_notice", None)
+    if notice:
+        st.success(notice)
     views[view](token)
+    st.markdown('<div class="scope-note">ExtSecure · Administrator console &nbsp; / &nbsp; All activity timestamps use UTC.</div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

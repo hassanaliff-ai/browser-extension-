@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from alba_security.admin_auth import (
     AdminAuth,
+    AdminAuthState,
     AdminLoginChallenge,
     AdminSession,
     AuthenticationError,
@@ -29,7 +30,9 @@ def auth_context():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    Base.metadata.create_all(engine)
+    Base.metadata.create_all(engine, tables=[
+        AdminAuthState.__table__, AdminLoginChallenge.__table__, AdminSession.__table__,
+    ])
     moment = [datetime(2026, 10, 1, 12, 0, 0, tzinfo=timezone.utc)]
     password_hash = PasswordHasher(time_cost=1, memory_cost=1024, parallelism=1).hash("correct horse battery staple")
     auth = AdminAuth(
@@ -161,3 +164,63 @@ def test_configuration_fails_closed():
     hash_value = PasswordHasher(time_cost=1, memory_cost=1024, parallelism=1).hash("password")
     with pytest.raises(RuntimeError):
         AdminAuth("admin", hash_value, "JBSWY3DPEHPK3PXP")  # only 80 bits
+
+
+def test_non_ascii_username_is_rejected_as_credentials_not_server_error(auth_context):
+    auth, db, _moment = auth_context
+    with pytest.raises(AuthenticationError):
+        auth.begin_login(db, "مدير", "correct horse battery staple")
+    auth.username = "مدير"
+    assert auth.begin_login(db, "مدير", "correct horse battery staple").challenge_token
+
+
+def test_expiry_boundaries_do_not_grant_grace_access(auth_context):
+    auth, db, moment = auth_context
+    first = auth.begin_login(db, "administrator", "correct horse battery staple")
+    moment[0] = first.expires_at
+    with pytest.raises(AuthenticationError):
+        auth.complete_login(db, first.challenge_token, pyotp.TOTP(SECRET).at(moment[0]))
+    fresh = auth.begin_login(db, "administrator", "correct horse battery staple")
+    issued = auth.complete_login(db, fresh.challenge_token, pyotp.TOTP(SECRET).at(moment[0]))
+    moment[0] = issued.expires_at
+    assert not auth.verify_session(db, issued.access_token)
+
+
+@pytest.mark.parametrize("offset", [-60, 60])
+def test_totp_outside_clock_skew_window_never_issues_session(auth_context, offset):
+    auth, db, moment = auth_context
+    challenge = auth.begin_login(db, "administrator", "correct horse battery staple")
+    code = pyotp.TOTP(SECRET).at(moment[0] + timedelta(seconds=offset))
+    with pytest.raises(AuthenticationError):
+        auth.complete_login(db, challenge.challenge_token, code)
+    assert db.scalars(select(AdminSession)).all() == []
+
+
+def test_stale_challenge_loaded_before_another_request_cannot_be_consumed_twice(auth_context):
+    auth, db, moment = auth_context
+    challenge = auth.begin_login(db, "administrator", "correct horse battery staple")
+    # Hold the old object in the identity map, like a request waiting for an
+    # admin-state row lock while another worker completes the same challenge.
+    stale = db.scalar(select(AdminLoginChallenge))
+    with Session(db.bind) as other:
+        issued = auth.complete_login(other, challenge.challenge_token, pyotp.TOTP(SECRET).at(moment[0]))
+    assert stale.consumed_at is None
+    moment[0] += timedelta(seconds=30)
+    with pytest.raises(AuthenticationError):
+        auth.complete_login(db, challenge.challenge_token, pyotp.TOTP(SECRET).at(moment[0]))
+    assert len(db.scalars(select(AdminSession)).all()) == 1
+    assert auth.verify_session(db, issued.access_token)
+
+
+def test_stale_replay_state_is_refreshed_before_issuing_another_session(auth_context):
+    auth, db, moment = auth_context
+    first = auth.begin_login(db, "administrator", "correct horse battery staple")
+    second = auth.begin_login(db, "administrator", "correct horse battery staple")
+    stale_state = db.scalar(select(AdminAuthState))
+    code = pyotp.TOTP(SECRET).at(moment[0])
+    with Session(db.bind) as other:
+        auth.complete_login(other, first.challenge_token, code)
+    assert stale_state.last_totp_counter == -1
+    with pytest.raises(AuthenticationError):
+        auth.complete_login(db, second.challenge_token, code)
+    assert len(db.scalars(select(AdminSession)).all()) == 1

@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {privateTarget,hashFile,validDigest,escapeHtml,roleCanWrite,reportPeriod,completedMonth,safeApiPath,apiError,MAX_FILE_SIZE} from '../core.js';
+
+test('URL checks default to origin and remove private query and fragment',()=>assert.equal(privateTarget('https://example.com/private/report?token=secret#private'),'https://example.com/'));
+test('Path is included only when deliberately requested',()=>assert.equal(privateTarget('https://example.com/private?q=secret#x',true),'https://example.com/private'));
+test('URLs containing credentials are rejected',()=>assert.throws(()=>privateTarget('https://user:secret@example.com/')));
+test('Browser pages, JavaScript and file URLs are rejected',()=>{for(const target of ['chrome://settings','javascript:alert(1)','file:///C:/private.doc'])assert.throws(()=>privateTarget(target));});
+test('Malformed and relative URLs are rejected',()=>{for(const target of ['', '/local','this is not a URL'])assert.throws(()=>privateTarget(target));});
+test('International domain is normalized by URL parser',()=>assert.equal(privateTarget('https://bücher.example/x'),'https://xn--bcher-kva.example/'));
+test('Local SHA-256 matches published empty-file digest',async()=>assert.equal(await hashFile(new Blob([])),'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'));
+test('Local SHA-256 matches abc digest and zeroes the temporary buffer',async()=>{const bytes=new TextEncoder().encode('abc');const hash=await hashFile({size:3,arrayBuffer:async()=>bytes.buffer});assert.equal(hash,'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');assert.deepEqual([...bytes],[0,0,0]);});
+test('Oversized file is rejected before reading any contents',async()=>{let read=false;await assert.rejects(hashFile({size:MAX_FILE_SIZE+1,arrayBuffer:()=>{read=true;}}));assert.equal(read,false);});
+test('A missing file has a useful validation error',async()=>assert.rejects(hashFile(null),/Choose/));
+test('Pasted hashes accept case and surrounding whitespace',()=>assert.equal(validDigest(' '+ 'A'.repeat(64)+' '),'a'.repeat(64)));
+test('Non-SHA256 digest is rejected',()=>{for(const value of ['f'.repeat(32),'g'.repeat(64),''])assert.throws(()=>validDigest(value));});
+test('All dynamic HTML special characters are escaped',()=>assert.equal(escapeHtml('<img src=x onerror="evil()"> & \'x\''),'&lt;img src=x onerror=&quot;evil()&quot;&gt; &amp; &#39;x&#39;'));
+test('Owner alone can manage accounts',()=>{assert.equal(roleCanWrite({role:'head_administrator'},'accounts'),true);for(const role of ['administrator','manager','normal_user',undefined])assert.equal(roleCanWrite({role},'accounts'),false);});
+test('Manager can manage investigations but cannot scan or change policies',()=>{assert.equal(roleCanWrite({role:'manager'},'cases'),true);assert.equal(roleCanWrite({role:'manager'},'alerts'),true);assert.equal(roleCanWrite({role:'manager'},'scan'),false);assert.equal(roleCanWrite({role:'manager'},'policies'),false);});
+test('Normal user can scan but has no administrative writes',()=>{assert.equal(roleCanWrite({role:'normal_user'},'scan'),true);assert.equal(roleCanWrite({role:'normal_user'},'reports'),false);});
+test('January previous month correctly crosses year boundary',()=>assert.equal(completedMonth(new Date('2026-01-03T00:00:00Z')),'2025-12'));
+test('Current and future months are rejected',()=>{for(const value of ['2026-10','2026-11','2026-00','bad'])assert.throws(()=>reportPeriod(value,new Date('2026-10-05T00:00:00Z')));});
+test('Completed month yields backend report parameters',()=>assert.deepEqual(reportPeriod('2026-09',new Date('2026-10-05T00:00:00Z')),{year:2026,month:9}));
+test('API allowlist supports real workflows and rejects arbitrary or absolute paths',()=>{for(const path of ['/api/overview','/api/admin/me','/api/reports/monthly/ml?year=2026&month=9','/api/scans/abc-123'])assert.equal(safeApiPath(path),true);for(const path of ['https://evil.test/steal','/api/../../secrets','/api/admin/register?leak=1','/private','/api/scans/%2e%2e'])assert.equal(safeApiPath(path),false);assert.equal(safeApiPath('/api/policies/revision-1/review','POST'),true);assert.equal(safeApiPath('/api/admin/downloads/scan','POST'),true);assert.equal(safeApiPath('/api/overview','DELETE'),false);});
+test('Missing LLM setup has a readable next action',()=>assert.equal(apiError(503,{detail:'OPENAI_MODEL is required'}),'AI reporting is not configured. Ask the administrator to configure the report model and API key on the backend.'));

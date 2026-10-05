@@ -1,4 +1,4 @@
-"""Create the current schema and upgrade the prior prototype's scan table."""
+"""Create the current schema and preserve earlier scan and authentication rows."""
 
 from __future__ import annotations
 
@@ -8,14 +8,39 @@ from alba_security.models import Base
 
 
 def ensure_schema(engine: Engine) -> None:
-    """Create new tables and add the one column introduced after v0.1.
+    """Create new tables and add columns introduced after prior releases.
 
     Existing installations of the prior prototype have all other columns but
     lack ``scans.override_id``. New installations get the full schema from
-    metadata. The migration keeps existing scans and alerts intact.
+    metadata. Session and challenge identities are added for multiple
+    administrators. The migration keeps existing scans and sessions intact.
     """
     Base.metadata.create_all(engine)
     inspector = inspect(engine)
+    # Sessions and challenges issued before multiple administrators belonged to
+    # the original primary account. Nullable names preserve that identity.
+    for table in ("admin_login_challenges", "admin_sessions"):
+        if table not in inspector.get_table_names():
+            continue
+        columns = {item["name"] for item in inspector.get_columns(table)}
+        if "username" not in columns:
+            with engine.begin() as connection:
+                conditional = " IF NOT EXISTS" if engine.dialect.name == "postgresql" else ""
+                connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN{conditional} username VARCHAR(120)")
+    if 'registered_administrators' in inspector.get_table_names():
+        columns = {item['name'] for item in inspector.get_columns('registered_administrators')}
+        with engine.begin() as connection:
+            for name, definition in {
+                'role': "VARCHAR(30) NOT NULL DEFAULT 'normal_user'",
+                'approved_by': 'VARCHAR(120)',
+                'approved_at': 'TIMESTAMP',
+            }.items():
+                if name not in columns:
+                    connection.exec_driver_sql(f'ALTER TABLE registered_administrators ADD COLUMN {name} {definition}')
+            if 'approved_by' not in columns:
+                # Earlier releases allowed any administrator to approve. Require
+                # fresh owner approval rather than inheriting an unverified grant.
+                connection.exec_driver_sql("UPDATE registered_administrators SET status='pending_review' WHERE status='active'")
     if "scans" not in inspector.get_table_names():
         return
     columns = {item["name"] for item in inspector.get_columns("scans")}

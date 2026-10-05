@@ -20,3 +20,17 @@ def test_existing_sqlite_scan_table_is_upgraded_in_place(tmp_path):
         assert connection.exec_driver_sql("SELECT id FROM scans").scalar() == "old-scan"
     # Startup is repeatable.
     ensure_schema(engine)
+
+
+def test_existing_authentication_rows_gain_identity_without_losing_sessions(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'old-auth.db').as_posix()}")
+    with engine.begin() as connection:
+        connection.exec_driver_sql('CREATE TABLE admin_sessions (token_hash VARCHAR(64) PRIMARY KEY, expires_at DATETIME NOT NULL, revoked_at DATETIME)')
+        connection.exec_driver_sql('CREATE TABLE admin_login_challenges (token_hash VARCHAR(64) PRIMARY KEY, expires_at DATETIME NOT NULL, consumed_at DATETIME)')
+        connection.exec_driver_sql("INSERT INTO admin_sessions (token_hash, expires_at) VALUES ('old-token-hash', '2099-01-01')")
+    ensure_schema(engine)
+    for table in ['admin_sessions', 'admin_login_challenges']:
+        assert 'username' in {c['name'] for c in inspect(engine).get_columns(table)}
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql('SELECT token_hash FROM admin_sessions').scalar() == 'old-token-hash'
+    ensure_schema(engine)

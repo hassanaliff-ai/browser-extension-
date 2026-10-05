@@ -5,17 +5,19 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, get_args
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from alba_security.models import Alert, Finding, Scan, SecurityEvent
+from alba_security.risk import SignalCode
 
 
 SEVERITIES = ("Unknown", "Low", "Medium", "High", "Critical")
 TARGET_KINDS = ("url", "ip", "hash", "extension", "download")
 COMPLETENESS = ("complete", "partial", "unknown")
+EVENT_TYPES = ("scan_completed", "threat_detected", "notification_delivery", "notification_suppressed", "alert_status_changed")
 
 
 class ReportConfigurationError(ValueError):
@@ -27,7 +29,7 @@ class ReportGenerationError(RuntimeError):
 
 
 def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
-    if not 2000 <= year <= 2100 or not 1 <= month <= 12:
+    if type(year) is not int or type(month) is not int or not 2000 <= year <= 2100 or not 1 <= month <= 12:
         raise ValueError("year must be 2000–2100 and month must be 1–12")
     start = datetime(year, month, 1, tzinfo=timezone.utc)
     next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
@@ -101,6 +103,31 @@ def build_report_prompt(stats: dict[str, Any]) -> str:
         "alerts_total", "alerts_by_severity", "alerts_by_status", "event_counts",
     )
     safe_stats = {key: stats[key] for key in allowed}
+    # Even categorical database fields are untrusted. Collapse unexpected
+    # labels instead of allowing a corrupted/imported label into the prompt.
+    categories = {
+        "severity_counts": SEVERITIES,
+        "target_kind_counts": TARGET_KINDS,
+        "completeness_counts": COMPLETENESS,
+        "findings_by_signal": get_args(SignalCode),
+        "alerts_by_severity": SEVERITIES,
+        "alerts_by_status": ("open", "acknowledged", "resolved", "suppressed"),
+        "event_counts": EVENT_TYPES,
+    }
+    for key, allowed_labels in categories.items():
+        safe_counts: dict[str, int] = {}
+        for label, count in safe_stats[key].items():
+            safe_label = label if label in allowed_labels else "other"
+            safe_counts[safe_label] = safe_counts.get(safe_label, 0) + int(count)
+        safe_stats[key] = safe_counts
+    ml = stats.get('machine_learning')
+    if isinstance(ml, dict):
+        safe_stats['machine_learning'] = {
+            'status': ml['status'] if ml.get('status') in {'ready', 'insufficient_history', 'unavailable'} else 'unavailable',
+            'model': 'Isolation Forest',
+            'active_training_days': int(ml.get('active_training_days', 0)),
+            'unusual_day_count': len(ml.get('unusual_days', [])),
+        }
     return (
         "Write a concise administrator summary for this UTC calendar month. "
         "Use only the following aggregate data; do not infer trends because "
@@ -109,6 +136,13 @@ def build_report_prompt(stats: dict[str, Any]) -> str:
         "common confirmed finding types and high-severity counts if any. "
         "Avoid invented causes, individual incidents, URLs, device names, "
         "security guarantees, or claims that every scan was safe. "
+        "Scan counts describe scan events, not unique threats or compromised devices. "
+        "Alerts include suppressed alerts; never claim every alert was delivered. "
+        "A zero-scan month means no observed scanning activity, not proof of safety. "
+        "Do not describe a finding as a confirmed breach. "
+        "If machine-learning results are supplied, describe them as unusual activity requiring review, "
+        "never as confirmed threats or predicted breaches. If history is insufficient or the model is unavailable, "
+        "state that no ML assessment is available. No unusual days does not prove safety. "
         "End with one practical review priority. Write 90–150 words in plain English.\n\n"
         f"Aggregate statistics (JSON): {json.dumps(safe_stats, sort_keys=True)}"
     )
@@ -125,6 +159,8 @@ def generate_monthly_report(
 ) -> dict[str, Any]:
     """Write a summary through OpenAI Responses API; never silently fake one."""
     stats = aggregate_month(db, year, month)
+    from alba_security.monthly_ml import analyze_month
+    stats['machine_learning'] = analyze_month(db, year, month)
     model = model or os.getenv("OPENAI_MODEL")
     if not model:
         raise ReportConfigurationError("OPENAI_MODEL is required")
@@ -149,22 +185,53 @@ def generate_monthly_report(
             max_output_tokens=400,
             store=False,
         )
-        summary = response.output_text.strip()
+        response_status = getattr(response, "status", "completed")
+        raw_summary = response.output_text
     except Exception as error:
         raise ReportGenerationError("Monthly summary generation failed") from error
+    if response_status != "completed":
+        raise ReportGenerationError("Monthly summary generation did not complete")
+    if not isinstance(raw_summary, str):
+        raise ReportGenerationError("Monthly summary generation returned invalid text")
+    summary = raw_summary.strip()
     if not summary:
         raise ReportGenerationError("Monthly summary generation returned no text")
+    if len(summary) > 4000 or any(ord(character) < 32 and character not in "\n\t" for character in summary):
+        raise ReportGenerationError("Monthly summary generation returned invalid text")
 
     period_label = datetime(year, month, 1).strftime("%B %Y")
     statistics = (
         f"Scans: {stats['total_scans']} | High/Critical: {stats['high_risk_scans']} "
         f"| Unknown: {stats['severity_counts']['Unknown']} "
-        f"| Alerts: {stats['alerts_total']}"
+        f"| Alerts: {stats['alerts_total']}\n"
+        f"Assessment coverage: {stats['completeness_counts']['complete']} complete, "
+        f"{stats['completeness_counts']['partial']} partial, "
+        f"{stats['completeness_counts']['unknown']} unknown\n"
+        f"Observed devices: {stats['unique_devices']} | Extensions: {stats['unique_extensions']}\n"
+        f"Downloaded-file scans: {stats['target_kind_counts']['download']} "
+        f"| Confirmed findings: {stats['findings_total']}\n"
+        f"Alerts currently open: {stats['alerts_by_status'].get('open', 0)} "
+        f"| Acknowledged: {stats['alerts_by_status'].get('acknowledged', 0)} "
+        f"| Resolved: {stats['alerts_by_status'].get('resolved', 0)} "
+        f"| Suppressed by exception: {stats['alerts_by_status'].get('suppressed', 0)}\n"
+        f"Period: {stats['start_utc']} inclusive to {stats['end_utc']} exclusive"
     )
+    ml = stats['machine_learning']
+    ml_text = (f"Isolation Forest: {len(ml['unusual_days'])} unusual activity days. "
+               f"Trained on the preceding 90 calendar days ({ml['active_training_days']} active days)."
+               if ml['status'] == 'ready' else f"ML assessment: {ml['status']}. {ml.get('reason', '')}")
     return {
         "period": stats["period"],
-        "subject": f"Alba Security monthly report — {period_label}",
-        "body": f"{summary}\n\nVerified monthly statistics\n{statistics}",
+        "subject": f"ExtSecure monthly report — {period_label}",
+        "body": (
+            f"AI-assisted monthly summary\n{summary}\n\n"
+            f"Verified monthly statistics\n{statistics}\n\n"
+            f"Machine-learning activity review\n{ml_text}\n{ml['limitation']}\n\n"
+            "Interpretation: counts represent recorded scan events, not unique incidents. "
+            "Unknown and partial assessments require follow-up. Alert status is measured "
+            "when the report is prepared; no prior-month comparison is included. "
+            "Review the AI-assisted narrative alongside these verified figures."
+        ),
         "stats": stats,
         "summary_source": "openai",
     }

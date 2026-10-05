@@ -58,7 +58,7 @@ def test_malicious_download_uses_server_lookup_and_cache(tmp_path):
 
     def provider(request):
         requests.append(request)
-        return httpx.Response(200, json={"data": {"attributes": {
+        return httpx.Response(200, json={"data": {"id": digest, "type": "file", "attributes": {
             "last_analysis_stats": {"malicious": 4, "suspicious": 0, "harmless": 30}
         }}})
 
@@ -85,7 +85,7 @@ def test_malicious_download_uses_server_lookup_and_cache(tmp_path):
 
 def test_suspicious_download_becomes_medium_risk(tmp_path):
     def provider(_request):
-        return httpx.Response(200, json={"data": {"attributes": {
+        return httpx.Response(200, json={"data": {"id": "b" * 64, "type": "file", "attributes": {
             "last_analysis_stats": {"malicious": 0, "suspicious": 2, "undetected": 10}
         }}})
 
@@ -131,7 +131,7 @@ def test_uploaded_download_is_hashed_and_not_stored(tmp_path):
 
     def provider(request):
         assert request.url.path.endswith(digest)
-        return httpx.Response(200, json={"data": {"attributes": {
+        return httpx.Response(200, json={"data": {"id": digest, "type": "file", "attributes": {
             "last_analysis_stats": {"malicious": 0, "suspicious": 0, "harmless": 3}
         }}})
 

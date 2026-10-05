@@ -1,0 +1,4 @@
+[
+  {"id":1,"priority":1,"action":{"type":"redirect","redirect":{"extensionPath":"/blocked.html"}},"condition":{"regexFilter":"^https?://","resourceTypes":["main_frame"]}},
+  {"id":2,"priority":200,"action":{"type":"allow"},"condition":{"regexFilter":"^http://(127\\.0\\.0\\.1|localhost):8765/","resourceTypes":["main_frame"],"isUrlFilterCaseSensitive":true}}
+]

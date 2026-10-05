@@ -1,0 +1,53 @@
+/* ExtSecure console: local, dependency-free visual identity. */
+:root { --scope-ink: #14283f; --scope-teal: #007f78; }
+.stApp { background: #f5f7fb; color: #172c44; }
+.stApp, .stApp button, .stApp input, .stApp textarea { font-family: "Segoe UI", system-ui, sans-serif; }
+.block-container { max-width: 1440px; padding-top: 2.2rem; padding-bottom: 3rem; }
+h1, h2, h3 { color: #122a42; letter-spacing: -.035em; }
+h1 { font-weight: 750; } h2 { font-size: 1.8rem; } h3 { font-size: 1.15rem; }
+[data-testid="stSidebar"] { background: #10283f; border-right: 1px solid #29445c; }
+[data-testid="stSidebar"] * { color: #e6edf5; }
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] { color: #adc1d4; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label { padding: .4rem .1rem; }
+[data-testid="stSidebar"] button { background: #18374f; border-color: #36556c; }
+[data-testid="stSidebar"] button:hover { border-color: #54cdc0; color: #fff; }
+[data-testid="stMetric"] { background: #fff; border: 1px solid #dce5ef; border-radius: 14px; padding: 1.1rem 1.2rem; box-shadow: 0 3px 14px #11263e04; }
+[data-testid="stMetricLabel"] { color: #596c80; }
+[data-testid="stMetricValue"] { color: #172f48; font-size: 2rem; font-weight: 720; }
+[data-testid="stForm"] { background: #fff; border: 1px solid #dce5ef; border-radius: 16px; padding: 1.5rem; }
+[data-testid="stTextInputRootElement"], [data-testid="stTextInput"] [data-baseweb="input"], [data-testid="stTextArea"] textarea { background: #f7f9fc; border: 1px solid #bacbd9; border-radius: 8px; }
+[data-testid="stTextInputRootElement"]:focus-within, [data-testid="stTextInput"] [data-baseweb="input"]:focus-within, [data-testid="stTextArea"] textarea:focus { border-color: #007f78; outline: 2px solid #007f7830; }
+[data-testid="stDataFrame"], [data-testid="stTable"], [data-testid="stExpander"] { border-radius: 12px; }
+.stButton button, .stFormSubmitButton button { border-radius: 9px; min-height: 2.65rem; font-weight: 650; }
+button[kind="primary"], button[kind="primaryFormSubmit"] { background: #007f78; border-color: #007f78; color: white; }
+button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover { background: #006b66; border-color: #006b66; color: white; }
+.scope-brand { display: flex; align-items: center; gap: .7rem; margin-bottom: 1.5rem; }
+.scope-logo { width: 39px; height: 44px; flex: none; }
+.scope-brand strong { font-size: 1.5rem; letter-spacing: -.04em; }
+.scope-brand small { display: block; text-transform: uppercase; letter-spacing: .15em; color: #557086; font-size: .65rem; }
+[data-testid="stSidebar"] .scope-brand small { color: #aac5d8; }
+.scope-eyebrow { font-size: .72rem; font-weight: 700; letter-spacing: .15em; color: #007f78; text-transform: uppercase; margin: 0 0 .5rem; }
+.scope-hero { border-radius: 20px; padding: 2rem 2.2rem; background: linear-gradient(115deg, #10283f, #173f57); margin-bottom: 1.5rem; border: 1px solid #25465c; }
+.scope-hero h1 { color: #fff; font-size: 2rem; margin: 0 0 .4rem; padding: 0; }
+.scope-hero p { color: #c5d9e7; margin: 0; max-width: 48rem; font-size: .98rem; line-height: 1.6; }
+.scope-hero .scope-eyebrow { color: #6de0cb; margin-bottom: .65rem; }
+.scope-login { padding: 3rem 2rem 2rem 0; }
+.scope-login h1 { font-size: 3rem; max-width: 32rem; line-height: 1.1; margin-bottom: 1.25rem; }
+.scope-login p { color: #52687b; font-size: 1.04rem; max-width: 30rem; line-height: 1.7; }
+.scope-proof { display: flex; gap: .7rem; margin-top: 1.2rem; align-items: start; }
+.scope-proof b { display: block; color: #18334a; font-size: .95rem; }
+.scope-proof span { color: #596f80; font-size: .85rem; }
+.scope-proof i { font-style: normal; background: #dff1ed; color: #007569; padding: .45rem .7rem; border-radius: 9px; font-weight: 700; }
+.scope-pill { display: inline-block; border-radius: 30px; padding: .3rem .7rem; font-size: .78rem; font-weight: 700; border: 1px solid currentColor; }
+.scope-note { color: #536b7f; font-size: .8rem; padding: .8rem 0; border-top: 1px solid #dce5ef; margin-top: 1.5rem; }
+[data-testid="stAlert"] { border-radius: 12px; }
+@media(max-width: 760px) { .block-container { padding: 1.3rem 1rem; } .scope-login { padding: .5rem 0; } .scope-login h1 { font-size: 2.2rem; } .scope-hero { padding: 1.5rem; } }
+/* Keyboard focus stays visible across old and new administrator workflows. */
+.stApp button:focus-visible, .stApp a:focus-visible,
+.stApp input:focus-visible, .stApp textarea:focus-visible,
+.stApp [role="combobox"]:focus-visible {
+  outline: 3px solid #007f78; outline-offset: 3px;
+}
+[data-testid="stSidebar"] button:focus-visible,
+[data-testid="stSidebar"] a:focus-visible,
+[data-testid="stSidebar"] input:focus-visible { outline-color: #6de0cb; }

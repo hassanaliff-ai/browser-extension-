@@ -64,6 +64,12 @@ class Scan(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
+class PersonalScan(Base):
+    __tablename__ = 'personal_scan_ownership'
+    scan_id: Mapped[str] = mapped_column(ForeignKey('scans.id', ondelete='CASCADE'), primary_key=True)
+    username: Mapped[str] = mapped_column(String(120), index=True, nullable=False)
+
+
 class Finding(Base):
     __tablename__ = "findings"
     __table_args__ = (Index("ix_findings_created_at", "created_at"),)

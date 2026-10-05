@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import getpass
+import argparse
 
 import pyotp
 from argon2 import PasswordHasher
 
 
 def main() -> None:
-    username = input("Administrator username [admin]: ").strip() or "admin"
+    parser = argparse.ArgumentParser(description="Generate administrator enrollment values")
+    parser.add_argument('--reviewer', action='store_true', help='Generate independent policy reviewer configuration')
+    options = parser.parse_args()
+    default_name = "reviewer" if options.reviewer else "head-of-administrator"
+    username = input(f"Administrator username [{default_name}]: ").strip() or default_name
     password = getpass.getpass("Administrator password: ")
     confirmation = getpass.getpass("Confirm password: ")
     if len(password) < 12:
@@ -19,12 +24,13 @@ def main() -> None:
     secret = pyotp.random_base32()
     password_hash = PasswordHasher().hash(password)
     enrollment_uri = pyotp.TOTP(secret).provisioning_uri(
-        name=username, issuer_name="Alba Security Analyzer"
+        name=username, issuer_name="ExtSecure"
     )
     print("\nStore these values securely in the API host environment:")
-    print(f"ADMIN_USERNAME={username}")
-    print(f"ADMIN_PASSWORD_HASH={password_hash}")
-    print(f"ADMIN_TOTP_SECRET={secret}")
+    prefix = 'ADMIN_REVIEWER' if options.reviewer else 'ADMIN'
+    print(f"{prefix}_USERNAME={username}")
+    print(f"{prefix}_PASSWORD_HASH={password_hash}")
+    print(f"{prefix}_TOTP_SECRET={secret}")
     print("\nAdd this URI to an authenticator app before starting the API:")
     print(enrollment_uri)
 

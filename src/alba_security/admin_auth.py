@@ -1,7 +1,7 @@
 """Two-step administrator authentication backed by the application database.
 
-The deployment supplies one administrator's Argon2id password hash and TOTP
-secret through environment variables. Password verification creates a short
+The deployment supplies each administrator's Argon2id password hash and TOTP
+secret. Password verification creates a short
 lived challenge; only a fresh, unused TOTP can exchange it for a session.
 Challenge and session secrets are never stored in plaintext.
 """
@@ -21,7 +21,7 @@ from typing import Callable, Mapping
 import pyotp
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-from sqlalchemy import DateTime, Integer, String, select
+from sqlalchemy import DateTime, Integer, String, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -45,6 +45,7 @@ class AdminLoginChallenge(Base):
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    username: Mapped[str | None] = mapped_column(String(120))
 
 
 class AdminSession(Base):
@@ -53,6 +54,7 @@ class AdminSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    username: Mapped[str | None] = mapped_column(String(120))
 
 
 class AuthenticationError(Exception):
@@ -128,6 +130,8 @@ class AdminAuth:
         if len(decoded) < 20:
             raise RuntimeError("ADMIN_TOTP_SECRET must contain at least 160 bits of entropy")
         self.username = username
+        self.state_id = "administrator"
+        self.allow_legacy = True
         self.password_hash = password_hash
         self.totp = pyotp.TOTP(totp_secret.upper())
         self.challenge_ttl = timedelta(seconds=challenge_ttl_seconds)
@@ -151,17 +155,17 @@ class AdminAuth:
         )
 
     def _state(self, db: Session) -> AdminAuthState:
-        state = db.scalar(select(AdminAuthState).where(AdminAuthState.id == "administrator").with_for_update())
+        state = db.scalar(select(AdminAuthState).where(AdminAuthState.id == self.state_id).with_for_update().execution_options(populate_existing=True))
         if state is not None:
             return state
-        state = AdminAuthState(id="administrator", failed_attempts=0, last_totp_counter=-1)
+        state = AdminAuthState(id=self.state_id, failed_attempts=0, last_totp_counter=-1)
         db.add(state)
         try:
             db.flush()
         except IntegrityError:
             # A simultaneous first request may have inserted the singleton.
             db.rollback()
-            state = db.scalar(select(AdminAuthState).where(AdminAuthState.id == "administrator").with_for_update())
+            state = db.scalar(select(AdminAuthState).where(AdminAuthState.id == self.state_id).with_for_update())
             if state is None:
                 raise
         return state
@@ -193,7 +197,7 @@ class AdminAuth:
             password_ok = False
         # Verify the Argon2 hash even for a wrong username to avoid a quick
         # username-enumeration response path.
-        username_ok = hmac.compare_digest(username, self.username)
+        username_ok = hmac.compare_digest(username.encode("utf-8"), self.username.encode("utf-8"))
         if not password_ok or not username_ok:
             # Only someone who knows the password can obtain a challenge.
             # Counting arbitrary password guesses against the shared TOTP
@@ -201,7 +205,7 @@ class AdminAuth:
             raise AuthenticationError("Invalid administrator sign-in")
         token = secrets.token_urlsafe(32)
         expires_at = now + self.challenge_ttl
-        db.add(AdminLoginChallenge(token_hash=_digest(token), expires_at=expires_at))
+        db.add(AdminLoginChallenge(token_hash=_digest(token), expires_at=expires_at, username=self.username))
         db.commit()
         return IssuedChallenge(challenge_token=token, expires_at=expires_at)
 
@@ -222,20 +226,43 @@ class AdminAuth:
             # An attacker without the password cannot obtain a valid opaque
             # challenge. Do not let arbitrary tokens lock the administrator.
             raise AuthenticationError("Invalid administrator sign-in")
+        if challenge.username != self.username and not (self.allow_legacy and challenge.username is None):
+            raise AuthenticationError("Invalid administrator sign-in")
         state = self._state(db)
         self._check_lockout(state, now)
         # One attempt per challenge keeps the six-digit second factor from
-        # becoming an online guessing oracle.
-        challenge.consumed_at = now
+        # becoming an online guessing oracle. Claim it atomically: another
+        # request may have consumed it after the initial read above.
+        claimed = db.execute(
+            update(AdminLoginChallenge)
+            .where(
+                AdminLoginChallenge.token_hash == challenge.token_hash,
+                AdminLoginChallenge.consumed_at.is_(None),
+                AdminLoginChallenge.expires_at > now,
+            )
+            .values(consumed_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        if claimed.rowcount != 1:
+            db.rollback()
+            raise AuthenticationError("Invalid administrator sign-in")
         counter = self._matching_totp_counter(totp_code, now, state.last_totp_counter)
         if counter is None:
             self._fail(db, state, now)
-        state.last_totp_counter = counter
+        # Keep replay protection atomic on databases without row-level locks
+        # too. The challenge and replay claim commit with the issued session.
+        accepted = db.execute(
+            update(AdminAuthState)
+            .where(AdminAuthState.id == state.id, AdminAuthState.last_totp_counter < counter)
+            .values(last_totp_counter=counter)
+        )
+        if accepted.rowcount != 1:
+            self._fail(db, state, now)
         state.failed_attempts = 0
         state.locked_until = None
         token = secrets.token_urlsafe(32)
         expires_at = now + self.session_ttl
-        db.add(AdminSession(token_hash=_digest(token), expires_at=expires_at))
+        db.add(AdminSession(token_hash=_digest(token), expires_at=expires_at, username=self.username))
         db.commit()
         return IssuedSession(access_token=token, expires_at=expires_at)
 
@@ -244,7 +271,8 @@ class AdminAuth:
         if not bearer_token:
             return False
         session = db.get(AdminSession, _digest(bearer_token))
-        return bool(session and session.revoked_at is None and _utc(self.clock()) < _utc(session.expires_at))
+        return bool(session and session.revoked_at is None and _utc(self.clock()) < _utc(session.expires_at)
+                    and (session.username == self.username or (self.allow_legacy and session.username is None)))
 
     def logout(self, db: Session, bearer_token: str) -> bool:
         """Revoke a live session; returns False for missing/expired sessions."""

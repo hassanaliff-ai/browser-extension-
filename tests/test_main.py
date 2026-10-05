@@ -25,7 +25,7 @@ class TestHealth:
     def test_health_endpoints(self, client, path):
         response = client.get(path)
         assert response.status_code == 200
-        assert response.json() == {"status": "ok", "service": "SecureScope API"}
+        assert response.json() == {"status": "ok", "service": "ExtSecure API"}
 
 
 class TestScanShape:

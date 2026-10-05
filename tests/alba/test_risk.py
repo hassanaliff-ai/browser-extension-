@@ -1,13 +1,42 @@
 """Risk decisions that should remain stable across extension and dashboard use."""
 
 import unittest
+from itertools import permutations
 
 from pydantic import ValidationError
 
-from alba_security.risk import SignalInput, assess
+from alba_security.risk import RISK_POLICY_VERSION, SignalInput, assess, risk_policy, suggested_action
 
 
 class RiskAssessmentTests(unittest.TestCase):
+    def test_policy_matches_every_signal_and_cannot_mutate_scoring(self):
+        policy = risk_policy()
+        self.assertEqual(policy["version"], RISK_POLICY_VERSION)
+        for rule in policy["signals"]:
+            result = assess([SignalInput(code=rule["code"], status="detected")])
+            self.assertEqual(result.score, rule["points"])
+            self.assertEqual(result.findings[0].title, rule["title"])
+        policy["signals"][0]["points"] = 100
+        self.assertEqual(assess([SignalInput(code="sensitive_permission", status="detected")]).score, 20)
+
+    def test_signal_order_cannot_change_the_risk_decision(self):
+        signals = [
+            SignalInput(code="suspicious_url", status="detected"),
+            SignalInput(code="new_domain", status="unknown"),
+            SignalInput(code="obfuscated_code", status="detected"),
+        ]
+        for items in permutations(signals):
+            result = assess(list(items))
+            self.assertEqual((result.score, result.severity, result.completeness), (55, "Medium", "partial"))
+            self.assertEqual(sum(item.points for item in result.findings), 55)
+
+    def test_guidance_does_not_hide_incomplete_checks_or_low_score_findings(self):
+        partial = assess([SignalInput(code="malicious_url", status="unknown"), SignalInput(code="new_domain", status="clear")])
+        self.assertIn("unavailable", suggested_action(partial))
+        low_detected = assess([SignalInput(code="sensitive_permission", status="detected")])
+        self.assertIn("detected indicators", suggested_action(low_detected))
+        self.assertIn("Retry", suggested_action(assess([])))
+
     def test_fixed_weights_and_detected_findings(self):
         cases = {
             "sensitive_permission": 20,

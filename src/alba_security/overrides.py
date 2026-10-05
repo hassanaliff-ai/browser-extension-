@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Literal
 from urllib.parse import urlsplit
 
+import idna
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String, Text, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -67,12 +68,16 @@ def _utc(value: datetime) -> datetime:
 
 
 def _hostname(value: str, *, domain_rule: bool) -> str:
-    host = value.rstrip(".").lower()
+    host = value.lower()
     if not host:
         raise ValueError("A hostname is required")
     try:
-        host = host.encode("idna").decode("ascii")
-    except UnicodeError as error:
+        # Use the same non-transitional UTS46 mapping as modern browsers.
+        # Python's legacy codec maps faß.de to fass.de, a different domain.
+        if ":" not in host:
+            host = idna.encode(host, uts46=True, transitional=False).decode("ascii")
+        host = host.removesuffix(".")
+    except (UnicodeError, idna.IDNAError) as error:
         raise ValueError("Invalid hostname") from error
     if len(host) > 253:
         raise ValueError("Hostname is too long")
