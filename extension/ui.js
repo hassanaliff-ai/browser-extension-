@@ -1,3 +1,4 @@
+import {loadTableSize,saveTableSize,observeTableSize} from './table-settings.js';
 import {avatar,prepareLogo} from './account-logo.js';
 
 import {explanationForm,runExplanation,intelligenceReports,runPeriodReport,downloadPeriodReport,changePeriodInput} from './intelligence-ui.js';
@@ -366,6 +367,8 @@ function navigate(key){if(loading||busy){queuedView=key;return;}if(!allowedViews
 
 async function handleExpiredSession(error){if(error.status!==401||!state.profile)return false;state={};pageData={};devicePairing=null;scanResult=null;selected='';manualSecret='';qr='';authMode='login';queuedView='';connectionStatus='unchecked';requestSequence++;await renderAuth();toast(translate('Your session ended. Sign in again with your password and authenticator.'),true);return true;}
 
+function applyTableSize(size){setPreferences({...getPreferences(),tableSize:size});for(const input of app.querySelectorAll?.('select[data-table-size],select[name="tableSize"]')??[])input.value=size;}
+async function savePreferences(preferences){const saved=await send({type:'SAVE_PREFERENCES',preferences});if(preferences.tableSize!==getPreferences().tableSize)await saveTableSize(preferences.tableSize);return {...saved,tableSize:preferences.tableSize};}
 async function commit(path,body){await api(path,'POST',body);await renderView();toast('Saved. The backend recorded the decision.');}
 
 async function mutation(task,element){if(busy)return;busy=true;const previousLabel=element?.innerHTML;if(element){element.disabled=true;element.setAttribute('aria-busy','true');element.textContent=translate('Working…');}try{await task();}catch(error){if(!await handleExpiredSession(error)){const alert=element?.closest('form')?.querySelector('.form-error');if(alert){alert.textContent=error.message;alert.hidden=false;alert.focus({preventScroll:true});}else toast(error.message,true);}}finally{busy=false;if(element){element.disabled=false;element.removeAttribute('aria-busy');if(element.isConnected)element.innerHTML=previousLabel;}if(queuedView&&!loading){const next=queuedView;queuedView='';navigate(next);}}}
@@ -390,7 +393,7 @@ app.addEventListener('click',async event=>{
 
     if(action==='remove-account-logo'){await send({type:'SAVE_ACCOUNT_LOGO',logo:null});state=await send({type:'STATE'});await renderView();toast('Profile logo removed.');return;}
 
-    if(action==='toggle-theme'){const prefs=getPreferences();setPreferences(await send({type:'SAVE_PREFERENCES',preferences:{...prefs,theme:resolvedTheme()==='dark'?'light':'dark'}}));await renderView();return;}
+    if(action==='toggle-theme'){const prefs=getPreferences();setPreferences(await savePreferences({...prefs,theme:resolvedTheme()==='dark'?'light':'dark'}));await renderView();return;}
 
     if(action==='restart-extension'){toast('Restarting ExtSecure. Reopen it from the Chrome extension icon and sign in.');restartExtension();return;}
 
@@ -498,7 +501,7 @@ app.addEventListener('submit',async event=>{
 
     else if(action==='register-verify'){await send({type:'REGISTER_VERIFY',code:data.code,role:data.role});manualSecret='';qr='';state={};authMode='login';await renderAuth();toast('Account verified. A higher role must approve access before you can sign in.');}
 
-    else if(action==='preferences'){setPreferences(await send({type:'SAVE_PREFERENCES',preferences:{...getPreferences(),language:data.language,timeZone:data.timeZone,theme:data.theme,tableSize:data.tableSize}}));await renderView();toast(translate('Preferences saved.'));}
+    else if(action==='preferences'){setPreferences(await savePreferences({...getPreferences(),language:data.language,timeZone:data.timeZone,theme:data.theme,tableSize:data.tableSize??getPreferences().tableSize}));await renderView();toast(translate('Preferences saved.'));}
 
     else if(action==='access-request'){const target=privateTarget(data.target,true);const permission=await api('access/check','POST',{target});if(permission.allowed){await renderView();toast(translate('This URL is already approved. No new request is needed.'));}else{await commit('access/requests',{target,reason:data.reason});toast(translate('Access request sent. The website remains blocked until approval.'));}}
 
@@ -556,7 +559,7 @@ app.addEventListener('change',event=>{
  if(event.target.hasAttribute('data-table-size')){
   if(busy||loading){event.target.value=getPreferences().tableSize;toast(translate('Wait for the current action to finish.'),true);return;}
   const size=event.target.value;
-  void mutation(async()=>{try{setPreferences(await send({type:'SAVE_PREFERENCES',preferences:{...getPreferences(),tableSize:size}}));toast(translate('Table size saved.'));}finally{for(const input of app.querySelectorAll('[data-table-size]'))input.value=getPreferences().tableSize;}});
+  void mutation(async()=>{try{applyTableSize(await saveTableSize(size));toast(translate('Table size saved.'));}finally{for(const input of app.querySelectorAll('[data-table-size]'))input.value=getPreferences().tableSize;}});
   return;
  }
  if(event.target.hasAttribute('data-account-request'))updateAccountReview(event.target.form,state.profile,pageData.requests??[]);if(event.target.name==='request_id')resetDestinationReview(event.target.form);if(event.target.name==='decision'&&event.target.form?.dataset.form==='access-review')updateAccessDecision(event.target.form);if(event.target.name==='device_filter'){if(busy||loading)return;deviceFilter=event.target.value;renderView();return;}changePeriodInput(event);if((busy||loading)&&(event.target.hasAttribute('data-select-record')||event.target.id==='report-period')){event.target.value=event.target.id==='report-period'?period:selected;toast(translate('Wait for the current action to finish.'),true);return;}if(event.target.hasAttribute('data-select-record')){selected=event.target.value;renderView();}if(event.target.id==='report-period'){try{reportPeriod(event.target.value);period=event.target.value;renderView();}catch(error){toast(error.message,true);event.target.value=period;}}});
@@ -568,8 +571,9 @@ function download(data,name){const blob=new Blob([JSON.stringify(data,null,2)],{
 window.addEventListener('hashchange',()=>{const key=location.hash.slice(1);if(state.profile&&!popup)navigate(key);});
 
 observeLocalization();
+observeTableSize(applyTableSize);
 
-try{setPreferences(await send({type:'PREFERENCES'}));state=await send({type:'STATE'});view=location.hash.slice(1);await renderView();}catch(error){app.innerHTML=previewNotice+`<main id="main" class="page stack recovery-page">${brand()}<h1>Reconnect to your workspace</h1>${notice(error.message,'error')}${connectionPanel(connectionStatus)}${btn('Try again','refresh','primary')}</main>`;}
+try{const preferences=await send({type:'PREFERENCES'});setPreferences({...preferences,tableSize:await loadTableSize(preferences.tableSize)});state=await send({type:'STATE'});view=location.hash.slice(1);await renderView();}catch(error){app.innerHTML=previewNotice+`<main id="main" class="page stack recovery-page">${brand()}<h1>Reconnect to your workspace</h1>${notice(error.message,'error')}${connectionPanel(connectionStatus)}${btn('Try again','refresh','primary')}</main>`;}
 
 
 

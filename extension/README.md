@@ -1,4 +1,4 @@
-# ExtSecure Chrome extension 0.8.6
+# ExtSecure Chrome extension 0.8.7
 
 The console and popup use teal navigation bars with warm terracotta accents. Choose Light, Dark or
 Use device setting in Settings, then Save preferences. The console header also
@@ -199,3 +199,5 @@ These records describe ExtSecure checks. The extension does not read or execute 
 ### Adjustable table size
 
 Use the **Table size** selector above any populated table, or open **Settings**, to choose **Compact**, **Standard**, or **Spacious**. Compact reduces row spacing and text size; Spacious increases them. Standard preserves the previous layout. The setting applies to all console tables and is stored locally in this Chrome profile. It persists after reload and preserves appearance, language and time-zone choices. Changing the size does not reload scan data, reset table search, or hide any rows or columns; wide tables remain horizontally scrollable.
+
+Table sizes save directly in Chrome local storage, persist after reopening, and update other open console tabs. Compact, Standard and Spacious change row spacing without hiding records. This remains compatible with an older running background worker.
