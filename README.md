@@ -9,7 +9,7 @@ administrator console. FastAPI remains a separate security backend. The earlier
 Streamlit dashboard is retained for compatibility and is not required to use the
 extension.
 
-## Chrome extension 0.8.9
+## Chrome extension 0.8.10
 
 The extension console uses teal navigation and option bars, with Light, Dark and
 Use device setting appearance choices. Settings saves appearance alongside
@@ -515,7 +515,7 @@ API additions: `GET/POST /api/workflow/rules`, `POST /api/workflow/rules/{id}/up
 
 ## API 0.4.1: new-task compatibility and readiness
 
-The public and monitoring APIs report version 0.4.1. The current extension is version 0.8.9. Existing scan, health, sign-in and 2FA contracts are preserved.
+The public and monitoring APIs report version 0.4.1. The current extension is version 0.8.10. Existing scan, health, sign-in and 2FA contracts are preserved.
 
 - `GET /extension/capabilities` is public integration metadata. It identifies whether monitoring is configured, the `/monitor/api` prefix, the `/monitor/docs` documentation link, supported operation features and whether the workflow runner has started. It does not expose accounts, incidents, credentials or rule settings. Monitoring-disabled deployments report unavailable support rather than advertising working operations.
 - `GET /monitor/api/operations/status` requires a completed 2FA session from a manager, administrator or head administrator. It returns supported features, workflow runner status and interval, the in-app notification channel, and evaluation periods. A stopped or failed runner reports degraded readiness. Normal users and unauthenticated requests are rejected.
@@ -530,3 +530,11 @@ Chrome can continue running an older service worker after the unpacked extension
 The console now checks the worker version, operations contract and the required section capability before requesting either task. An incompatible worker displays an English/Arabic recovery panel with console/worker versions and **Restart ExtSecure**. Recognized legacy rejection messages for locally permitted routes also show recovery. Invalid paths and methods remain denied; no retry bypasses the worker allowlist. Restart only happens when explicitly selected.
 
 After updating the unpacked folder, reload ExtSecure on `chrome://extensions`, close old console tabs, and reopen the console from the extension icon. If a recovery panel is already visible, its **Restart ExtSecure** button performs the reload. Sign in again if prompted. The installation preserves private backend configuration and device identity; extension restart may end the current session. See [validation evidence](docs/WORKER_COMPATIBILITY_FIX.md).
+
+## Extension 0.8.10: visible workflow readiness
+
+Workflow automation now displays its actual setup and runner readiness, the enabled-rule count, the automatic-case-rule count, and unread notifications. Missing rules, revoked recipients, manual-case-only rules, stopped checks and failed checks have distinct explanations. Notification actions have readable labels and a **Refresh notifications** button. Detailed workflow guidance is available under **How automation works**.
+
+Automation requires at least one enabled rule. For an existing local SQLite deployment with no rules, the project owner can run `python scripts/enable_default_workflow.py --confirm` using the project's Python environment. This local maintenance tool creates an audited High/Critical website/file rule for the configured head administrator, with review notifications and 24-hour escalation. It backs up the database in `.private`, validates the configured owner, preserves existing rules, and never changes historical scans. Existing rules should be managed through the authenticated extension interface. This tool does not support PostgreSQL; use the extension/API for those deployments.
+
+Notifications appear on new matching incidents. Low/Unknown results do not trigger this rule, and existing scans are not automatically backfilled. Acknowledgement marks a notification as read; investigation and resolution remain explicit case actions. Escalating to the same head administrator still creates an escalation notice without changing the investigator. See [workflow activation verification](docs/WORKFLOW_ACTIVATION.md).

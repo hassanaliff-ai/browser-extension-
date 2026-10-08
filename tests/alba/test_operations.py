@@ -61,6 +61,24 @@ def test_first_matching_rule_creates_one_case_and_durable_notices(system):
     assert len(client.get('/api/workflow/notifications',headers=headers['hasan']).json())==2
 
 
+def test_head_workflow_acknowledgement_does_not_resolve_or_stop_escalation(system):
+    client, app, headers, _ = system
+    rule(client,headers['hasan'],assignee='hasan',reviewer='hasan',escalate_to='hasan')
+    scan(client)
+    case=client.get('/api/cases',headers=headers['hasan']).json()[0]
+    notices=client.get('/api/workflow/notifications',headers=headers['hasan']).json()
+    assert {n['phase'] for n in notices}=={'assigned','review_requested'}
+    for notice in notices:
+        assert client.post('/api/workflow/notifications/'+notice['id']+'/acknowledge',headers=headers['hasan'],json={}).status_code==200
+    current=client.get('/api/cases/'+case['id'],headers=headers['hasan']).json()
+    assert current['status']=='open' and current['assignee']=='hasan'
+    assert run_workflows(app,now=utc_now()+timedelta(hours=25))['escalated']==1
+    inbox=client.get('/api/workflow/notifications',headers=headers['hasan']).json()
+    escalated=[n for n in inbox if n['phase']=='escalated']
+    assert len(escalated)==1 and escalated[0]['recipient']=='hasan' and escalated[0]['acknowledged_at'] is None
+    assert run_workflows(app,now=utc_now()+timedelta(hours=26))['escalated']==0
+
+
 def test_exception_suppression_does_not_create_an_automatic_case(system):
     client, _, headers, _ = system
     rule(client,headers['hasan'])

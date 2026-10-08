@@ -1,5 +1,19 @@
 import {escapeHtml as esc} from './core.js';
 
+export function workflowReadiness(rules,people,runner={}) {
+  const operators=new Set(people.map(p=>p.username));
+  const administrators=new Set(people.filter(p=>['administrator','head_administrator'].includes(p.role)).map(p=>p.username));
+  const enabled=rules.filter(r=>r.enabled);
+  const eligible=enabled.filter(r=>operators.has(r.assignee)&&operators.has(r.reviewer)&&administrators.has(r.escalate_to));
+  const automatic=eligible.filter(r=>r.auto_create).length;
+  const state=runner.running===false?'stopped':runner.status==='failed'?'failed':runner.status!=='ready'?'starting':!enabled.length?'disabled':!eligible.length?'unavailable':'ready';
+  return {state,enabled:enabled.length,eligible:eligible.length,automatic,invalid:enabled.length-eligible.length};
+}
+
+export function workflowNoticeLabel(phase) {
+  return {assigned:'Incident assigned',review_requested:'Review requested',escalated:'Incident escalated'}[phase]??phase;
+}
+
 export function workflowBody(data,revision) {
   const body={name:data.name,enabled:data.enabled==='on',priority:Number(data.priority),
     minimum_severity:data.minimum_severity,target_kind:data.target_kind,auto_create:data.auto_create==='on',
@@ -34,8 +48,11 @@ export function updateControlReference(form,records) {
 export async function workflowView(c) {
   const {api,can,table,form,field,select,check,reason,notice,details,date,btn}=c;
   const manage=can('workflow');
-  const [notices,rules,people]=await Promise.all([api('workflow/notifications'),manage?api('workflow/rules'):null,manage?api('case-assignees'):[]]);
+  const [notices,rules,people,operations]=await Promise.all([api('workflow/notifications'),manage?api('workflow/rules'):null,manage?api('case-assignees'):[],manage?api('operations/status'):null]);
   const rows=rules?.rules??[],names=people.map(p=>p.username),senior=people.filter(p=>['administrator','head_administrator'].includes(p.role)).map(p=>p.username),row=rows.find(r=>r.id===c.selected)??rows[0];
+  const readiness=manage?workflowReadiness(rows,people,operations?.workflow??rules?.runner):null;
+  const messages={ready:'Automation is ready. New matching scans will be assigned automatically.',disabled:'Automation is not enabled. Create and enable a rule to start assignment, review notifications and escalation.',unavailable:'Enabled rules reference unavailable accounts. Edit the investigator, reviewer and escalation recipient before automation can run.',failed:'The last workflow check failed. Check the API service and run a workflow check again.',starting:'The workflow runner is starting. Refresh shortly to check its status.',stopped:'The workflow runner is stopped. Restart the ExtSecure API to resume scheduled checks.'};
+  const setup=manage?`<section class="panel stack"><h2>Workflow status</h2>${notice(readiness.state==='ready'&&!readiness.automatic?'Escalation is ready for linked cases. Enable automatic case creation in a rule to assign new scans.':messages[readiness.state],readiness.state==='ready'?'info':'warning')}<p class="meta">${readiness.enabled} <span>enabled rules</span> · ${readiness.automatic} <span>automatic case rules</span> · ${notices.filter(n=>!n.acknowledged_at).length} <span>unread notifications</span></p>${readiness.invalid?notice('Some enabled rules reference unavailable accounts and cannot create automatic cases. Review their recipients.','warning'):''}</section>`:'';
   const inputs=(r={})=>field('Rule name','name','text',r.name??'','required minlength="4" maxlength="120"')+
     check('Enable this workflow rule','enabled',r.enabled??false)+field('Priority (lower runs first)','priority','number',r.priority??50,'required min="1" max="100"')+
     select('Minimum risk level','minimum_severity',['Low','Medium','High','Critical'],r.minimum_severity??'High')+
@@ -46,8 +63,11 @@ export async function workflowView(c) {
     field('Escalate unresolved cases after (hours)','escalate_after_hours','number',r.escalate_after_hours??24,'required min="1" max="720"')+
     select('Escalate to administrator','escalate_to',senior,r.escalate_to??senior[0])+reason();
   c.cache({rows,row,notices});
-  return `<section class="panel stack"><h2>Review notifications</h2>${notice('Assignment, review and escalation notifications stay in the extension. Acknowledging a notification does not resolve its incident.')}${table(notices,[['Case',r=>esc(r.case_id)],['Action','phase'],['Reviewer','recipient'],['Created',r=>esc(date(r.created_at))],['Status',r=>r.acknowledged_at?'Acknowledged':btn('Acknowledge','workflow-ack','small',`data-id="${esc(r.id)}"`)],['Investigate',r=>btn('Open case','workflow-case','small',`data-id="${esc(r.case_id)}"`)]])}</section>`+
-    (manage?`<section class="panel stack"><h2>Automation rules</h2>${notice('The first enabled matching rule assigns each new case. Exceptions and Unknown results do not create automatic cases. Existing manually assigned cases keep their investigator until escalation. Notes do not reset the deadline; reopening starts a new deadline.')}
+  const inboxColumns=[['Case',r=>esc(r.case_id)],['Action',r=>esc(workflowNoticeLabel(r.phase))],['Reviewer','recipient'],['Created',r=>esc(date(r.created_at))],
+    ['Status',r=>r.acknowledged_at?'Acknowledged':btn('Acknowledge','workflow-ack','small',`data-id="${esc(r.id)}"`)],
+    ['Investigate',r=>btn('Open case','workflow-case','small',`data-id="${esc(r.case_id)}"`)]];
+  return setup+`<section class="panel stack"><h2>Review notifications</h2><p class="meta">Acknowledge to mark a notification as read. Open its case to investigate or record resolution.</p>${btn('Refresh notifications','refresh','small')}${notices.length?table(notices,inboxColumns):notice('No workflow notifications yet. Notifications appear when a rule assigns a new case, requests a review or escalates an unresolved case.')}</section>`+
+    (manage?`<section class="panel stack"><h2>Automation rules</h2>${details('How automation works','<p>Assignment, review and escalation notifications stay in the extension. Acknowledging a notification does not resolve its incident.</p><p>The first enabled matching rule assigns each new case. Exceptions and Unknown results do not create automatic cases. Existing manually assigned cases keep their investigator until escalation. Notes do not reset the deadline; reopening starts a new deadline.</p><p>Rules apply to new scans after they are enabled. Old scans are not turned into cases automatically. A 24-hour escalation needs an unresolved case to reach its deadline; it is not immediate.</p>')}
     <p class="meta">Runner: ${esc(rules.runner.status)} · Last check: ${esc(date(rules.runner.last_run))} · Every 60 seconds while the API runs</p>
     ${table(rows,[['Rule','name'],['Priority','priority'],['Minimum risk','minimum_severity'],['Investigator','assignee'],['Reviewer','reviewer'],['Escalate after',r=>esc(r.escalate_after_hours)+' h'],['Escalate to','escalate_to'],['Enabled',r=>r.enabled?'Enabled':'Disabled']])}
     ${names.length?details('Create a workflow rule',form('workflow-create',inputs(),'Create workflow rule')):notice('Approve an investigator account before creating a workflow rule.','warning')}
