@@ -64,6 +64,23 @@ def test_model_boundary_is_structured_private_and_tool_free():
     assert 'untrusted' in call['instructions'] and result['source']=='openai'
 
 
+def test_report_includes_scan_findings_without_requiring_prior_ai_explanations(system):
+    api, app, _, _ = system
+    record = scan(api)
+    model = model_fixture(codes=['malicious_url'])
+    with app.state.session_factory() as db:
+        db.get(Scan, record['id']).created_at = datetime(2026, 9, 29, tzinfo=timezone.utc)
+        db.commit()
+        report = prepare_period_report(db, PeriodRequest(kind='weekly', period='2026-09-28'), client=model, model='test-model', now=datetime(2026, 10, 5, tzinfo=timezone.utc))
+        assert report.stats['finding_counts'] == {'malicious_url': 1}
+        assert report.stats['target_kind_counts'] == {'url': 1}
+        assert report.stats['explanations_total'] == 0
+        assert report.stats['completeness_counts'] == {'complete': 1}
+    submitted = json.loads(model.responses.create.call_args.kwargs['input'])
+    assert submitted['allowed_evidence_codes'] == ['malicious_url']
+    assert 'zero summaries does not mean missing evidence' in model.responses.create.call_args.kwargs['instructions']
+
+
 @pytest.mark.parametrize('value',['','not-json','{"summary":"short"}'])
 def test_bad_model_response_is_not_a_report(value):
     client=model_fixture();client.responses.create.return_value.output_text=value
@@ -112,6 +129,7 @@ def test_content_requires_consent_before_reading(system):
 
 
 def test_missing_model_is_explicit_unavailable(system,monkeypatch):
+    monkeypatch.setenv('LLM_PROVIDER','openai')
     monkeypatch.delenv('OPENAI_API_KEY',raising=False);monkeypatch.delenv('OPENAI_MODEL',raising=False)
     client,app,headers,_=system;record=scan(client)
     result=client.post('/api/intelligence/scans/'+record['id']+'/explain',headers=headers['hasan'],json={})

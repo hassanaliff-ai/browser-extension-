@@ -1,5 +1,18 @@
 export const API_ORIGIN = 'http://127.0.0.1:8765';
-export const VERSION = '0.6.0';
+
+export function reviewableAccessRequests(rows, now=Date.now()) {
+  return rows.filter(r=>r.status==='pending' && r.can_review===true && Date.parse(r.expires_at)>now);
+}
+export function accessReviewBody(request, form) {
+  if(form.confirmed!==true && form.confirmed!=='on')throw new Error('Confirm you have reviewed the destination and the business need.');
+  const body={expected_revision:request.revision,reason:form.reason,confirmed:true};
+  if(form.decision==='reject')return {...body,decision:'reject'};
+  if(form.decision!=='approve')throw new Error('Choose an approval decision.');
+  if(form.duration==='forever')return {...body,decision:'whitelist',whitelist_forever:true};
+  if(!['24','168'].includes(form.duration))throw new Error('Choose 24 hours, 7 days or Forever.');
+  return {...body,decision:'temporary',duration_hours:Number(form.duration)};
+}
+export const VERSION = '0.8.6';
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;
 export const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Unknown'];
 export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -30,15 +43,19 @@ export async function hashFile(file) {
   if (!file || typeof file.arrayBuffer !== 'function') throw new Error('Choose a downloaded file first.');
   if (file.size > MAX_FILE_SIZE) throw new Error('Choose a file of 32 MiB or less.');
   const bytes = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  new Uint8Array(bytes).fill(0);
-  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2,'0')).join('');
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2,'0')).join('');
+  } finally {new Uint8Array(bytes).fill(0);}
 }
 export function validDigest(value) {
   if (!/^[a-f0-9]{64}$/i.test(value.trim())) throw new Error('Enter a 64-character SHA-256 file hash.');
   return value.trim().toLowerCase();
 }
 export function safeApiPath(path, method = 'GET') {
+  if(method==='GET'&&/^\/api\/ai-jobs\/[a-f0-9-]{36}$/.test(path))return true;
+  if(method==='GET'&&path==='/api/inventory/self')return true;
+  if(method==='POST'&&/^\/api\/inventory\/(connect|pair|sync|devices(?:\/device-[a-f0-9-]+\/(status|pairing-code))?)$/.test(path))return true;
   if(method==='GET'&&/^\/api\/intelligence\/(scans\/[a-zA-Z0-9-]+|reports(?:\?limit=\d{1,3})?)$/.test(path))return true;
   if(method==='POST'&&/^\/api\/intelligence\/(scans\/[a-zA-Z0-9-]+\/explain|reports\/generate)$/.test(path))return true;
   if (method === 'GET' && /^\/api\/access\/(requests|whitelist)$/.test(path)) return true;
@@ -49,9 +66,9 @@ export function safeApiPath(path, method = 'GET') {
 }
 export function apiError(status, body) {
   if (status === 401) return 'Sign-in or verification was not accepted. Check your credentials; expired sessions need a new sign-in.';
-  if (status === 403) return 'Your account does not have permission for this action.';
+  if (status === 403) return /device is blocked|Link this Chrome profile|Add this device|Pairing code|device is waiting|device connection was revoked/.test(body?.detail??'')?body.detail:'Your account does not have permission for this action.';
   if (status === 429) return 'Too many requests. Wait one minute and try again.';
-  if (status === 503 && /OPENAI|LLM|report model|API key/i.test(body?.detail ?? '')) return 'AI reporting is not configured. Ask the administrator to configure the report model and API key on the backend.';
+  if (status === 503 && /OPENAI|OLLAMA|LLM|report model|API key/i.test(body?.detail ?? '')) return 'AI reporting is unavailable. Check the configured local model or provider settings on the backend.';
   if (Array.isArray(body?.detail)) return body.detail.map(r => `${r.loc?.at(-1) ?? 'Input'}: ${r.msg}`).join(' · ');
   return typeof body?.detail === 'string' ? body.detail : `The service could not complete this request (${status}).`;
 }

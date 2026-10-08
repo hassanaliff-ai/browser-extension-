@@ -99,16 +99,18 @@ class ExtensionScanRequest(BaseModel):
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path or '/', '', ''))
 
 
-def _extension_record(monitor, target, verdict, actor):
+def _extension_record(monitor, target, verdict, actor, device_id=None):
     from alba_security.models import PersonalScan
     payload = _monitoring_payload(ScanRequest(target=target), verdict)
     payload = payload.model_copy(update={
         'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
         'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
-        'extension_name': 'ExtSecure', 'extension_version': '0.6.0',
+        'extension_name': 'ExtSecure', 'extension_version': '0.7.4',
     })
     with monitor.state.session_factory() as db:
-        result = monitor.state.record_scan(payload, db, notify=True)
+        from alba_security.inventory import scan_device_fields
+        payload = payload.model_copy(update=scan_device_fields(db, device_id))
+        result = monitor.state.record_scan(payload, db, notify=True, actor=actor)
         db.add(PersonalScan(scan_id=result['id'], username=actor))
         db.commit()
         return result
@@ -137,11 +139,11 @@ async def extension_scan(body: ExtensionScanRequest, request: Request):
         except VirusTotalError as error:
             if isinstance(error, InvalidTargetError):
                 raise
-            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor)
+            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor, getattr(request.state, 'inventory_device_id', None))
             record['lookup'] = {'status':'unavailable', 'reason':_ERROR_STATUS.get(type(error),(502,'Lookup unavailable'))[1]}
             return JSONResponse(record, headers={'Cache-Control':'no-store'})
         cache.set(key, result)
-    record = await run_in_threadpool(_extension_record, monitor, body.target, result.verdict, actor)
+    record = await run_in_threadpool(_extension_record, monitor, body.target, result.verdict, actor, getattr(request.state, 'inventory_device_id', None))
     record['lookup'] = {'status':'complete', 'cached':cached, 'malicious':result.malicious,
                         'suspicious':result.suspicious, 'harmless':result.harmless, 'undetected':result.undetected}
     return JSONResponse(record, status_code=201, headers={'Cache-Control':'no-store'})
@@ -218,18 +220,22 @@ def _authorize_scan(monitoring_app: FastAPI, request: Request) -> str | None:
             raise HTTPException(401, 'Approved account sign-in required')
         if directory.role(db, actor) not in {'head_administrator', 'administrator', 'normal_user'}:
             raise HTTPException(403, 'Your role does not permit scan submission')
+        from alba_security.inventory import enforce_device
+        enforce_device(db, request)
         return actor
 
 
-def _record_monitoring_scan(monitoring_app: FastAPI, body: ScanRequest, verdict: str | None, owner: str | None = None) -> None:
+def _record_monitoring_scan(monitoring_app: FastAPI, body: ScanRequest, verdict: str | None, owner: str | None = None, device_id: str | None = None) -> None:
     payload = _monitoring_payload(body, verdict)
     if owner:
         payload = payload.model_copy(update={'device_id':'user-'+hashlib.sha256(owner.encode()).hexdigest()[:32],
                                               'device_name':'Personal scan checks'})
     with monitoring_app.state.session_factory() as db:
+        from alba_security.inventory import scan_device_fields
+        payload = payload.model_copy(update=scan_device_fields(db, device_id))
         # The public endpoint has no verified device identity. Persist the scan
         # for administrators, but do not send email or webhooks for public calls.
-        result = monitoring_app.state.record_scan(payload, db, notify=False)
+        result = monitoring_app.state.record_scan(payload, db, notify=False, actor=owner)
         if owner:
             from alba_security.models import PersonalScan
             db.add(PersonalScan(scan_id=result['id'], username=owner))
@@ -254,7 +260,7 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
         except VirusTotalError as exc:
             if monitor is not None and not isinstance(exc, InvalidTargetError):
                 try:
-                    await run_in_threadpool(_record_monitoring_scan, monitor, body, None, owner)
+                    await run_in_threadpool(_record_monitoring_scan, monitor, body, None, owner, getattr(request.state, 'inventory_device_id', None))
                 except Exception:
                     # The upstream error and its existing HTTP mapping take priority.
                     logger.exception("Could not record an unknown monitoring result")
@@ -262,7 +268,7 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
 
     if monitor is not None:
         try:
-            await run_in_threadpool(_record_monitoring_scan, monitor, body, result.verdict, owner)
+            await run_in_threadpool(_record_monitoring_scan, monitor, body, result.verdict, owner, getattr(request.state, 'inventory_device_id', None))
         except Exception as exc:
             logger.exception("Could not record a successful monitoring result")
             raise HTTPException(status_code=503, detail="Scan result could not be recorded.") from exc

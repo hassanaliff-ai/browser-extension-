@@ -8,3 +8,5 @@
 
 .mobile-signout{display:none}.form-error:focus-visible{outline:3px solid #3d8dcd;outline-offset:3px}
 @media(max-width:760px){.mobile-signout{display:inline-flex}.topbar>.row{gap:5px}.topbar{gap:8px}}
+
+[hidden]{display:none!important}

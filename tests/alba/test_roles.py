@@ -53,7 +53,7 @@ def test_all_roles_have_distinct_server_owned_profiles(roles):
         assert response.status_code == 200
         data = response.json()
         assert data['role'] == role
-        assert ('Accounts' in data['views']) == (role == 'head_administrator')
+        assert ('Accounts' in data['views']) == (role in {'head_administrator','administrator','manager'})
         assert data['can_manage_reports'] == (role in {'head_administrator','administrator'})
     assert client.get('/api/admin/me',headers=headers['head_administrator']).json()['display_name'] == 'Head of Administrator'
 
@@ -258,7 +258,7 @@ def test_status_and_approval_are_rechecked_even_with_an_existing_session(roles):
     client, app, headers, _ = roles
     with app.state.session_factory() as db:
         row = db.get(RegisteredAdmin,'manager')
-        row.approved_by = 'reviewer'  # An old grant by another admin is insufficient.
+        row.approved_by = 'missing-supervisor'  # The approval chain must reach an active higher role.
         db.commit()
     assert client.get('/api/admin/me',headers=headers['manager']).status_code == 401
 

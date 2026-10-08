@@ -1,5 +1,6 @@
 """Authenticated website approvals. Browser enforcement lives in the MV3 package."""
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
 import idna
@@ -10,6 +11,16 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from alba_security.governance import audit
 from alba_security.models import Base, new_id, utc_now
+from alba_security.permissions import can_approve_role
+
+# A reserved database timestamp keeps existing non-null expiry columns compatible.
+# Public responses expose permanent grants as permanent=true, expires_at=null.
+FOREVER = datetime(9999, 1, 1, tzinfo=timezone.utc)
+
+
+def expiry_fields(value):
+    permanent = bool(value and value.replace(tzinfo=timezone.utc) == FOREVER)
+    return {'expires_at': None if permanent else iso(value), 'permanent': permanent}
 
 
 def clean_url(value):
@@ -76,14 +87,17 @@ class Create(Target, Reason):
 
 
 class Review(Reason):
-    decision: str = Field(pattern=r'^(once|whitelist|reject)$')
+    confirmed: bool = Field(strict=True)
+    decision: str = Field(pattern=r'^(once|temporary|whitelist|reject)$')
     expected_revision: int = Field(ge=1)
     whitelist_days: int = Field(default=30, ge=1, le=90)
+    duration_hours: Literal[24, 168] = 24
+    whitelist_forever: bool = Field(default=False, strict=True)
 
 
 def record(item):
     return {k: getattr(item, k) for k in ('id', 'requester', 'target', 'reason', 'status', 'decision', 'reviewer', 'review_reason', 'revision')} | {
-        'created_at': iso(item.created_at), 'expires_at': iso(item.expires_at)}
+        'created_at': iso(item.created_at)} | expiry_fields(item.expires_at)
 
 
 def install_website_access(app, session_scope, require_actor, directory):
@@ -92,6 +106,11 @@ def install_website_access(app, session_scope, require_actor, directory):
 
     def role(db, actor):
         return directory.role(db, actor)
+
+    def request_record(db, item, actor):
+        requester_role = role(db, item.requester)
+        return record(item) | {'requester_role': requester_role,
+            'can_review': can_approve_role(role(db, actor), requester_role, own=item.requester == actor)}
 
     def current_whitelist(db, target):
         return db.scalar(select(WebsiteWhitelist).where(WebsiteWhitelist.target == target,
@@ -102,10 +121,20 @@ def install_website_access(app, session_scope, require_actor, directory):
         query = select(WebsiteRequest)
         if role(db, actor) == 'normal_user':
             query = query.where(WebsiteRequest.requester == actor)
-        return [record(r) for r in db.scalars(query.order_by(WebsiteRequest.created_at.desc()).limit(200))]
+        return [request_record(db, r, actor) for r in db.scalars(query.order_by(WebsiteRequest.created_at.desc()).limit(200))]
 
     @app.post('/api/access/requests', status_code=201)
     def request_access(payload: Create, actor: str = Actor, db: Session = DB):
+        entry = current_whitelist(db, payload.target)
+        if entry and expiry_fields(entry.expires_at)['permanent']:
+            return {'target': payload.target, 'status': 'approved', 'decision': 'whitelist',
+                    **expiry_fields(entry.expires_at)}
+        grant = db.scalar(select(WebsiteRequest).where(WebsiteRequest.requester == actor,
+            WebsiteRequest.target == payload.target, WebsiteRequest.status == 'approved',
+            WebsiteRequest.decision == 'temporary', WebsiteRequest.expires_at > utc_now())
+            .order_by(WebsiteRequest.created_at.desc()))
+        if grant:
+            return record(grant)
         existing = db.scalar(select(WebsiteRequest).where(WebsiteRequest.requester == actor,
             WebsiteRequest.target == payload.target, WebsiteRequest.status == 'pending', WebsiteRequest.expires_at > utc_now()))
         if existing:
@@ -124,14 +153,21 @@ def install_website_access(app, session_scope, require_actor, directory):
 
     @app.post('/api/access/requests/{request_id}/review')
     def review(request_id: str, payload: Review, actor: str = Actor, db: Session = DB):
+        if not payload.confirmed:
+            raise HTTPException(422, 'Confirm you have reviewed the destination and the business need.')
         item = db.get(WebsiteRequest, request_id)
         if not item:
             raise HTTPException(404, 'Website request not found')
-        if item.requester == actor:
-            raise HTTPException(403, 'Another manager or administrator must review your own request')
+        if not can_approve_role(role(db, actor), role(db, item.requester), own=item.requester == actor):
+            raise HTTPException(403, 'Approval requires a higher role; only the head administrator may review their own request')
         now = utc_now()
         outcome = 'rejected' if payload.decision == 'reject' else 'approved'
-        expiry = now + (timedelta(minutes=10) if payload.decision == 'once' else timedelta(days=payload.whitelist_days))
+        if payload.decision == 'whitelist' and payload.whitelist_forever:
+            expiry = FOREVER
+        elif payload.decision == 'temporary':
+            expiry = now + timedelta(hours=payload.duration_hours)
+        else:
+            expiry = now + (timedelta(minutes=10) if payload.decision == 'once' else timedelta(days=payload.whitelist_days))
         changed = db.execute(update(WebsiteRequest).execution_options(synchronize_session=False).where(WebsiteRequest.id == request_id,
             WebsiteRequest.status == 'pending', WebsiteRequest.revision == payload.expected_revision,
             WebsiteRequest.expires_at > now).values(status=outcome, decision=payload.decision,
@@ -146,7 +182,10 @@ def install_website_access(app, session_scope, require_actor, directory):
                 WebsiteWhitelist.target == item.target, WebsiteWhitelist.active.is_(True)).values(active=False)).rowcount
             db.add(WebsiteWhitelist(target=item.target, reviewer=actor, reason=payload.reason, expires_at=expiry))
         audit(db, 'website_access', request_id, actor, outcome, decision=payload.decision,
-              superseded_entries=superseded)
+              superseded_entries=superseded, self_review=item.requester == actor,
+              requester_role=role(db, item.requester), permanent=expiry == FOREVER,
+              confirmed=True,
+              duration_hours=payload.duration_hours if payload.decision == 'temporary' else None)
         db.commit()
         db.expire_all()
         return record(db.get(WebsiteRequest, request_id))
@@ -156,7 +195,7 @@ def install_website_access(app, session_scope, require_actor, directory):
         rows = db.scalars(select(WebsiteWhitelist).where(WebsiteWhitelist.active.is_(True),
             WebsiteWhitelist.expires_at > utc_now()).order_by(WebsiteWhitelist.created_at.desc()).limit(200))
         return [{'id': r.id, 'target': r.target, 'reviewer': r.reviewer, 'reason': r.reason,
-                 'created_at': iso(r.created_at), 'expires_at': iso(r.expires_at)} for r in rows]
+                 'created_at': iso(r.created_at), **expiry_fields(r.expires_at)} for r in rows]
 
     @app.post('/api/access/whitelist/{entry_id}/revoke')
     def revoke(entry_id: str, payload: Reason, actor: str = Actor, db: Session = DB):
@@ -170,6 +209,9 @@ def install_website_access(app, session_scope, require_actor, directory):
             WebsiteWhitelist.active.is_(True)).values(active=False))
         if changed.rowcount < 1:
             raise HTTPException(409, 'Whitelist entry is missing or already revoked')
+        db.execute(update(WebsiteRequest).execution_options(synchronize_session=False).where(
+            WebsiteRequest.target == entry.target, WebsiteRequest.decision == 'whitelist',
+            WebsiteRequest.status == 'approved').values(status='revoked', revision=WebsiteRequest.revision + 1))
         audit(db, 'website_access', entry_id, actor, 'revoked', reason=payload.reason,
               revoked_entries=changed.rowcount)
         db.commit()
@@ -181,12 +223,17 @@ def install_website_access(app, session_scope, require_actor, directory):
             if consume:
                 audit(db, 'website_access', entry.id, actor, 'whitelist_visit')
                 db.commit()
-            return {'allowed': True, 'kind': 'whitelist', 'expires_at': iso(entry.expires_at)}
+            return {'allowed': True, 'kind': 'whitelist', **expiry_fields(entry.expires_at)}
         query = select(WebsiteRequest).where(WebsiteRequest.requester == actor, WebsiteRequest.target == target,
-            WebsiteRequest.status == 'approved', WebsiteRequest.decision == 'once', WebsiteRequest.expires_at > utc_now())
+            WebsiteRequest.status == 'approved', WebsiteRequest.decision.in_(['once', 'temporary']), WebsiteRequest.expires_at > utc_now())
         item = db.scalar(query.order_by(WebsiteRequest.created_at.desc()))
         if not item:
             return {'allowed': False, 'kind': None}
+        if item.decision == 'temporary':
+            if consume:
+                audit(db, 'website_access', item.id, actor, 'temporary_visit')
+                db.commit()
+            return {'allowed': True, 'kind': 'temporary', **expiry_fields(item.expires_at)}
         if consume:
             changed = db.execute(update(WebsiteRequest).execution_options(synchronize_session=False).where(WebsiteRequest.id == item.id,
                 WebsiteRequest.status == 'approved', WebsiteRequest.expires_at > utc_now()).values(

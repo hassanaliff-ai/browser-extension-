@@ -141,7 +141,7 @@ def test_backend_denial_stops_entire_view_and_clears_session(http):
     assert any("denied or expired" in item.value for item in instance.error)
 
 
-@pytest.mark.parametrize("view", ["Overview", "Alerts", "Findings", "Risk levels", "Downloaded-file checks", "Scan history", "Devices", "Extensions", "Security events", "Whitelist & overrides", "Monthly reports"])
+@pytest.mark.parametrize("view", ["Overview", "Alerts", "Findings", "Risk levels", "Downloaded-file checks", "Scan history", "Devices", "Extensions", "Security events", "Whitelist & overrides", "Reports"])
 def test_each_authorized_workspace_renders_empty_and_partial_data(http, view):
     instance = app(True, view)
     assert_clean(instance)
@@ -254,7 +254,7 @@ def test_scan_evidence_loads_only_when_requested(http):
 
 def test_report_generation_failure_keeps_draft_unsent(http):
     http[1].return_value = response({"detail": "Report summary service is not configured"}, 503)
-    instance = app(True, "Monthly reports")
+    instance = app(True, "Reports")
     button(instance, "Generate LLM draft").click().run()
     assert_clean(instance)
     assert any("not configured" in item.value for item in instance.error)

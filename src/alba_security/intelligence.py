@@ -8,7 +8,7 @@ from threading import Lock
 from time import monotonic
 from typing import Literal
 
-from fastapi import Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import DateTime, ForeignKey, JSON, String, Text, UniqueConstraint, select
 from sqlalchemy.exc import IntegrityError
@@ -109,7 +109,10 @@ def aggregate_period(db, start, end):
     # Target strings, actor names, raw page content and device IDs are excluded.
     archive={'alerts':[{'id':a.id,'scan_id':a.scan_id,'severity':a.severity,'status':a.status,'created_at':a.created_at.isoformat()} for a in alerts],
              'explanations':[explanation_data(e) for e in explanations]}
+    known_codes = {r['code'] for r in risk_policy()['signals']}
     totals={'start_utc':start.isoformat(),'end_utc':end.isoformat(),'total_scans':len(scans),
+            'target_kind_counts':dict(Counter(s.target_kind if s.target_kind in {'url','download','hash','extension','ip'} else 'unknown' for s in scans)),
+            'finding_counts':dict(Counter(signal['code'] for s in scans for signal in s.signals if signal.get('code') in known_codes and signal.get('status') == 'detected')),
             'severity_counts':dict(Counter(s.severity if s.severity in {'Low','Medium','High','Critical','Unknown'} else 'Unknown' for s in scans)),
             'completeness_counts':dict(Counter(s.completeness if s.completeness in {'complete','partial','unknown'} else 'unknown' for s in scans)),
             'alerts_total':len(alerts),'alerts_by_status':dict(Counter(a.status if a.status in {'open','acknowledged','resolved','suppressed'} else 'unknown' for a in alerts)),
@@ -124,7 +127,7 @@ def prepare_period_report(db, payload, *, client=None, model=None, now=None):
     if existing:
         return existing
     totals,archive=aggregate_period(db,start,end)
-    narrative=write_narrative(totals,language=payload.language,purpose=payload.kind+' alert and explanation report',client=client,model=model,evidence_codes=tuple(totals['evidence_counts']))
+    narrative=write_narrative(totals,language=payload.language,purpose=payload.kind+' alert and explanation report',client=client,model=model,evidence_codes=tuple(sorted(set(totals['evidence_counts']) | set(totals['finding_counts']))))
     subject=f'ExtSecure {payload.kind} security report — {payload.period}'
     # The downloadable snapshot contains all rows; the model receives aggregate evidence only.
     body=narrative['summary']+'\n\n'+'\n'.join(narrative['recommendations'])+'\n\n'+json.dumps(totals,ensure_ascii=False,indent=2)
@@ -177,12 +180,15 @@ def install_intelligence(app, session_scope, require_actor, directory):
         return [explanation_data(row) for row in db.scalars(select(ExplanationRecord).where(ExplanationRecord.scan_id==scan_id).order_by(ExplanationRecord.created_at.desc()))]
 
     @app.post('/api/intelligence/scans/{scan_id}/explain')
-    def explain(scan_id: str, payload: ExplanationRequest, actor: str=Depends(require_actor), db: Session=Depends(session_scope)):
+    def explain(scan_id: str, payload: ExplanationRequest, request: Request, actor: str=Depends(require_actor), db: Session=Depends(session_scope)):
         scan=owned_scan(db,actor,scan_id)
         if (payload.page_url or payload.file_base64) and not payload.consent_content:
             raise HTTPException(422,'Explicit consent is required before content reaches the backend and model')
         if payload.page_url and payload.file_base64:
             raise HTTPException(422,'Choose a page or a text file, not both')
+        if request is not None and request.headers.get('prefer') == 'respond-async':
+            return app.state.submit_ai_job(actor, '/api/intelligence/scans/{scan_id}/explain',
+                lambda fresh: explain(scan_id, payload, None, actor, fresh))
         scope,context='reputation_evidence_only',{}
         try:
             # Fail before reading or transmitting content if no model is configured.
@@ -235,7 +241,14 @@ def install_intelligence(app, session_scope, require_actor, directory):
         return [report_data(row) for row in db.scalars(select(IntelligenceReport).order_by(IntelligenceReport.created_at.desc()).limit(limit))]
 
     @app.post('/api/intelligence/reports/generate')
-    def generate(payload: PeriodRequest, actor: str=Depends(require_actor), db: Session=Depends(session_scope)):
+    def generate(payload: PeriodRequest, request: Request, actor: str=Depends(require_actor), db: Session=Depends(session_scope)):
+        if request is not None and request.headers.get('prefer') == 'respond-async':
+            try:
+                period_bounds(payload.kind, payload.period)
+            except ValueError as error:
+                raise HTTPException(422, str(error)) from None
+            return app.state.submit_ai_job(actor, '/api/intelligence/reports/generate',
+                lambda fresh: generate(payload, None, actor, fresh))
         try:
             period_bounds(payload.kind,payload.period)
             capacity(actor)

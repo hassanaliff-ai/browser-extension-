@@ -10,6 +10,13 @@ test('Malformed and relative URLs are rejected',()=>{for(const target of ['', '/
 test('International domain is normalized by URL parser',()=>assert.equal(privateTarget('https://bücher.example/x'),'https://xn--bcher-kva.example/'));
 test('Local SHA-256 matches published empty-file digest',async()=>assert.equal(await hashFile(new Blob([])),'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'));
 test('Local SHA-256 matches abc digest and zeroes the temporary buffer',async()=>{const bytes=new TextEncoder().encode('abc');const hash=await hashFile({size:3,arrayBuffer:async()=>bytes.buffer});assert.equal(hash,'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');assert.deepEqual([...bytes],[0,0,0]);});
+
+test('A failed digest still clears the temporary file buffer',async()=>{
+ const bytes=new TextEncoder().encode('private text'),original=crypto.subtle.digest;
+ crypto.subtle.digest=async()=>{throw new Error('Digest unavailable');};
+ try{await assert.rejects(hashFile({size:bytes.length,arrayBuffer:async()=>bytes.buffer}),/Digest unavailable/);assert(bytes.every(value=>value===0));}
+ finally{crypto.subtle.digest=original;}
+});
 test('Oversized file is rejected before reading any contents',async()=>{let read=false;await assert.rejects(hashFile({size:MAX_FILE_SIZE+1,arrayBuffer:()=>{read=true;}}));assert.equal(read,false);});
 test('A missing file has a useful validation error',async()=>assert.rejects(hashFile(null),/Choose/));
 test('Pasted hashes accept case and surrounding whitespace',()=>assert.equal(validDigest(' '+ 'A'.repeat(64)+' '),'a'.repeat(64)));
@@ -22,4 +29,30 @@ test('January previous month correctly crosses year boundary',()=>assert.equal(c
 test('Current and future months are rejected',()=>{for(const value of ['2026-10','2026-11','2026-00','bad'])assert.throws(()=>reportPeriod(value,new Date('2026-10-05T00:00:00Z')));});
 test('Completed month yields backend report parameters',()=>assert.deepEqual(reportPeriod('2026-09',new Date('2026-10-05T00:00:00Z')),{year:2026,month:9}));
 test('API allowlist supports real workflows and rejects arbitrary or absolute paths',()=>{for(const path of ['/api/overview','/api/admin/me','/api/reports/monthly/ml?year=2026&month=9','/api/scans/abc-123'])assert.equal(safeApiPath(path),true);for(const path of ['https://evil.test/steal','/api/../../secrets','/api/admin/register?leak=1','/private','/api/scans/%2e%2e'])assert.equal(safeApiPath(path),false);assert.equal(safeApiPath('/api/policies/revision-1/review','POST'),true);assert.equal(safeApiPath('/api/admin/downloads/scan','POST'),true);assert.equal(safeApiPath('/api/overview','DELETE'),false);});
-test('Missing LLM setup has a readable next action',()=>assert.equal(apiError(503,{detail:'OPENAI_MODEL is required'}),'AI reporting is not configured. Ask the administrator to configure the report model and API key on the backend.'));
+test('Missing local or cloud LLM setup has a provider-neutral next action',()=>{
+ for(const detail of ['OPENAI_MODEL is required','OLLAMA_MODEL must name an installed local report model'])assert.equal(apiError(503,{detail}),'AI reporting is unavailable. Check the configured local model or provider settings on the backend.');
+});
+
+const {reviewableAccessRequests}=await import('../core.js');
+test('Approval controls include authorized head self requests and exclude unauthorized or expired requests',()=>{
+ const now=Date.parse('2026-10-06T12:00:00Z');
+ const row={status:'pending',expires_at:'2026-10-07T00:00:00Z',requester:'hasan',can_review:true};
+ const rows=[{...row,id:'self'}, {...row,id:'peer',can_review:false}, {...row,id:'done',status:'approved'}, {...row,id:'expired',expires_at:'2026-10-05T00:00:00Z'}, {...row,id:'missing',can_review:undefined}];
+ assert.deepEqual(reviewableAccessRequests(rows,now).map(r=>r.id),['self']);
+});
+
+const {accessReviewBody}=await import('../core.js');
+test('Approval options send 24-hour and 7-day reusable grants or an explicit permanent whitelist',()=>{
+ const row={revision:3},reason='Verified website and business need';
+ for(const duration of ['24','168'])assert.deepEqual(accessReviewBody(row,{decision:'approve',duration,reason,confirmed:'on'}),{expected_revision:3,reason,confirmed:true,decision:'temporary',duration_hours:Number(duration)});
+ assert.deepEqual(accessReviewBody(row,{decision:'approve',duration:'forever',reason,confirmed:'on'}),{expected_revision:3,reason,confirmed:true,decision:'whitelist',whitelist_forever:true});
+ assert.deepEqual(accessReviewBody(row,{decision:'reject',duration:'forever',reason,confirmed:'on'}),{expected_revision:3,reason,confirmed:true,decision:'reject'});
+ assert.throws(()=>accessReviewBody(row,{decision:'approve',duration:'7',reason,confirmed:'on'}));
+});
+
+test('Both approval and rejection require explicit destination review confirmation',()=>{
+ for(const decision of ['approve','reject']){
+  for(const confirmed of [undefined,false,'false',1])assert.throws(()=>accessReviewBody({revision:1},{decision,duration:'24',reason:'Reviewed business need',confirmed}),/Confirm/);
+  assert.equal(accessReviewBody({revision:1},{decision,duration:'24',reason:'Reviewed business need',confirmed:true}).confirmed,true);
+ }
+});

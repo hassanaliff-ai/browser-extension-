@@ -60,7 +60,7 @@ class AdminDirectory:
         from alba_security.registration import RegisteredAdmin
         from cryptography.fernet import InvalidToken
         row = db.get(RegisteredAdmin, username)
-        if row is None or row.status != 'active' or row.approved_by != self.primary.username or row.role not in {'administrator', 'manager', 'normal_user'}: return None
+        if row is None or self.role(db, username) is None: return None
         try: secret = self.cipher().decrypt(row.totp_encrypted.encode()).decode()
         except InvalidToken: raise AuthenticationError('Account configuration is unavailable') from None
         return self.accounts.get(username) or self.build_account(row.username, row.password_hash, secret)
@@ -68,7 +68,7 @@ class AdminDirectory:
     def all_accounts(self, db):
         from alba_security.registration import RegisteredAdmin
         from sqlalchemy import select
-        return {self.primary.username: self.primary, **{r.username: None for r in db.scalars(select(RegisteredAdmin).where(RegisteredAdmin.status == 'active', RegisteredAdmin.approved_by == self.primary.username))}}
+        return {self.primary.username: self.primary, **{r.username: None for r in db.scalars(select(RegisteredAdmin).where(RegisteredAdmin.status == 'active')) if self.role(db, r.username)}}
 
     def complete_login(self, db: Session, challenge_token: str, totp_code: str):
         challenge = db.get(AdminLoginChallenge, _digest(challenge_token))
@@ -105,12 +105,18 @@ class AdminDirectory:
                 status='pending_review', role='administrator'))
         db.commit()
 
-    def role(self, db, username):
+    def role(self, db, username, _visited=None):
+        if not username: return None
         if username == self.primary.username: return 'head_administrator'
+        visited = set(_visited or ())
+        if username in visited or len(visited) >= 4: return None
+        visited.add(username)
         from alba_security.registration import RegisteredAdmin
+        from alba_security.permissions import can_approve_role
         row = db.get(RegisteredAdmin, username)
-        if row and row.status == 'active' and row.approved_by == self.primary.username:
-            return row.role if row.role in {'administrator', 'manager', 'normal_user'} else None
+        if row and row.status == 'active' and row.role in {'administrator', 'manager', 'normal_user'}:
+            reviewer_role = self.role(db, row.approved_by, visited)
+            return row.role if can_approve_role(reviewer_role, row.role) else None
         return None
 
     def operators(self, db):

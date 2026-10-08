@@ -166,6 +166,30 @@ def test_configuration_fails_closed():
         AdminAuth("admin", hash_value, "JBSWY3DPEHPK3PXP")  # only 80 bits
 
 
+def test_default_session_lasts_24_hours_with_an_exact_expiry_boundary(auth_context):
+    previous, db, moment = auth_context
+    auth = AdminAuth(previous.username, previous.password_hash, SECRET, clock=lambda: moment[0])
+    signed_in_at = moment[0]
+    challenge = auth.begin_login(db, auth.username, 'correct horse battery staple')
+    issued = auth.complete_login(db, challenge.challenge_token, auth.totp.at(moment[0]))
+    assert issued.expires_at == signed_in_at + timedelta(hours=24)
+    moment[0] = issued.expires_at - timedelta(microseconds=1)
+    assert auth.verify_session(db, issued.access_token)
+    moment[0] = issued.expires_at
+    assert not auth.verify_session(db, issued.access_token)
+
+
+def test_environment_default_and_registered_accounts_use_the_same_24_hour_limit(auth_context):
+    from alba_security.admin_directory import AdminDirectory
+    previous, _, _ = auth_context
+    primary = AdminAuth.from_environment({'ADMIN_USERNAME':'head-test',
+        'ADMIN_PASSWORD_HASH':previous.password_hash,'ADMIN_TOTP_SECRET':SECRET})
+    assert primary.session_ttl == timedelta(hours=24)
+    directory = AdminDirectory(primary)
+    for username in ['admin-test','manager-test','normal-test']:
+        assert directory.build_account(username, previous.password_hash, SECRET).session_ttl == timedelta(hours=24)
+
+
 def test_non_ascii_username_is_rejected_as_credentials_not_server_error(auth_context):
     auth, db, _moment = auth_context
     with pytest.raises(AuthenticationError):

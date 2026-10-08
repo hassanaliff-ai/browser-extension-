@@ -1,0 +1,76 @@
+/* Console-only layout. The toolbar popup keeps its compact presentation. */
+.console{--canvas:#f5f7fa;--line:#e1e7ec;--muted:#566875;--ink:#20333f}
+.console .workspace{grid-template-columns:248px minmax(0,1fr)}
+.console .sidebar{background:#fff;border-inline-end:1px solid var(--line);padding:24px 18px;color:var(--ink)}
+.console .sidebar .brand{color:var(--ink);margin:0}
+.console .sidebar .brand img{width:33px;height:33px}
+.console .sidebar .brand small{display:none}
+.console-brand-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:24px}
+.nav-toggle{display:none}
+.console-nav{display:flex;flex-direction:column;min-height:0;flex:1}
+.nav-search{display:block;margin-bottom:18px}
+.nav-search input{min-height:38px;font-size:12px;background:#f7f9fb;border-color:var(--line);padding:9px 11px}
+.console .nav-scroll{padding:0 2px 8px}
+.console .nav-group{border:0;border-radius:0;padding:0;margin-bottom:13px;background:transparent}
+.console .nav-group>summary{display:flex;align-items:center;justify-content:space-between;list-style:none;min-height:36px;padding:6px 10px;font-size:11px;color:#5b6e7a;font-weight:650;letter-spacing:.2px}
+.nav-group>summary::-webkit-details-marker{display:none}
+.nav-group>summary::after{content:'›';font-size:18px;transform:rotate(90deg);line-height:1}
+.nav-group[open]>summary::after{transform:rotate(-90deg)}
+.console .nav-group[open]>summary{margin-bottom:3px}
+.console .nav-item{color:#4c6270;min-height:40px;padding:10px 12px;border-radius:7px;font-size:12px}
+.console .nav-item:hover{color:#174f46;background:#f2f7f5}
+.console .nav-item.active{background:#e8f4ef;color:#145a49;font-weight:650;box-shadow:inset 3px 0 #247c68}
+[dir=rtl] .console .nav-item.active{box-shadow:inset -3px 0 #247c68}
+.console .sidebar-account{padding:17px 6px 0;border-color:var(--line)}
+.console .sidebar-account strong{color:var(--ink);font-size:12px}
+.console .sidebar-account .meta{color:var(--muted);font-size:10px;line-height:1.65}
+.console .sidebar-account button{color:var(--muted)}
+.console .avatar{background:#edf3f6;border-radius:50%;width:35px;height:35px}
+.nav-empty{font-size:12px;line-height:1.6;color:var(--muted);padding:10px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.console .topbar{min-height:68px;background:#fff;padding-inline:32px}
+.console .breadcrumbs{font-size:12px}
+.console .page{padding:30px 32px 22px;max-width:1320px}
+.console .page-title{margin-bottom:24px}
+.console .page-title h1{font-size:28px;letter-spacing:-.6px}
+.console .page-title p{margin-top:8px;font-size:13px;max-width:650px}
+.console #content{gap:20px}
+.console .panel{border-radius:12px;padding:23px;background:#fff;box-shadow:0 1px 2px #233d4e03}
+.console .panel h2{font-size:16px;letter-spacing:-.2px}
+.console .metric{border-radius:10px;padding:18px 20px}
+.console .metric strong{font-size:30px;font-weight:650}
+.console .metrics{gap:12px}
+.console .metric small{font-size:11px;line-height:1.6}
+.console .notice{border-radius:8px;padding:11px 14px;font-size:12px}
+.console .table-wrap{border-radius:8px}
+.console th{background:#f6f8fb;color:#5c6c78;font-size:11px;font-weight:600;padding:13px 15px}
+.console td{padding:14px 15px;line-height:1.65;color:#2f4754}
+.console tbody tr:hover{background:#f7faf9}
+.console .tag{padding:4px 9px;min-height:25px;font-size:11px}
+.console .form{gap:16px}
+.console .field{font-size:12px;gap:7px}
+.console input,.console select,.console textarea{border-radius:7px;min-height:42px}
+.console input[type=checkbox]{min-height:18px}
+.console .btn{border-radius:7px}
+.console details:not(.nav-group){background:#fff;border-radius:8px;padding:14px 16px}
+.console details:not(.nav-group)[open]>summary{padding-bottom:12px;border-bottom:1px solid var(--line)}
+.console .grid-even,.console .grid2{gap:20px;align-items:start}
+.console .task-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(310px,1fr);gap:20px;align-items:start}
+.console .task-grid>*{min-width:0}
+.console .task-aside{display:grid;gap:20px}
+.console .help-copy{font-size:12px;line-height:1.75;color:var(--muted)}
+.console .help-copy p+p{margin-top:10px}
+.console .help-copy strong{color:var(--ink)}
+.console .inline-form{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:end}
+.console .inline-form .form-error,.console .inline-form .form-submit{grid-column:1/-1}
+.console .inline-form .form-submit .btn{width:auto;min-width:200px}
+.console .report-output:empty{display:none}
+.console .report-output:not(:empty){display:grid;gap:12px;padding-top:16px;border-top:1px solid var(--line)}
+.console .report-archive{display:grid;gap:10px}
+.console .report-archive details p,.console .report-archive details ul{margin-block:12px}
+.console .report-workspace{display:grid;gap:20px}
+.console .empty{padding:24px 18px;border-style:solid;background:#f9fbfc}
+.console .footer{padding:14px 32px 24px;font-size:11px}
+@media(max-width:1120px){.console .workspace{grid-template-columns:224px minmax(0,1fr)}.console .task-grid{grid-template-columns:minmax(0,1fr)}.console .grid-even{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){.console .workspace{grid-template-columns:minmax(0,1fr)}.console .sidebar{height:auto;padding:16px 18px;position:relative;border-inline-end:0;border-bottom:1px solid var(--line)}.console-brand-row{margin:0}.nav-toggle{display:inline-flex}.console .console-nav{display:none;margin-top:16px}.console .sidebar.nav-open .console-nav{display:flex}.console .nav-scroll{display:block;max-height:310px;overflow-y:auto;overflow-x:hidden}.console .nav-item{width:100%;white-space:normal;flex:auto;text-align:start}.console .sidebar-account{display:none}.console .topbar{padding:12px 18px;min-height:62px}.console .page{padding:24px 18px}.console .page-title h1{font-size:25px}.console .panel{padding:18px}.console .inline-form{grid-template-columns:minmax(0,1fr)}.console .footer{padding:14px 18px 22px}.console .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.console .metrics.three{grid-template-columns:minmax(0,1fr)}}
+@media(forced-colors:active){.console .nav-item.active{outline:2px solid Highlight}.console .nav-group>summary{color:ButtonText}}

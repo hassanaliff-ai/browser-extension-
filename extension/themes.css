@@ -1,0 +1,114 @@
+/* Warm terracotta accents; threat severity remains separate from decoration. */
+:root{--accent:#9e493d;--accent-hover:#833d34;--accent-soft:#f8ebe5;--warm-line:#e7dedb}
+body,.console{--canvas:#faf8f7;--line:var(--warm-line)}
+.btn.primary,.hero .btn{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover,.hero .btn:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+a,.workflow-icon{color:var(--accent)}
+.btn:hover,.workflow-card:hover{background:#fcf1ec}
+.console .nav-item.active{background:var(--accent-soft);color:#813c32;box-shadow:inset 3px 0 var(--accent)}
+[dir=rtl] .console .nav-item.active{box-shadow:inset -3px 0 var(--accent)}
+.console .nav-item:hover{background:#fcf1ec;color:#813c32}
+.console .nav-search input,.console th,th{background:#faf7f5}
+.attention-strip,.notice.warning{background:#f8ebe5;border-color:#dec4bc;color:#76382f}
+.tag.medium,.tag.pending,.tag.pending_review,.tag.blocked,.tag.queued,.tag.acknowledged{background:#f8e9e0;color:#814431}
+.connection-chip.checking{background:#f8e9e0;border-color:#dec4bc;color:#814431}
+.popup{background:var(--canvas)}
+.chart .mainline{stroke:var(--accent)}
+.chart .riskline{stroke-dasharray:4 3}
+.preview-banner{background:var(--accent-soft);color:#76382f}
+.legend .dot{background:var(--accent)}
+.legend .risk-dot{background:#b7545d}
+.blocked-layout{background:var(--canvas)}
+input[type=checkbox]{accent-color:var(--accent)}
+.appearance-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
+.btn[data-theme-toggle][aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+[data-theme=dark]{color-scheme:dark;--accent:#efa58c;--accent-hover:#ffc0a9;--accent-soft:#392d2d;--warm-line:#3b3e48;--ink:#edf0f5;--muted:#b1bdc9;--line:#3b3e48;--paper:#232731;--canvas:#181b22}
+[data-theme=dark] body,[data-theme=dark] .console{--ink:#edf0f5;--muted:#b1bdc9;--line:#3b3e48;--paper:#232731;--canvas:#181b22;background:var(--canvas);color:var(--ink)}
+[data-theme=dark] .panel,[data-theme=dark] .metric,[data-theme=dark] .console .panel,[data-theme=dark] .sidebar,[data-theme=dark] .console .sidebar,[data-theme=dark] .topbar,[data-theme=dark] .console .topbar,[data-theme=dark] details,[data-theme=dark] details[open],[data-theme=dark] .console details:not(.nav-group),[data-theme=dark] .popup-header,[data-theme=dark] .popup .popup-header,[data-theme=dark] .popup-preferences,[data-theme=dark] .popup .popup-preferences,[data-theme=dark] .popup-account,[data-theme=dark] .popup-destination,[data-theme=dark] .blocked-card{background:var(--paper);color:var(--ink);border-color:var(--line);box-shadow:none}
+[data-theme=dark] .console .nav-group,[data-theme=dark] .popup-account details{background:transparent}
+[data-theme=dark] .brand,[data-theme=dark] .console .sidebar .brand,[data-theme=dark] .sidebar-account strong,[data-theme=dark] .console .sidebar-account strong,[data-theme=dark] .field>span,[data-theme=dark] .help-copy strong,[data-theme=dark] .console .help-copy strong,[data-theme=dark] .breadcrumbs strong{color:var(--ink)}
+[data-theme=dark] .sidebar-account,[data-theme=dark] .console .sidebar-account{border-color:var(--line)}
+[data-theme=dark] .console .nav-group>summary,[data-theme=dark] .console .nav-item,[data-theme=dark] .sidebar-account .meta,[data-theme=dark] .console .sidebar-account .meta,[data-theme=dark] .sidebar-account button,[data-theme=dark] .console .sidebar-account button,[data-theme=dark] .check{color:var(--muted)}
+[data-theme=dark] .console .nav-item.active,[data-theme=dark] .console .nav-item:hover{background:var(--accent-soft);color:#ffc4ae}
+[data-theme=dark] input,[data-theme=dark] textarea,[data-theme=dark] select,[data-theme=dark] .console .nav-search input{background:#1c2028;color:var(--ink);border-color:#505764;box-shadow:none}
+[data-theme=dark] input::placeholder,[data-theme=dark] textarea::placeholder{color:#a1adbb;opacity:1}
+[data-theme=dark] .btn,[data-theme=dark] .workflow-card{background:#292e38;color:var(--ink);border-color:#4a515e}
+[data-theme=dark] .btn:hover,[data-theme=dark] .workflow-card:hover{background:#39313a;border-color:#ae7b6b}
+[data-theme=dark] .btn.primary,[data-theme=dark] .hero .btn{background:var(--accent);border-color:var(--accent);color:#281e1b}
+[data-theme=dark] .btn.primary:hover{background:var(--accent-hover)}
+[data-theme=dark] .btn.ghost{background:transparent;border-color:transparent}
+[data-theme=dark] .btn.danger{color:#ffb5bf;border-color:#8b5260}
+[data-theme=dark] th,[data-theme=dark] .console th{background:#292d37;color:var(--muted)}
+[data-theme=dark] td,[data-theme=dark] .console td{color:var(--ink);border-color:var(--line)}
+[data-theme=dark] tbody tr:hover,[data-theme=dark] .console tbody tr:hover{background:#2c303a}
+[data-theme=dark] .empty,[data-theme=dark] .console .empty,[data-theme=dark] .drop-zone,[data-theme=dark] .risk-pill,[data-theme=dark] .pill-card,[data-theme=dark] .blocked-destination,[data-theme=dark] .read-only{background:#1d222b;border-color:var(--line);color:var(--muted)}
+[data-theme=dark] .notice{background:#273341;border-color:#41556a;color:#d5e5f3}
+[data-theme=dark] .notice.warning,[data-theme=dark] .attention-strip{background:#3d2d2a;border-color:#785348;color:#ffd0ba}
+[data-theme=dark] .notice.error{background:#402b35;border-color:#805464;color:#ffc3cd}
+[data-theme=dark] .notice.success{background:#253c32;border-color:#486958;color:#c6ead6}
+[data-theme=dark] .tag{background:#343d48;color:#d1dce7}
+[data-theme=dark] .tag.low,[data-theme=dark] .tag.ready,[data-theme=dark] .tag.active,[data-theme=dark] .tag.verified,[data-theme=dark] .tag.passed,[data-theme=dark] .tag.approved,[data-theme=dark] .tag.complete,[data-theme=dark] .tag.faverified{background:#253f34;color:#bfe8cf}
+[data-theme=dark] .tag.high,[data-theme=dark] .tag.critical,[data-theme=dark] .tag.failed,[data-theme=dark] .tag.rejected{background:#472c39;color:#ffc1cd}
+[data-theme=dark] .tag.medium,[data-theme=dark] .tag.pending,[data-theme=dark] .tag.pending_review,[data-theme=dark] .tag.blocked,[data-theme=dark] .tag.queued,[data-theme=dark] .tag.acknowledged{background:#47332a;color:#ffd0b7}
+[data-theme=dark] .connection-chip{background:#2b333e;border-color:#4a5563;color:#d0dce8}
+[data-theme=dark] .connection-chip.ready{background:#253f34;border-color:#486958;color:#bfe8cf}
+[data-theme=dark] .connection-chip.offline{background:#472c39;border-color:#805464;color:#ffc1cd}
+[data-theme=dark] .connection-chip.checking{background:#47332a;border-color:#785348;color:#ffd0b7}
+[data-theme=dark] .chart text{fill:#b1bdc9}
+[data-theme=dark] .chart .gridline{stroke:#414652}
+[data-theme=dark] .chart .riskline{stroke:#f395a6}
+[data-theme=dark] .legend .risk-dot{background:#f395a6}
+[data-theme=dark] .activity-item,[data-theme=dark] .status-rail{border-color:var(--line)}
+[data-theme=dark] .activity-icon,[data-theme=dark] .avatar,[data-theme=dark] .console .avatar,[data-theme=dark] .step span{background:#39313a;color:#ffc4ae}
+[data-theme=dark] .auth-card .tabs{background:#252a34}
+[data-theme=dark] .tabs button{color:var(--muted)}
+[data-theme=dark] .tabs button.selected{background:#39414e;color:var(--ink)}
+[data-theme=dark] .step,[data-theme=dark] .footer{color:var(--muted)}
+[data-theme=dark] .auth-story,[data-theme=dark] .hero{background:#222932}
+[data-theme=dark] .bar{background:#303843}
+[data-theme=dark] .results.risk-low{border-inline-start-color:#4c9b78}
+[data-theme=dark] .results.risk-medium{border-inline-start-color:#c28a6e}
+[data-theme=dark] .results.risk-high,[data-theme=dark] .results.risk-critical{border-inline-start-color:#e28b9f}
+[data-theme=dark] .results.risk-unknown{border-inline-start-color:#91aac0}
+@media(max-width:760px){.appearance-fields{grid-template-columns:minmax(0,1fr)}}
+@media(forced-colors:active){.btn.primary,.notice,.tag{forced-color-adjust:auto}}
+
+/* Teal navigation, top bar and quick options. */
+.console .sidebar{background:#92beb9;border-inline-end-color:#609c98}
+.console .topbar,.popup .popup-header{background:#65aaa5;border-bottom-color:#448b88}
+.console .sidebar .brand,.popup .popup-header .brand{color:#102f32}
+.console .sidebar .nav-item,.console .sidebar-account strong{color:#143538}
+.console .sidebar .nav-group>summary,.console .sidebar-account .meta,.console .sidebar-account button{color:#143538}
+.console .topbar .breadcrumbs,.console .topbar .breadcrumbs strong{color:#102f32}
+.console .nav-item.active{background:#f0faf8;color:#143538}
+.console .nav-search input{background:#f0faf8;border-color:#8bb7b3}
+.console .workflow-actions{padding:10px;background:#95beba;border:1px solid #609c98;border-radius:10px}
+[data-theme=dark] .console .sidebar{background:#173436;border-inline-end-color:#3c777a}
+[data-theme=dark] .console .topbar,[data-theme=dark] .popup .popup-header{background:#20474b;border-bottom-color:#3c777a}
+[data-theme=dark] .console .sidebar .brand,[data-theme=dark] .popup .popup-header .brand,[data-theme=dark] .console .sidebar-account strong{color:#edf0f5}
+[data-theme=dark] .console .sidebar .nav-item,[data-theme=dark] .console .sidebar .nav-group>summary,[data-theme=dark] .console .sidebar-account .meta,[data-theme=dark] .console .sidebar-account button,[data-theme=dark] .console .topbar .breadcrumbs,[data-theme=dark] .console .topbar .breadcrumbs strong{color:#c4e8e3}
+[data-theme=dark] .console .nav-item.active{background:#2c6265;color:#ddfaf4}
+[data-theme=dark] .console .nav-search input{background:#102729;border-color:#4c8586}
+[data-theme=dark] .console .workflow-actions{background:#21494b;border-color:#3c777a}
+@media(forced-colors:active){.console .sidebar,.console .topbar,.console .workflow-actions,.popup .popup-header{background:Canvas;border-color:CanvasText}}
+
+/* Account-owned profile logos keep the same space as the initials fallback. */
+.avatar{flex-shrink:0;overflow:hidden}
+.avatar img{display:block;width:100%;height:100%;object-fit:cover}
+.profile-logo-row{display:flex;align-items:center;gap:16px}
+.console .avatar.avatar-large{width:80px;height:80px;font-size:24px}
+.profile-logo-row h3{margin:0 0 6px}
+.profile-logo-row .meta{margin:0}
+
+/* Table sizing changes presentation only; no records or fields are hidden. */
+.table-block{min-width:0}
+.table-controls{display:flex;justify-content:flex-end;margin-block-end:10px}
+.table-controls .field{display:flex;flex-direction:row;align-items:center;gap:8px;margin:0;font-size:12px}
+.table-controls select{width:auto;min-width:125px;padding:7px 10px;font-size:12px}
+[data-table-size=compact] .console th{padding:8px 11px;font-size:11px}
+[data-table-size=compact] .console td{padding:8px 11px;font-size:12px;line-height:1.45}
+[data-table-size=compact] .console td .meta{font-size:10px}
+[data-table-size=spacious] .console th{padding:17px 18px;font-size:12px}
+[data-table-size=spacious] .console td{padding:20px 18px;font-size:14px;line-height:1.75}
+[data-table-size=spacious] .console td .meta{font-size:12px}
+@media(min-width:761px){.appearance-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -310,12 +310,13 @@ def retention_candidates(db: Session):
 def install_governance(app, session_scope, require_actor, directory):
     Admin = Depends(require_actor)
 
-    @app.get('/api/admin/accounts', dependencies=[Admin])
-    def accounts(db: Session = Depends(session_scope)):
-        from alba_security.permissions import ROLE_LABELS
+    @app.get('/api/admin/accounts')
+    def accounts(actor: str = Admin, db: Session = Depends(session_scope)):
+        from alba_security.permissions import ROLE_LABELS, can_approve_role
         return [{'username': name, 'source': 'configured' if name in directory.accounts else 'registered',
                  'role':directory.role(db,name), 'role_label':ROLE_LABELS[directory.role(db,name)]}
-                for name in directory.all_accounts(db)]
+                for name in directory.all_accounts(db)
+                if actor == directory.primary.username or can_approve_role(directory.role(db,actor), directory.role(db,name))]
 
     @app.get('/api/case-assignees', dependencies=[Admin])
     def assignees(db: Session = Depends(session_scope)):

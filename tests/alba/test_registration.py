@@ -87,7 +87,7 @@ def test_approval_enables_password_and_two_factor_login_without_self_approval(sy
     assert client.post('/api/admin/registrations/new-admin/approve',headers=headers['hasan'],json={'reason':'Duplicate approval attempt'}).status_code == 409
     new_header = login(client,enrollment)
     assert client.get('/api/privacy',headers=new_header).status_code == 200
-    assert client.get('/api/admin/accounts',headers=new_header).status_code == 403
+    assert client.get('/api/admin/accounts',headers=new_header).status_code == 200
     assert client.get('/api/admin/me',headers=new_header).json()['role'] == 'administrator'
     assert client.post('/api/admin/register/verify',json={'enrollment_token':enrollment['enrollment_token'],'totp_code':pyotp.TOTP(enrollment['totp_secret']).now()}).status_code == 401
 

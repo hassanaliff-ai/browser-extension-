@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from alba_security.models import Base, new_id, utc_now
 from alba_security.admin_auth import _digest, _utc, AdminAuthState
+from alba_security.permissions import can_approve_role
 
 
 class RegisteredAdmin(Base):
@@ -63,6 +64,7 @@ class EnrollmentToken(BaseModel):
 
 class RegistrationConfirm(EnrollmentToken):
     totp_code: str = Field(pattern=r'^\d{6}$')
+    role: Literal['administrator', 'manager', 'normal_user'] = 'normal_user'
 
 
 class AccountReview(BaseModel):
@@ -79,14 +81,22 @@ def install_registration(app, session_scope, require_actor, directory, throttle)
             raise HTTPException(403, 'Only the Head of Administrator can manage access')
         return actor
     Admin = Depends(require_head)
+    Reviewer = Depends(require_actor)
 
     @app.get('/api/admin/registrations')
-    def requests(actor: str = Admin, db: Session = Depends(session_scope)):
+    def requests(actor: str = Reviewer, db: Session = Depends(session_scope)):
         rows = db.scalars(select(RegisteredAdmin).where(RegisteredAdmin.status == 'pending_review').order_by(RegisteredAdmin.created_at).limit(200))
-        return [{'username':r.username,'status':r.status,'role':r.role,'created_at':_utc(r.created_at).isoformat()} for r in rows]
+        return [{'username':r.username,'status':r.status,'role':r.role,'created_at':_utc(r.created_at).isoformat()} for r in rows
+                if can_approve_role(directory.role(db, actor), r.role) and r.username != actor]
 
     def review_account(username, payload, actor, db, decision):
-        changed = db.execute(update(RegisteredAdmin).where(RegisteredAdmin.username == username, RegisteredAdmin.status == 'pending_review').values(status=decision, role=payload.role if decision == 'active' else 'normal_user',
+        row = db.get(RegisteredAdmin, username)
+        if row is None or row.status != 'pending_review':
+            raise HTTPException(409, 'This account is no longer pending review')
+        reviewer_role = directory.role(db, actor)
+        if username == actor or not can_approve_role(reviewer_role, row.role) or not can_approve_role(reviewer_role, payload.role):
+            raise HTTPException(403, 'You may only approve or reject accounts below your own role')
+        changed = db.execute(update(RegisteredAdmin).where(RegisteredAdmin.username == username, RegisteredAdmin.status == 'pending_review', RegisteredAdmin.role == row.role).values(status=decision, role=payload.role if decision == 'active' else 'normal_user',
                 approved_by=actor if decision == 'active' else None, approved_at=utc_now() if decision == 'active' else None))
         if changed.rowcount != 1:
             db.rollback()
@@ -96,11 +106,11 @@ def install_registration(app, session_scope, require_actor, directory, throttle)
         return {'username':username,'status':decision,'role':payload.role if decision == 'active' else 'normal_user'}
 
     @app.post('/api/admin/registrations/{username}/approve')
-    def approve(username: str, payload: AccountReview, actor: str = Admin, db: Session = Depends(session_scope)):
+    def approve(username: str, payload: AccountReview, actor: str = Reviewer, db: Session = Depends(session_scope)):
         return review_account(username,payload,actor,db,'active')
 
     @app.post('/api/admin/registrations/{username}/reject')
-    def reject(username: str, payload: AccountReview, actor: str = Admin, db: Session = Depends(session_scope)):
+    def reject(username: str, payload: AccountReview, actor: str = Reviewer, db: Session = Depends(session_scope)):
         return review_account(username,payload,actor,db,'rejected')
 
     @app.post('/api/admin/register', status_code=201, dependencies=[Depends(throttle)])
@@ -142,7 +152,7 @@ def install_registration(app, session_scope, require_actor, directory, throttle)
         if claim.rowcount != 1:
             db.rollback()
             raise HTTPException(409, 'Enrollment was already completed or expired')
-        db.add(RegisteredAdmin(username=enrollment.username, password_hash=enrollment.password_hash, totp_encrypted=enrollment.totp_encrypted, status='pending_review'))
+        db.add(RegisteredAdmin(username=enrollment.username, password_hash=enrollment.password_hash, totp_encrypted=enrollment.totp_encrypted, status='pending_review', role=payload.role))
         account = directory.build_account(enrollment.username, enrollment.password_hash, secret)
         db.add(AdminAuthState(id=account.state_id, failed_attempts=0, last_totp_counter=counter))
         audit(db, 'account', enrollment.username, enrollment.username, 'registration_verified', status='pending_review')
@@ -150,7 +160,7 @@ def install_registration(app, session_scope, require_actor, directory, throttle)
         except IntegrityError:
             db.rollback()
             raise HTTPException(409, 'Account already exists or enrollment was completed concurrently') from None
-        return {'registered':True,'username':enrollment.username,'status':'pending_review', 'next_step':'The Head of Administrator must approve access and assign your role before you can log in.'}
+        return {'registered':True,'username':enrollment.username,'status':'pending_review', 'next_step':'A higher role must approve your account before you can log in.'}
 
     @app.post('/api/admin/register/cancel', dependencies=[Depends(throttle)])
     def cancel(payload: EnrollmentToken, db: Session = Depends(session_scope)):

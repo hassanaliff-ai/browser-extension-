@@ -6,6 +6,15 @@ ROLE_LABELS = {
     'normal_user': 'Normal user',
 }
 
+ROLE_LEVELS = {'normal_user': 0, 'manager': 1, 'administrator': 2, 'head_administrator': 3}
+
+def can_approve_role(reviewer_role, requester_role, *, own=False):
+    if reviewer_role not in ROLE_LEVELS or requester_role not in ROLE_LEVELS:
+        return False
+    if own:
+        return reviewer_role == requester_role == 'head_administrator'
+    return ROLE_LEVELS[reviewer_role] > ROLE_LEVELS[requester_role]
+
 ACCESS_READS = {'/api/access/requests', '/api/access/whitelist'}
 ACCESS_WRITES = {'/api/access/requests', '/api/access/check', '/api/access/consume'}
 ACCESS_REVIEWS = {'/api/access/requests/{request_id}/review', '/api/access/whitelist/{entry_id}/revoke'}
@@ -39,14 +48,22 @@ MANAGER_READS = READ_ROUTES - {
     '/api/governance/audit',
 }
 OWNER_ROUTES = {
-    ('GET', '/api/admin/accounts'), ('GET', '/api/admin/registrations'),
-    ('POST', '/api/admin/registrations/{username}/approve'),
-    ('POST', '/api/admin/registrations/{username}/reject'),
     ('POST', '/api/admin/accounts/{username}/disable'),
     ('POST', '/api/admin/accounts/{username}/role'),
 }
 
 def allowed(role, method, route):
+    if method == 'GET' and route == '/api/ai-jobs/{job_id}':
+        return role in ROLE_LABELS
+    if role in ROLE_LABELS:
+        if (method, route) in {('GET', '/api/inventory/self'), ('POST', '/api/inventory/pair'), ('POST', '/api/inventory/sync'), ('POST', '/api/inventory/connect')}:
+            return True
+        if method == 'POST' and route in {'/api/inventory/devices', '/api/inventory/devices/{device_id}/status', '/api/inventory/devices/{device_id}/pairing-code'}:
+            return role in {'head_administrator', 'administrator'}
+    if (method, route) in {('GET', '/api/admin/accounts'), ('GET', '/api/admin/registrations'),
+                          ('POST', '/api/admin/registrations/{username}/approve'),
+                          ('POST', '/api/admin/registrations/{username}/reject')}:
+        return role in {'head_administrator', 'administrator', 'manager'}
     if role in ROLE_LABELS and route in {'/api/intelligence/scans/{scan_id}', '/api/intelligence/scans/{scan_id}/explain'}:
         return (method == 'GET' and route.endswith('{scan_id}')) or (method == 'POST' and route.endswith('/explain'))
     if route == '/api/intelligence/reports':
@@ -73,7 +90,7 @@ def allowed(role, method, route):
 ALL_VIEWS = [
     'Overview', 'Alerts', 'Findings', 'Risk levels', 'Downloaded-file checks',
     'Scan history', 'Devices', 'Extensions', 'Security events', 'Whitelist & overrides',
-    'Monthly reports', 'Accounts', 'Incident cases', 'Security policies',
+    'Reports', 'Accounts', 'Incident cases', 'Security policies',
     'Privacy governance', 'Detection evaluation', 'Usability and accessibility',
     'Security guidance', 'My account', 'My file history', 'Website access',
 ]
@@ -81,13 +98,13 @@ ALL_VIEWS = [
 def profile(username, role):
     views = list(ALL_VIEWS)
     if role not in ROLE_LABELS: views = []
-    elif role == 'administrator': views.remove('Accounts')
     elif role == 'manager':
-        views = [v for v in views if v not in {'Accounts', 'Downloaded-file checks',
+        views = [v for v in views if v not in {'Downloaded-file checks',
             'Whitelist & overrides', 'Security policies', 'Privacy governance',
             'Detection evaluation', 'Usability and accessibility'}]
     elif role == 'normal_user': views = ['Downloaded-file checks', 'My file history', 'Security guidance', 'My account', 'Website access']
     return {'username': username, 'display_name': 'Head of Administrator' if role == 'head_administrator' else username,
             'role': role, 'role_label': ROLE_LABELS.get(role, 'No access'), 'views': views,
             'can_manage_accounts': role == 'head_administrator',
+            'approvable_roles': [r for r in ('normal_user', 'manager', 'administrator') if can_approve_role(role, r)],
             'can_manage_reports': role in {'head_administrator', 'administrator'}}

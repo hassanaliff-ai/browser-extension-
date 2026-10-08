@@ -15,7 +15,7 @@ def test_navigation_matches_backend_profile(http,role):
     assert_clean(instance)
     workspace=instance.sidebar.radio[0]
     assert set(workspace.options) == set(profile(role,role)['views'])
-    assert ('Accounts' in workspace.options) == (role == 'head_administrator')
+    assert ('Accounts' in workspace.options) == (role in {'head_administrator','administrator','manager'})
 
 def test_normal_user_cannot_restore_a_forbidden_workspace(http):
     role_http(http,'normal_user')
@@ -33,7 +33,7 @@ def test_normal_file_check_hides_device_impersonation_controls(http):
 
 def test_manager_reports_offer_analysis_but_no_generation_or_delivery(http):
     role_http(http,'manager')
-    instance=app(True,'Monthly reports')
+    instance=app(True,'Reports')
     assert_clean(instance)
     assert not any(r.label in ('Generate LLM draft','Send report to administrators') for r in instance.button)
     assert any('Manager access' in r.value for r in instance.caption)

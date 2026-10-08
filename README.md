@@ -9,21 +9,50 @@ administrator console. FastAPI remains a separate security backend. The earlier
 Streamlit dashboard is retained for compatibility and is not required to use the
 extension.
 
-## Chrome extension 0.6
+## Chrome extension 0.8.6
+
+The extension console uses teal navigation and option bars, with Light, Dark and
+Use device setting appearance choices. Settings saves appearance alongside
+language, time zone and table size in Chrome local storage. The console header
+has a quick Dark mode toggle; the popup, sign-in and blocked-page screen use the
+saved choice. Risk badges, scores and approval controls keep their original meaning.
+
+Every approved account can upload or remove a profile logo in **My account**.
+Logos remain local to that account in the current Chrome profile. **Security events**
+identifies the linked device, verified scanning user and privacy-safe target reference.
+**Table size** offers Compact, Standard and Spacious layouts without hiding records.
+See [extension instructions](extension/README.md) for installation and feature details;
+[0.8.3 appearance verification](docs/Release%200.8.3%20Appearance%20Verification.md)
+and [0.8.2 console verification](docs/Release%200.8.2%20Console%20Verification.md)
+document earlier design checks. Reload ExtSecure and reopen its console after updating.
+
+Website and account approval follow a server-enforced role pyramid: managers
+approve normal users, administrators approve managers, and the head administrator
+approves administrators. Higher roles can also approve lower roles. Only the
+head may approve or reject their own website requests. Account registration
+allows requesting a role, but never grants it before a higher-role review.
+Active approval chains are rechecked on each authenticated request; an inactive
+or invalid supervisor chain denies access. Existing account role changes remain
+restricted to the head. Self-review decisions are recorded in the audit log. New website approvals offer
+24 hours, 7 days, or Forever (whitelist). Temporary access is reusable until expiry;
+permanent access continues until revoked, without repeat approval requests.
+
+## AI features in 0.6
 
 Version 0.6 adds bounded public page/text-file reading, structured LLM risk
 explanations and recommendations, and complete weekly/monthly alert and
 explanation snapshots. See [AI runtime setup](AI_INTEGRATION.md). The existing
-Monthly reports extension view contains the new period-report section. The
-backend requires `OPENAI_API_KEY` and `OPENAI_MODEL` for real generation;
+Reports extension view contains the new period-report section. The
+backend supports local Ollama (`LLM_PROVIDER=ollama`, `OLLAMA_MODEL`) or
+OpenAI (`LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL`) for real generation;
 missing settings produce an explicit unavailable result instead of a fake
 AI summary. No model was trained from scratch.
 
 Version 0.5 adds English/Arabic with RTL, saved IANA display time zones including
 UTC/KSA, and backend-approved website access. The packaged Chrome navigation
 rule blocks new HTTP/HTTPS top-level visits until an authenticated account gets
-an independently reviewed one-visit or expiring URL whitelist approval. Managers
-can review those requests; users cannot approve their own requests. Whitelist
+a reviewed one-visit or expiring URL whitelist approval. The role pyramid
+controls review authority; only the head can review their own website requests. Whitelist
 visits are revalidated against the backend, without permanent browser bypass
 rules. Monthly reporting boundaries remain UTC. See `extension/README.md` for
 permission scope, privacy, installation and native Chrome smoke checks.
@@ -57,9 +86,9 @@ remain unavailable to that role.
 
 The sign-in screen offers **Log in** and **Register new account**. New users
 choose a password of at least 12 characters, enroll an authenticator and verify
-a code within 15 minutes. Their account remains pending until the **Head of
-Administrator** approves it and assigns **Administrator**, **Manager** or
-**Normal user** access. There is no invitation code or self-service role selection.
+a code within 15 minutes and request **Administrator**, **Manager** or
+**Normal user** access. Their account remains pending until a higher role approves
+it. There is no invitation code and requesting a role does not grant privileges.
 Every role signs in with a password and a fresh authenticator code.
 
 Authenticator setup shows a locally generated **QR code**, with **Enter the
@@ -70,8 +99,9 @@ run `python -m alba_security.provision_head --env .env --export-qr` on the serve
 and open the generated offline page in `.private`.
 
 The primary configured account is the protected Head of Administrator and has
-full access. It alone can approve/reject registrations, change roles and disable
-access. Administrators run security workflows; managers monitor findings,
+full access. Managers review normal-user registrations, administrators review
+manager registrations, and the head reviews administrators. Only the head changes
+existing roles or disables account access. Administrators run security workflows; managers monitor findings,
 review reports/ML results and manage alerts and incident cases; normal users
 check files and review only their own results, account and security guidance.
 Role changes and disabling revoke existing sessions. Backend route checks
@@ -102,7 +132,7 @@ security responsibilities and the six additional investigation and governance ro
 | Administrator 2FA | Separate password and authenticator steps, expiring sessions, replay protection and per-client attempt limits. |
 | Whitelist and overrides | Expiring, audited exact URL/domain exceptions; original risk evidence remains visible. |
 | Downloaded-file checks | Administrator SHA-256 lookup or a file upload up to 32 MiB; only the hash goes to VirusTotal. |
-| Monthly reports | UTC statistics, separately labeled AI narrative, saved drafts, and retries for recipients who have not accepted delivery. |
+| Reports | UTC statistics, separately labeled AI narrative, saved drafts, and retries for recipients who have not accepted delivery. |
 | High-severity alerts | Email/webhook delivery outcomes plus acknowledge, resolve and reopen actions with review notes. |
 | Usability and accessibility | Actual walkthrough records, issue tracking, documented fixes and verified retests. |
 | Privacy and data governance | Data inventory, collection purpose, hostname minimization and retention preview with investigation holds. |
@@ -122,7 +152,7 @@ screens, independent reviewer setup, retention scope and evaluation interpretati
 ## Setup
 
 Monthly reports now include an **Isolation Forest** activity review. Use
-**Run monthly ML analysis** within Monthly reports to inspect daily results and
+**Run monthly ML analysis** within Reports to inspect daily results and
 download evidence. Training uses the 90 UTC days strictly before the selected
 completed month, with at least 30 active days and three distinct observations.
 Features are log scan volume, High/Critical fraction and Unknown fraction.
@@ -325,7 +355,7 @@ revokes it. Repeated invalid codes trigger a temporary lockout.
 | Administrator file checks | `POST /monitor/api/admin/downloads/scan`, `POST /monitor/api/admin/downloads/scan-file` | Administrator bearer session |
 | Alert review | `POST /monitor/api/alerts/{alert_id}/status` | Administrator bearer session |
 | URL/domain exceptions | `GET/POST /monitor/api/overrides`, `POST /monitor/api/overrides/{id}/deactivate`, `GET /monitor/api/overrides/audit` | Administrator bearer session |
-| Monthly reports | `GET /monitor/api/reports/monthly/stats`, `GET /monitor/api/reports/monthly`, `POST /monitor/api/reports/monthly/generate`, `POST /monitor/api/reports/monthly/{YYYY-MM}/send` | Administrator bearer session |
+| Reports | `GET /monitor/api/reports/monthly/stats`, `GET /monitor/api/reports/monthly`, `POST /monitor/api/reports/monthly/generate`, `POST /monitor/api/reports/monthly/{YYYY-MM}/send` | Administrator bearer session |
 
 For example, a trusted caller can submit a synthetic check from PowerShell:
 
@@ -367,7 +397,9 @@ extension or companion service must call one of these routes. Do not put
 
 Monthly reports cover a completed UTC calendar month. Administrators can view
 aggregate statistics, generate a saved draft, and explicitly email it. Set
-`OPENAI_API_KEY` and `OPENAI_MODEL` on the backend to generate the summary. The
+`LLM_PROVIDER=ollama` and `OLLAMA_MODEL=qwen3:4b-instruct` for this computer's local
+model; **Start ExtSecure.cmd** starts the installed local runtime and API after
+a restart. OpenAI remains an optional provider with its backend key and model. The
 model receives only aggregate counts and fixed finding categories, never raw
 URLs, filenames, device names, or individual events. To prepare and send the
 previous completed month from a trusted scheduler, run:
@@ -461,3 +493,6 @@ extsecure-integrated/
 ├── requirements-dev.txt          # Adds pytest + respx
 └── README.md
 ```
+
+
+Chrome device enrollment, enabled-extension inventory and device block controls are now available in the MV3 console. See [extension setup and inventory workflow](extension/README.md#basic-device-and-chrome-setup-074) for registration, optional Chrome permissions, access enforcement and limitations.

@@ -1,5 +1,5 @@
 import {normalizePreferences} from './locale.js';
-import {API_ORIGIN, apiError, safeApiPath, privateTarget} from './core.js';
+import {API_ORIGIN, VERSION, apiError, safeApiPath, privateTarget} from './core.js';
 export const isExtension = location.protocol === 'chrome-extension:' && !!globalThis.chrome?.runtime?.id;
 // The ordinary-browser adapter exists only for an explicitly labelled local UI
 // review. Chrome uses the service worker and chrome.storage.session instead.
@@ -23,9 +23,23 @@ async function previewRequest(path,method='GET',body,direct=false) {
   return data;
 }
 export async function send(message) {
-  if(isExtension){const result=await chrome.runtime.sendMessage(message);if(!result?.ok)throw Object.assign(new Error(result?.error??'The extension service worker did not respond.'),{status:result?.status});return result.data;}
+  if(isExtension){
+    let result;
+    try { result=await chrome.runtime.sendMessage(message); }
+    catch(error) {
+      if(/context invalidated|receiving end does not exist|could not establish connection/i.test(error.message??''))
+        throw new Error('This console is disconnected from ExtSecure. Reload ExtSecure on chrome://extensions, close this tab, then reopen the console from the extension icon.');
+      throw error;
+    }
+    if(!result?.ok){
+      if(result?.error==='Unknown extension action.')throw Object.assign(new Error('Chrome is running an older ExtSecure worker that does not support this action. Click Restart ExtSecure, then reopen the console and sign in. The updated extension folder is C:\\Users\\hassa\\browser-extension-\\extension.'),{code:'EXTENSION_UPDATE_REQUIRED'});
+      throw Object.assign(new Error(result?.error??'The extension service worker did not respond. Reload ExtSecure and reopen its console.'),{status:result?.status});
+    }
+    return result.data;
+  }
   if(!previewAllowed)throw new Error('Load the ExtSecure folder as an unpacked Chrome extension. This interface is not a standalone website.');
   switch(message.type){
+    case 'HEALTH':return {status:'unchecked'};
     case 'PREFERENCES':{try{return normalizePreferences(JSON.parse(localStorage.getItem('extsecure-preview-preferences')??'{}'));}catch{return normalizePreferences();}}
     case 'SAVE_PREFERENCES':{const prefs=normalizePreferences(message.preferences,true);localStorage.setItem('extsecure-preview-preferences',JSON.stringify(prefs));return prefs;}
     case 'BLOCKED_STATE':return {target:'https://example.com/',signed_in:!!previewSession.token,allowed:false};
@@ -35,7 +49,7 @@ export async function send(message) {
     case 'VERIFY':{const data=await previewRequest('/api/admin/verify','POST',{challenge_token:previewSession.challenge_token,totp_code:message.code});previewSession={token:data.access_token,expires_at:data.expires_at};previewSession.profile=await previewRequest('/api/admin/me');return {profile:previewSession.profile};}
     case 'REGISTER':{const data=await previewRequest('/api/admin/register','POST',{username:message.username,password:message.password});previewSession={enrollment_token:data.enrollment_token};return {secret:data.totp_secret,...await previewRequest('/api/admin/register/qr','POST',previewSession)};}
     case 'ENROLLMENT_QR':return previewRequest('/api/admin/register/qr','POST',{enrollment_token:previewSession.enrollment_token});
-    case 'REGISTER_VERIFY':{const data=await previewRequest('/api/admin/register/verify','POST',{enrollment_token:previewSession.enrollment_token,totp_code:message.code});previewSession={};return data;}
+    case 'REGISTER_VERIFY':{const data=await previewRequest('/api/admin/register/verify','POST',{enrollment_token:previewSession.enrollment_token,totp_code:message.code,role:message.role??'normal_user'});previewSession={};return data;}
     case 'RESET_AUTH':if(previewSession.enrollment_token)await previewRequest('/api/admin/register/cancel','POST',{enrollment_token:previewSession.enrollment_token});previewSession={};return {};
     case 'LOGOUT':try{return await previewRequest('/api/admin/logout','POST');}finally{previewSession={};}
     case 'API':return previewRequest(message.path,message.method??'GET',message.body);
@@ -44,5 +58,18 @@ export async function send(message) {
     case 'OPEN_CONSOLE':location.href='console.html'+(message.view?'#'+message.view:'');return {};
     default:throw new Error('Unsupported preview action.');
   }
+}
+
+export function inventoryCompatibility(state) {
+  if(!isExtension)return {ready:false};
+  const ready=state?.version===VERSION&&Array.isArray(state?.capabilities)&&['device-enrollment','chrome-inventory','device-access-choice'].every(feature=>state.capabilities.includes(feature));
+  return {ready,ui_version:VERSION,worker_version:state?.version??'Unknown'};
+}
+
+export function restartExtension() {
+  if(!isExtension||typeof chrome.runtime.reload!=='function')throw new Error('Open chrome://extensions and reload ExtSecure from C:\\Users\\hassa\\browser-extension-\\extension.');
+  // Reload the installed package, rather than sending another unsupported
+  // message to the old worker. Chrome keeps local device identity storage.
+  chrome.runtime.reload();
 }
 export const previewNotice = isExtension ? '' : '<div class="preview-banner"><strong>Extension UI preview</strong> · Isolated test data. Chrome APIs require loading the unpacked extension.</div>';

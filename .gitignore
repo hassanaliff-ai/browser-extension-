@@ -6,6 +6,7 @@ __pycache__/
 *.pyc
 .env
 .private/
+.env.ai-setup.tmp
 *.log
 .DS_Store
 *.db

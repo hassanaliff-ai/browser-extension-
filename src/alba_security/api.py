@@ -30,6 +30,8 @@ from alba_security.admin_directory import AdminDirectory
 from alba_security.registration import install_registration
 from alba_security.intelligence import install_intelligence
 from alba_security.website_access import install_website_access
+from alba_security.inventory import (install_inventory, enforce_device, browser_state,
+    device_metadata, extension_metadata, scan_device_fields, DeviceRegistration)
 from alba_security.governance import active_policy, audit, initialize_governance, install_governance, privacy_settings
 from alba_security.overrides import (
     Override, OverrideAudit, create_override, deactivate_override, list_overrides, match_override,
@@ -166,7 +168,15 @@ def _highest(scans: list[Scan]) -> Severity:
     return max((scan.severity for scan in scans), key=lambda label: SEVERITY_RANK.get(label, 0))
 
 
-def _event_record(item: SecurityEvent) -> dict:
+def _event_record(item: SecurityEvent, db: Session, context: tuple) -> dict:
+    devices, scans, owners, show_hostnames = context
+    device = devices.get(item.device_id)
+    scan = scans.get(item.scan_id)
+    ownership = owners.get(item.scan_id)
+    username = item.details.get('scan_username') or (ownership.username if ownership else None)
+    target = scan.target_display if scan else None
+    if scan and scan.target_kind == 'url' and not show_hostnames:
+        target = f'URL {scan.target_fingerprint[:12]}'
     return {
         "id": item.id,
         "event_type": item.event_type,
@@ -174,6 +184,10 @@ def _event_record(item: SecurityEvent) -> dict:
         "message": item.message,
         "scan_id": item.scan_id,
         "device_id": item.device_id,
+        "device_name": item.details.get("device_name") or (device.name if device else None),
+        "username": username or item.details.get("actor"),
+        "target_kind": scan.target_kind if scan else None,
+        "target_display": target,
         "extension_id": item.extension_id,
         "score": item.details.get("score"),
         "completeness": item.details.get("completeness"),
@@ -200,6 +214,18 @@ def _report_record(item: MonthlyReportRecord) -> dict:
         "sent_at": _iso(item.sent_at) if item.sent_at else None,
         "delivery_outcomes": item.delivery_outcomes,
     }
+
+
+def _event_records(items, db: Session) -> list[dict]:
+    from alba_security.models import PersonalScan
+    items = list(items)
+    device_ids = {item.device_id for item in items if item.device_id}
+    scan_ids = {item.scan_id for item in items if item.scan_id}
+    devices = {row.id: row for row in db.scalars(select(Device).where(Device.id.in_(device_ids)))} if device_ids else {}
+    scans = {row.id: row for row in db.scalars(select(Scan).where(Scan.id.in_(scan_ids)))} if scan_ids else {}
+    owners = {row.scan_id: row for row in db.scalars(select(PersonalScan).where(PersonalScan.scan_id.in_(scan_ids)))} if scan_ids else {}
+    context = (devices, scans, owners, privacy_settings(db)['show_hostnames'])
+    return [_event_record(item, db, context) for item in items]
 
 
 def create_app(
@@ -316,6 +342,7 @@ def create_app(
             authentication_audit(db, actor, 'authorization_denied', role=role,
                                  method=request.method, route=getattr(route, 'path', ''))
             raise HTTPException(403, 'Your role does not permit this action')
+        enforce_device(db, request, role=role, route=getattr(route, 'path', ''))
         return token
 
     def require_ingest(x_ingest_token: Annotated[str | None, Header()] = None):
@@ -331,7 +358,10 @@ def create_app(
     install_governance(app, session_scope, require_actor, admin_auth)
     install_registration(app, session_scope, require_actor, admin_auth, require_sign_in_capacity)
     install_website_access(app, session_scope, require_actor, admin_auth)
+    from alba_security.ai_jobs import install_ai_jobs
+    install_ai_jobs(app, require_actor, admin_auth)
     install_intelligence(app, session_scope, require_actor, admin_auth)
+    install_inventory(app, session_scope, require_actor, admin_auth)
 
     def scan_display(db: Session, scan: Scan) -> str:
         if scan.target_kind == "url" and not privacy_settings(db)["show_hostnames"]:
@@ -374,9 +404,11 @@ def create_app(
         return {"access_token": session.access_token, "expires_at": _iso(session.expires_at)}
 
     @app.get('/api/admin/me')
-    def current_account(actor: str = Depends(require_actor), db: Session = Depends(session_scope)):
+    def current_account(request: Request, actor: str = Depends(require_actor), db: Session = Depends(session_scope)):
         from alba_security.permissions import profile
-        return profile(actor, admin_auth.role(db, actor))
+        result = profile(actor, admin_auth.role(db, actor))
+        result['inventory'] = browser_state(db, request)
+        return result
 
     @app.post("/api/admin/logout")
     def admin_logout(
@@ -388,7 +420,10 @@ def create_app(
         authentication_audit(db, actor, 'signed_out')
         return {"signed_out": True}
 
-    def record_scan(payload: ScanCreate, db: Session, *, notify: bool = True) -> dict:
+    def record_scan(payload: ScanCreate, db: Session, *, notify: bool = True, actor: str | None = None) -> dict:
+        registration = db.get(DeviceRegistration, payload.device_id)
+        if registration and registration.blocked:
+            raise HTTPException(403, 'This device is blocked. Contact an administrator.')
         fingerprint, display = _target_identity(payload.target_kind, payload.target)
         policy = active_policy(db)
         if payload.target_kind == "url" and not privacy_settings(db)["show_hostnames"]:
@@ -468,6 +503,7 @@ def create_app(
                 created_at=now,
             ))
 
+        event_identity = {"device_name": device.name, "scan_username": actor}
         db.add(SecurityEvent(
             event_type="scan_completed",
             severity=result.severity,
@@ -476,6 +512,8 @@ def create_app(
             device_id=device.id,
             extension_id=scan.extension_id,
             details={
+                **event_identity,
+                "actor": actor,
                 "target_kind": payload.target_kind,
                 "risk_policy_version": policy["version"],
                 "score": result.score,
@@ -504,6 +542,8 @@ def create_app(
                 device_id=device.id,
                 extension_id=scan.extension_id,
                 details={
+                    **event_identity,
+                    "actor": actor,
                     "score": result.score,
                     "completeness": result.completeness,
                     "detected_codes": [item.code for item in result.findings],
@@ -519,7 +559,7 @@ def create_app(
                     scan_id=scan.id,
                     device_id=device.id,
                     extension_id=scan.extension_id,
-                    details={"override_id": applied_override.id},
+                    details={**event_identity, "override_id": applied_override.id},
                     created_at=now,
                 ))
         db.commit()
@@ -542,7 +582,7 @@ def create_app(
                     scan_id=scan.id,
                     device_id=device.id,
                     extension_id=scan.extension_id,
-                    details=outcome,
+                    details={**outcome, **event_identity},
                     created_at=utc_now(),
                 ))
             db.commit()
@@ -572,7 +612,10 @@ def create_app(
             return payload, None
         token = request.headers.get('authorization', '')[7:]
         actor = admin_auth.actor(db, token)
-        if admin_auth.role(db, actor) == 'normal_user':
+        linked_device = getattr(request.state, 'inventory_device_id', None)
+        if linked_device:
+            payload = payload.model_copy(update=scan_device_fields(db, linked_device))
+        elif admin_auth.role(db, actor) == 'normal_user':
             payload = payload.model_copy(update={
                 'device_id':'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
                 'device_name':'Personal file checks', 'extension_key':None,
@@ -580,6 +623,9 @@ def create_app(
         return payload, actor
 
     def _scan_download(payload: DownloadScanCreate, db: Session, owner: str | None = None) -> dict:
+        registration = db.get(DeviceRegistration, payload.device_id)
+        if registration and registration.blocked:
+            raise HTTPException(403, 'This device is blocked. Contact an administrator.')
         verdict = lookup_file_hash(db, payload.sha256, api_key=vt_api_key, client=vt_client)
         scan_input = ScanCreate(
             device_id=payload.device_id,
@@ -591,7 +637,7 @@ def create_app(
             target=payload.sha256,
             signals=[SignalInput(**item) for item in verdict.signals()],
         )
-        result = create_scan(scan_input, db)
+        result = record_scan(scan_input, db, actor=owner)
         result["file_lookup"] = verdict.public()
         if owner:
             from alba_security.models import PersonalScan
@@ -683,7 +729,7 @@ def create_app(
             "devices": db.scalar(select(func.count()).select_from(Device)),
             "extensions": db.scalar(select(func.count()).select_from(Extension)),
             "severity_counts": severity_counts,
-            "recent_events": [_event_record(item) for item in recent],
+            "recent_events": _event_records(recent, db),
             "daily_activity": [{"date": day, **totals} for day, totals in daily_activity.items()],
         }
 
@@ -706,6 +752,7 @@ def create_app(
                 "last_seen": _iso(item.last_seen),
                 "scan_count": scan_count or 0,
                 "highest_severity": ranks.get(rank, "Unknown"),
+                **device_metadata(db, item.id),
             }
             for item, scan_count, rank in rows
         ]
@@ -723,6 +770,9 @@ def create_app(
                 "id": item.id,
                 "name": item.name,
                 "version": item.version,
+                "extension_key": item.extension_key,
+                "device_name": db.get(Device, item.device_id).name,
+                **extension_metadata(db, item.id),
                 "device_id": item.device_id,
                 "last_seen": _iso(item.last_seen),
                 "scan_count": scan_count or 0,
@@ -801,7 +851,7 @@ def create_app(
             "signals": item.signals, "unknown_codes": unknown_codes,
             "findings": [{"code": row.signal_code, "title": row.title, "detail": row.detail,
                           "points": row.points, "severity": row.severity} for row in findings],
-            "events": [_event_record(event) for event in events],
+            "events": _event_records(events, db),
         }
 
     @app.get("/api/overrides", dependencies=[Admin])
@@ -887,10 +937,13 @@ def create_app(
         return [_report_record(item) for item in items]
 
     @app.post("/api/reports/monthly/generate", status_code=201, dependencies=[Admin])
-    def generate_report(payload: ReportPeriod, db: Session = Depends(session_scope)) -> dict:
+    def generate_report(payload: ReportPeriod, request: Request, actor: str = Depends(require_actor), db: Session = Depends(session_scope)):
         current = utc_now()
         if (payload.year, payload.month) >= (current.year, current.month):
             raise HTTPException(status_code=422, detail="Monthly reports require a completed UTC month")
+        if request is not None and request.headers.get('prefer') == 'respond-async':
+            return app.state.submit_ai_job(actor, '/api/reports/monthly/generate',
+                lambda fresh: generate_report(payload, None, actor, fresh))
         try:
             record = prepare_monthly_report(
                 db, payload.year, payload.month,
@@ -962,6 +1015,6 @@ def create_app(
     @app.get("/api/events", dependencies=[Admin])
     def events(db: Session = Depends(session_scope), limit: int = Query(default=200, ge=1, le=500)) -> list[dict]:
         items = db.scalars(select(SecurityEvent).order_by(SecurityEvent.created_at.desc(), SecurityEvent.id.desc()).limit(limit)).all()
-        return [_event_record(item) for item in items]
+        return _event_records(items, db)
 
     return app

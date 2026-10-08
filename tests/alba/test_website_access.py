@@ -21,7 +21,7 @@ def create(client, header, target=URL):
 def review(client, header, request, decision='once', revision=None):
     return client.post('/api/access/requests/'+request['id']+'/review', headers=header,
         json={'decision': decision, 'expected_revision': revision or request['revision'],
-              'whitelist_days': 30, 'reason': 'Verified this destination and the documented business need'})
+              'whitelist_days': 30, 'confirmed': True, 'reason': 'Verified this destination and the documented business need'})
 
 def test_anonymous_users_cannot_request_review_or_consume(roles):
     client, _, _, _ = roles
@@ -128,7 +128,7 @@ def test_renewed_whitelist_supersedes_the_previous_grant(roles):
     first = create(client, h['normal_user'])
     assert review(client, h['manager'], first, 'whitelist').status_code == 200
     second = create(client, h['administrator'])
-    assert review(client, h['manager'], second, 'whitelist').status_code == 200
+    assert review(client, h['head_administrator'], second, 'whitelist').status_code == 200
     entries = client.get('/api/access/whitelist', headers=h['manager']).json()
     assert len(entries) == 1
     with app.state.session_factory() as db:

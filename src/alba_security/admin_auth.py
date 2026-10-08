@@ -112,7 +112,7 @@ class AdminAuth:
         totp_secret: str,
         *,
         challenge_ttl_seconds: int = 300,
-        session_ttl_seconds: int = 43_200,
+        session_ttl_seconds: int = 86_400,
         max_failed_attempts: int = 5,
         lockout_seconds: int = 900,
         clock: Callable[[], datetime] = utc_now,
@@ -149,7 +149,7 @@ class AdminAuth:
             password_hash=env.get("ADMIN_PASSWORD_HASH", ""),
             totp_secret=env.get("ADMIN_TOTP_SECRET", ""),
             challenge_ttl_seconds=_positive_env_int(env, "ADMIN_CHALLENGE_TTL_SECONDS", 300),
-            session_ttl_seconds=_positive_env_int(env, "ADMIN_SESSION_TTL_SECONDS", 43_200),
+            session_ttl_seconds=_positive_env_int(env, "ADMIN_SESSION_TTL_SECONDS", 86_400),
             max_failed_attempts=_positive_env_int(env, "ADMIN_MAX_FAILED_ATTEMPTS", 5),
             lockout_seconds=_positive_env_int(env, "ADMIN_LOCKOUT_SECONDS", 900),
         )

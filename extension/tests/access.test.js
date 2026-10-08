@@ -43,24 +43,24 @@ test('Static navigation gate covers main-frame HTTP and HTTPS while worker sleep
  for(const url of ['http://localhost:9999/','http://localhost.evil:8765/','http://127.0.0.1:8765.evil/'])assert.equal(exempt.test(url),false);
 });
 test('Preference validation keeps session and scoring data out of local settings',()=>{
- assert.deepEqual(normalizePreferences({language:'ar',timeZone:'Asia/Riyadh',token:'private'}),{language:'ar',timeZone:'Asia/Riyadh'});
- assert.deepEqual(normalizePreferences({language:'xx',timeZone:'bad'}),{language:'en',timeZone:'UTC'});
+ assert.deepEqual(normalizePreferences({language:'ar',timeZone:'Asia/Riyadh',token:'private'}),{language:'ar',timeZone:'Asia/Riyadh',theme:'light',tableSize:'standard'});
+ assert.deepEqual(normalizePreferences({language:'xx',timeZone:'bad'}),{language:'en',timeZone:'UTC',theme:'light',tableSize:'standard'});
  assert.throws(()=>normalizePreferences({language:'xx'},true));
  assert.throws(()=>normalizePreferences({timeZone:'bad'},true));
 });
 test('KSA timestamps move three hours while UTC month accounting stays unchanged',()=>{
- setPreferences({language:'en',timeZone:'UTC'});assert.match(formatDate('2026-09-30T23:30:00Z'),/23:30/);
+ setPreferences({language:'en',timeZone:'UTC',theme:'light',tableSize:'standard'});assert.match(formatDate('2026-09-30T23:30:00Z'),/23:30/);
  setPreferences({language:'en',timeZone:'Asia/Riyadh'});const result=formatDate('2026-09-30T23:30:00Z');assert.match(result,/02:30/);assert.match(result,/1 Oct/);
  assert.equal(completedMonth(new Date('2026-10-01T00:01:00Z')),'2026-09');
  assert.equal(formatDate('invalid'),'—');
 });
 test('Arabic localization covers the approval journey and does not modify evidence',()=>{
- setPreferences({language:'ar',timeZone:'Asia/Riyadh'});
+ setPreferences({language:'ar',timeZone:'Asia/Riyadh',theme:'light',tableSize:'standard'});
  assert.equal(translate('Request access'),'طلب الوصول');
  assert.equal(translate('Administrator'),'مسؤول النظام');
  assert.equal(translate('https://example.com/'),'https://example.com/');
  assert.match(formatDate('2026-10-05T00:00:00Z'),/Asia\/Riyadh/);
- setPreferences({language:'en',timeZone:'UTC'});assert.equal(translate('Request access'),'Request access');
+ setPreferences({language:'en',timeZone:'UTC',theme:'light',tableSize:'standard'});assert.equal(translate('Request access'),'Request access');
 });
 test('Approval messages use narrow route grants and manager privileges',()=>{
  for(const path of ['/api/access/requests','/api/access/whitelist'])assert.equal(safeApiPath(path),true);

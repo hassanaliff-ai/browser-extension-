@@ -131,7 +131,7 @@ def test_10_monthly_ui_runs_ml_and_shows_insufficient_history(http):
             return response({'period':period,'status':'insufficient_history','reason':'At least 30 active historical days are required.'})
         return original(url, **kwargs)
     http[0].side_effect = get
-    instance = app(True, 'Monthly reports')
+    instance = app(True, 'Reports')
     button(instance, 'Run monthly ML analysis').click().run()
     assert_clean(instance)
     assert any('30 active historical days' in r.value for r in instance.warning)

@@ -946,7 +946,7 @@ def show_overrides(token: str) -> None:
 
 
 def show_monthly_reports(token: str) -> None:
-    st.header("Monthly reports")
+    st.header("Reports")
     st.caption(
         "Review aggregate statistics for a completed UTC month, generate an LLM summary, "
         "then send the saved report to administrators. The summary uses counts and finding "
@@ -1219,7 +1219,7 @@ def main() -> None:
         "Extensions": show_extensions,
         "Security events": show_events,
         "Whitelist & overrides": show_overrides,
-        "Monthly reports": show_monthly_reports,
+        "Reports": show_monthly_reports,
         "Accounts": show_accounts,
     }
     for governance_view in (
