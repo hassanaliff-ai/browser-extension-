@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -82,6 +82,29 @@ class ScanResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     service: str
+
+
+class CapabilitiesResponse(BaseModel):
+    api_version: str
+    monitoring_available: bool
+    monitoring_base: str | None
+    monitoring_docs: str | None
+    capabilities: list[str]
+    workflow_runner_started: bool
+
+
+def extension_capabilities(request: Request, response: Response) -> CapabilitiesResponse:
+    """Publish only integration metadata, never account or incident information."""
+    monitor = request.app.state.monitoring_app
+    response.headers['Cache-Control'] = 'no-store'
+    features = []
+    if monitor is not None:
+        from alba_security.operations import OPERATIONS_CAPABILITIES
+        features = list(OPERATIONS_CAPABILITIES)
+    return CapabilitiesResponse(api_version=request.app.version, monitoring_available=monitor is not None,
+        monitoring_base='/monitor/api' if monitor is not None else None,
+        monitoring_docs='/monitor/docs' if monitor is not None else None, capabilities=features,
+        workflow_runner_started=bool(monitor is not None and getattr(monitor.state, 'workflow_running', False)))
 
 
 class ExtensionScanRequest(BaseModel):
@@ -299,8 +322,8 @@ def create_app() -> FastAPI:
     load_dotenv(dotenv_path=Path(__file__).with_name(".env"), override=False)
     application = FastAPI(
         title="ExtSecure API",
-        description="Backend API for ExtSecure, a security scanning service.",
-        version="0.3.0",
+        description="ExtSecure scanning and administrator operations API. Workflow automation and control-effectiveness routes are documented at /monitor/docs and use the /monitor/api prefix. Check /extension/capabilities for enabled feature support.",
+        version="0.4.1",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,
@@ -320,6 +343,7 @@ def create_app() -> FastAPI:
     from alba_security.request_limits import SignInRateLimit
     application.state.extension_scan_limit = SignInRateLimit(max_attempts=12, window_seconds=60)
     application.add_api_route('/extension/scan', extension_scan, methods=['POST'], tags=['Extension'])
+    application.add_api_route('/extension/capabilities', extension_capabilities, response_model=CapabilitiesResponse, methods=['GET'], tags=['Extension'])
 
     application.state.monitoring_app = None
     monitoring_enabled = os.getenv("MONITORING_ENABLED", "1").strip().lower() not in {"0", "false", "off"}

@@ -273,7 +273,7 @@ def create_app(
     with session_factory() as db:
         initialize_governance(db)
         admin_auth.initialize_accounts(db)
-    app = FastAPI(title="ExtSecure Monitoring API", version="0.4.0", lifespan=workflow_lifespan)
+    app = FastAPI(title="ExtSecure Monitoring API", version="0.4.1", lifespan=workflow_lifespan)
     @app.middleware('http')
     async def private_api_responses(request: Request, call_next):
         response = await call_next(request)

@@ -287,3 +287,56 @@ async def test_parent_api_lifespan_starts_and_stops_mounted_workflow_runner(monk
     async with main.lifespan(parent):
         assert calls==['workflow_started']
     assert calls==['workflow_started','workflow_stopped','vt_closed']
+
+
+def test_pausing_rule_preserves_settings_when_an_operator_is_revoked(system):
+    from alba_security.registration import RegisteredAdmin
+    client, app, headers, _ = system
+    saved=rule(client,headers['hasan'],assignee='reviewer',reviewer='reviewer')
+    with app.state.session_factory() as db:
+        db.get(RegisteredAdmin,'reviewer').status='disabled';db.commit()
+    payload={k:v for k,v in saved.items() if k not in {'id','revision','author','created_at'}}
+    payload.update(enabled=False,expected_revision=1,reason='Pause the workflow after the reviewer account was revoked')
+    path='/api/workflow/rules/'+saved['id']+'/update'
+    assert client.post(path,headers=headers['hasan'],json=payload).status_code==200
+    payload.update(enabled=True,expected_revision=2)
+    assert client.post(path,headers=headers['hasan'],json=payload).status_code==422
+
+
+def test_operations_readiness_is_private_and_distinguishes_stopped_runner(roles):
+    client, app, headers, _ = roles
+    path='/api/operations/status'
+    assert client.get(path).status_code==401
+    assert client.get(path,headers=headers['normal_user']).status_code==403
+    response=client.get(path,headers=headers['manager'])
+    assert response.status_code==200 and response.headers['cache-control']=='no-store'
+    data=response.json()
+    assert data['api_version']=='0.4.1' and data['status']=='ready'
+    assert data['workflow']['running'] and data['workflow']['interval_seconds']==60
+    assert {'case_escalation','control_effectiveness'}.issubset(data['capabilities'])
+    assert data['notifications']['channel']=='in_app'
+    app.state.workflow_running=False
+    assert client.get(path,headers=headers['head_administrator']).json()['status']=='degraded'
+    app.state.workflow_running=True
+
+
+def test_mounted_feature_discovery_reports_support_without_exposing_private_state(system):
+    from fastapi.testclient import TestClient
+    import main
+    client, monitor, headers, _ = system
+    parent=main.create_app();parent.state.monitoring_app=monitor
+    parent.mount('/monitor',monitor)
+    # The fixture already starts the monitoring lifespan; do not start it twice.
+    mounted=TestClient(parent)
+    try:
+        response=mounted.get('/extension/capabilities')
+        assert response.status_code==200 and response.headers['cache-control']=='no-store'
+        data=response.json()
+        assert data['monitoring_available'] and data['monitoring_base']=='/monitor/api'
+        assert data['monitoring_docs']=='/monitor/docs' and data['workflow_runner_started']
+        assert data['api_version']=='0.4.1' and 'case_escalation' in data['capabilities']
+        private=mounted.get('/monitor/api/operations/status',headers=headers['hasan'])
+        assert private.status_code==200 and private.json()['workflow']['running']
+        assert 'hasan' not in response.text and 'token' not in response.text
+    finally:
+        mounted.close()

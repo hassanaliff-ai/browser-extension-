@@ -27,6 +27,12 @@ class TestHealth:
         assert response.status_code == 200
         assert response.json() == {"status": "ok", "service": "ExtSecure API"}
 
+    def test_feature_discovery_is_explicit_when_monitoring_is_not_configured(self, client):
+        response=client.get('/extension/capabilities')
+        assert response.status_code==200 and response.headers['cache-control']=='no-store'
+        assert response.json()=={'api_version':'0.4.1','monitoring_available':False,'monitoring_base':None,
+            'monitoring_docs':None,'capabilities':[],'workflow_runner_started':False}
+
 
 class TestScanShape:
     def test_url_scan(self, client, respx_mock):

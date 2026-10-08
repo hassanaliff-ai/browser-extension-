@@ -5,10 +5,11 @@ import {reportNavigation} from '../access.js';
 import {workflowBody,controlReviewBody,controlReferences,updateControlReference} from '../operations-ui.js';
 
 test('Operations API grants are narrow and reject unsupported paths and methods',()=>{
- for(const path of ['/api/workflow/rules','/api/workflow/notifications','/api/controls/reviews','/api/controls/effectiveness?days=30'])assert(safeApiPath(path));
+ for(const path of ['/api/operations/status','/api/workflow/rules','/api/workflow/notifications','/api/controls/reviews','/api/controls/effectiveness?days=30'])assert(safeApiPath(path));
  for(const path of ['/api/workflow/run','/api/controls/reviews','/api/controls/navigation',`/api/workflow/rules/${'a'.repeat(8)}-${'b'.repeat(27)}/update`,`/api/workflow/notifications/${'c'.repeat(64)}/acknowledge`])assert(safeApiPath(path,'POST'));
  for(const path of ['/api/workflow/rules/../admin/me','/api/workflow/rules?token=secret','/api/controls/effectiveness?days=30&token=secret'])assert(!safeApiPath(path));
  assert(!safeApiPath('/api/workflow/run','DELETE'));
+ assert(!safeApiPath('/api/operations/status','POST'));
  assert(!roleCanWrite({role:'manager'},'workflow'));
  assert(roleCanWrite({role:'administrator'},'workflow'));
 });

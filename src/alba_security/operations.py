@@ -28,6 +28,8 @@ from alba_security.website_access import WebsiteRequest
 
 SEVERITY = {'Low': 0, 'Medium': 1, 'High': 2, 'Critical': 3}
 logger = logging.getLogger(__name__)
+OPERATIONS_CAPABILITIES = ['incident_assignment', 'reviewer_notifications', 'case_escalation',
+                           'control_effectiveness', 'navigation_observations', 'evidence_assessments']
 
 
 class WorkflowRule(Base):
@@ -245,12 +247,14 @@ async def workflow_lifespan(app):
                 logger.error('Incident workflow sweep failed: %s', type(error).__name__)
             await asyncio.sleep(60)
     task = asyncio.create_task(loop())
+    app.state.workflow_running = True
     try:
         yield
     finally:
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+        app.state.workflow_running = False
 
 
 def latency(samples):
@@ -351,19 +355,35 @@ def effectiveness(db, days, now=None):
 def install_operations(app, session_scope, require_actor, directory):
     app.state.workflow_lock = Lock()
     app.state.workflow_status = {'status': 'waiting', 'last_run': None}
+    app.state.workflow_running = False
     Actor, DB = Depends(require_actor), Depends(session_scope)
 
     def rule_record(row):
         return {'id': row.id, 'name': row.name, 'enabled': row.enabled, 'priority': row.priority,
                 'revision': row.revision, 'author': row.author, 'created_at': iso(row.created_at), **row.settings}
 
-    def validated_settings(payload, db):
+    def validated_settings(payload, db, existing=None):
+        settings = payload.model_dump(exclude={'reason', 'name', 'enabled', 'priority', 'expected_revision'})
+        # Pausing must remain possible after a referenced operator is revoked.
+        # Re-enabling or changing recipients still requires active identities.
+        if existing is not None and not payload.enabled and settings == existing.settings:
+            return settings
         people = directory.operators(db)
         if any(getattr(payload, key) not in people for key in ('assignee', 'reviewer', 'escalate_to')):
             raise HTTPException(422, 'Choose active managers or administrators for every workflow role')
         if directory.role(db, payload.escalate_to) not in {'head_administrator', 'administrator'}:
             raise HTTPException(422, 'Escalation must go to an active administrator or head administrator')
-        return payload.model_dump(exclude={'reason', 'name', 'enabled', 'priority', 'expected_revision'})
+        return settings
+
+    @app.get('/api/operations/status')
+    def operations_status(actor: str = Actor):
+        runner = app.state.workflow_status
+        running = app.state.workflow_running
+        status = 'ready' if running and runner.get('status') == 'ready' else 'starting' if running and runner.get('status') == 'waiting' else 'degraded'
+        return {'api_version': app.version, 'status': status, 'capabilities': OPERATIONS_CAPABILITIES,
+                'workflow': {**runner, 'running': running, 'interval_seconds': 60},
+                'notifications': {'channel': 'in_app'},
+                'evaluation': {'period_days': [7, 30, 90, 365], 'requires_reviewed_labels': True}}
 
     @app.get('/api/workflow/rules')
     def rules(actor: str = Actor, db: Session = DB):
@@ -385,7 +405,10 @@ def install_operations(app, session_scope, require_actor, directory):
 
     @app.post('/api/workflow/rules/{rule_id}/update')
     def update_rule(rule_id: str, payload: RuleUpdate, actor: str = Actor, db: Session = DB):
-        settings = validated_settings(payload, db)
+        existing = db.get(WorkflowRule, rule_id)
+        if existing is None or existing.revision != payload.expected_revision:
+            raise HTTPException(409, 'Workflow rule changed; refresh before updating')
+        settings = validated_settings(payload, db, existing)
         changed = db.execute(update(WorkflowRule).where(WorkflowRule.id == rule_id, WorkflowRule.revision == payload.expected_revision)
                              .values(name=payload.name, enabled=payload.enabled, priority=payload.priority,
                                      settings=settings, revision=payload.expected_revision + 1))

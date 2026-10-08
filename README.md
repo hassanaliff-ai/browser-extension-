@@ -511,3 +511,14 @@ Administrators record evidence-backed assessments for blocking, approvals, excep
 Navigation observations retain a hashed destination, verified user/device identity and outcome, not the URL. They are best-effort reports from signed-in extension pages and cannot prove all browser navigations were enforced. A monitoring outage does not weaken the Chrome navigation gate. Navigation observation cleanup uses the existing configured retention period and explicit retention confirmation. Rule changes, case automation and control reviews are audited. No new Chrome permissions, credentials or external dependencies are required.
 
 API additions: `GET/POST /api/workflow/rules`, `POST /api/workflow/rules/{id}/update`, `POST /api/workflow/run`, `GET /api/workflow/notifications`, `POST /api/workflow/notifications/{id}/acknowledge`, `GET /api/controls/effectiveness?days=30`, `GET/POST /api/controls/reviews`, and `POST /api/controls/navigation`. The deployed prefix is `/monitor`. New tables are created additively with the existing schema initializer.
+
+
+## API 0.4.1: new-task compatibility and readiness
+
+The public and monitoring APIs now report version 0.4.1. The extension remains version 0.8.8. Existing scan, health, sign-in and 2FA contracts are preserved.
+
+- `GET /extension/capabilities` is public integration metadata. It identifies whether monitoring is configured, the `/monitor/api` prefix, the `/monitor/docs` documentation link, supported operation features and whether the workflow runner has started. It does not expose accounts, incidents, credentials or rule settings. Monitoring-disabled deployments report unavailable support rather than advertising working operations.
+- `GET /monitor/api/operations/status` requires a completed 2FA session from a manager, administrator or head administrator. It returns supported features, workflow runner status and interval, the in-app notification channel, and evaluation periods. A stopped or failed runner reports degraded readiness. Normal users and unauthenticated requests are rejected.
+- Rule updates may pause an existing rule while preserving its recipient settings after a referenced operator is revoked. Re-enabling the rule or changing its recipients still validates active operator accounts and an administrator escalation recipient. Stale revisions are rejected.
+
+Open `/docs` for the main scan and integration API; open `/monitor/docs` for workflow rules, notifications, escalation and control-effectiveness endpoints. Both feature-discovery and private readiness responses use `Cache-Control: no-store`. API capability declarations describe supported implementation; they do not assert that a rule has been enabled or an assessment independently verified.

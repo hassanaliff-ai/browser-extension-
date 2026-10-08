@@ -28,6 +28,7 @@ READ_ROUTES = {
     '/api/privacy/retention-preview', '/api/evaluations', '/api/usability',
     '/api/case-assignees', '/api/my/scans', '/api/my/scans/{scan_id}',
     '/api/workflow/rules', '/api/workflow/notifications', '/api/controls/effectiveness', '/api/controls/reviews',
+    '/api/operations/status',
 }
 ADMIN_WRITES = {
     '/api/admin/downloads/scan', '/api/admin/downloads/scan-file',

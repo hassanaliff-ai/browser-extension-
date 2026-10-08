@@ -53,6 +53,7 @@ export function validDigest(value) {
   return value.trim().toLowerCase();
 }
 export function safeApiPath(path, method = 'GET') {
+  if(method==='GET'&&path==='/api/operations/status')return true;
   if(method==='GET'&&/^\/api\/(workflow\/(rules|notifications)|controls\/(reviews|effectiveness(?:\?days=\d{1,3})?))$/.test(path))return true;
   if(method==='POST'&&/^\/api\/(workflow\/(rules(?:\/[a-f0-9-]{36}\/update)?|run|notifications\/[a-f0-9]{64}\/acknowledge)|controls\/(reviews|navigation))$/.test(path))return true;
   if(method==='GET'&&/^\/api\/ai-jobs\/[a-f0-9-]{36}$/.test(path))return true;
