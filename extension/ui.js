@@ -1,4 +1,5 @@
 import {loadTableSize,saveTableSize,observeTableSize} from './table-settings.js';
+import {workflowView,effectivenessView,workflowBody,controlReviewBody,updateControlReference} from './operations-ui.js';
 import {avatar,prepareLogo} from './account-logo.js';
 
 import {explanationForm,runExplanation,intelligenceReports,runPeriodReport,downloadPeriodReport,changePeriodInput} from './intelligence-ui.js';
@@ -28,6 +29,7 @@ const app=document.querySelector('#app');
 let state={},view='',authMode='login',qr='',manualSecret='',pageData={},selected='',period=completedMonth(),scanResult=null,requestSequence=0,busy=false,loading=false,queuedView='';
 
 let devicePairing=null,deviceFilter='all',connectionStatus='unchecked',toastTimer,monthlyOpen=false;
+let controlDays=30;
 
 async function checkConnection(silent=false){
 
@@ -112,6 +114,8 @@ const VIEWS=[
  ['events','Security events','clock','Investigate','Trace scans, threats, alert decisions and notification delivery.'],
 
  ['cases','Incident cases','case','Investigate','Assign an investigation, record evidence and track it through resolution.'],
+ ['workflow','Workflow automation','sliders','Investigate','Assign new incidents, notify reviewers and escalate unresolved cases.'],
+ ['controls','Control effectiveness','chart','Govern','Measure response times and review blocking, approvals, exceptions and alerts.'],
 
  ['access','Website access','globe','Investigate','Request website access or review approvals before a blocked page can open.'],
 
@@ -275,7 +279,7 @@ const scanColumns=[['Destination','target_display'],['Risk',r=>tag(r.severity)],
 
 async function listPage(path,columns){const data=await api(path);pageData={rows:data};return `<section class="panel"><div class="section-head"><h2>Recorded results</h2><input id="filter" class="filter" type="search" aria-label="Filter recorded results" placeholder="Filter results…" aria-controls="records-table" aria-describedby="filter-count"></div><div id="records-table">${table(data,columns)}</div><p id="filter-count" class="meta mt14" role="status" aria-live="polite"><span>${number(data.length)}</span> <span>records returned</span></p><div id="filter-empty" hidden>${empty('No matching results','Change the search text to see more recorded results.')}</div><p class="meta">Filtering searches only the records returned in this view.</p></section>`;}
 
-function selectRows(label,rows,current){return select(label,'selected',rows.map(r=>[r.id,`${short(r.title??r.target_display??r.username??r.id)} · ${r.status??r.severity??''}`]),current,'data-select-record');}
+function selectRows(label,rows,current){return select(label,'selected',rows.map(r=>[r.id,`${short(r.title??r.name??r.target_display??r.username??r.id)} · ${r.status??r.severity??''}`]),current,'data-select-record');}
 
 async function alerts(){const rows=await api('alerts');pageData={rows};const row=rows.find(r=>r.id===selected)??rows[0];selected=row?.id??'';return `<section class="panel">${table(rows,[['Threat','message'],['Risk',r=>tag(r.severity)],['Status',r=>tag(r.status)],['Detected',r=>esc(date(r.created_at))]])}</section>${row?`<section class="panel stack"><h2>Review an alert</h2>${selectRows('Alert',rows,selected)}${notice('Delivery outcomes are recorded under Security events. Changing status does not resend notifications.')}${row.status==='suppressed'?notice('This alert is suppressed by an administrator exception. Review the exception before running a new check.','warning'):can('alerts')?form('alert-status',select('New status','status',['open','acknowledged','resolved'],row.status)+reason(),'Record alert decision'):notice('Your role has view-only access.')}</section>`:''}`;}
 
@@ -301,7 +305,7 @@ async function cases(){const [rows,scans,people]=await Promise.all([api('cases')
 
 async function policies(){const d=await api('policies');pageData=d;const p=d.active,bands=Object.fromEntries(p.severity_bands.map(r=>[r.severity,r.min_score]));const row=d.revisions.find(r=>r.id===selected)??d.revisions[0];selected=row?.id??'';return `<section class="panel stack"><div class="row between"><h2>Active scoring policy</h2><span class="meta">Version ${esc(short(p.version))}</span></div>${notice('Drafts do not affect live scores. A different approved administrator must review a draft before activation.')}${!d.independent_review_available?notice('Only one administrator is available. Add and approve an independent reviewer before approving a policy change.','warning'):''}${table(p.severity_bands,[['Severity',r=>tag(r.severity)],['Starts at','min_score'],['Ends at','max_score']])}${details('Draft a scoring change',form('policy-create',`<div class="fields">${p.signals.map(s=>field(s.title,'weight_'+s.code,'number',s.points,'required min="1" max="100" step="1"')).join('')}${['Medium','High','Critical'].map(label=>field(label+' starts at',label.toLowerCase(),'number',bands[label],'required min="1" max="100" step="1"')).join('')}</div>`+reason(),'Save policy draft'))}</section><section class="panel stack"><h2>Policy revisions</h2>${table(d.revisions,[['Author','author'],['Status',r=>tag(r.status)],['Reviewer','reviewer'],['Reason','reason']])}${row?selectRows('Revision',d.revisions,selected)+table(row.policy.signals,[['Signal','title'],['Proposed points','points']])+table(row.policy.severity_bands,[['Severity',r=>tag(r.severity)],['Proposed minimum','min_score']])+(row.status==='draft'?row.author===state.profile.username?notice('You created this draft. Another administrator must review it.','warning'):form('policy-review',select('Decision','decision',['approved','rejected'])+reason(),'Submit independent review'):row.status==='approved'?form('policy-activate',reason(),'Activate approved policy'):notice('This revision is '+row.status+'.')):''}</section>`;}
 
-async function privacy(){const [rules,preview]=await Promise.all([api('privacy'),api('privacy/retention-preview')]);pageData={rules,preview};return `<section class="panel stack"><h2>Data collection and access</h2>${table(rules.inventory,[['Data','data'],['Stored','stored'],['Purpose','purpose']])}<p class="meta">${esc(rules.retention_scope)}</p>${notice(rules.note_guidance??'Keep personal information, passwords and private URLs out of notes.')}${form('privacy-save',textarea('Collection purpose','collection_purpose',rules.collection_purpose,'required minlength="15" maxlength="1000"')+field('Scan retention period (days)','retention_days','number',rules.retention_days,'required min="7" max="3650"')+check('Retain and display hostnames in URL scan results.','show_hostnames',rules.show_hostnames)+reason(),'Save privacy rules')}</section><section class="panel stack"><h2>Retention preview</h2>${metrics([['Eligible scans',preview.eligible_scans,'Past the retention cutoff','clock'],['Held for cases',preview.protected_case_scans,'Investigation evidence is preserved','case'],['Retention days',rules.retention_days,'Configured period','lock']])}<p class="meta">Cutoff ${esc(date(preview.cutoff))}. Saved monthly reports remain snapshots.</p>${preview.eligible_scans?form('retention-apply',notice('This permanently deletes eligible scan evidence. Review the preview and any applicable retention requirements before proceeding.','warning')+check('Permanently delete the eligible scan evidence shown in this preview.','confirmed'),'Permanently apply retention','danger'):notice('No scan records are currently eligible for deletion.')}</section>`;}
+async function privacy(){const [rules,preview]=await Promise.all([api('privacy'),api('privacy/retention-preview')]);pageData={rules,preview};return `<section class="panel stack"><h2>Data collection and access</h2>${table(rules.inventory,[['Data','data'],['Stored','stored'],['Purpose','purpose']])}<p class="meta">${esc(rules.retention_scope)}</p>${notice(rules.note_guidance??'Keep personal information, passwords and private URLs out of notes.')}${form('privacy-save',textarea('Collection purpose','collection_purpose',rules.collection_purpose,'required minlength="15" maxlength="1000"')+field('Scan retention period (days)','retention_days','number',rules.retention_days,'required min="7" max="3650"')+check('Retain and display hostnames in URL scan results.','show_hostnames',rules.show_hostnames)+reason(),'Save privacy rules')}</section><section class="panel stack"><h2>Retention preview</h2>${metrics([['Eligible scans',preview.eligible_scans,'Past the retention cutoff','clock'],['Held for cases',preview.protected_case_scans,'Investigation evidence is preserved','case'],['Retention days',rules.retention_days,'Configured period','lock']])}<p class="meta">Cutoff ${esc(date(preview.cutoff))}. Saved monthly reports remain snapshots.</p><p class="meta">Navigation observations eligible for removal: ${number(preview.eligible_navigation_observations??0)}</p>${preview.eligible_scans||preview.eligible_navigation_observations?form('retention-apply',notice('This permanently deletes eligible scan evidence. Review the preview and any applicable retention requirements before proceeding.','warning')+check('Permanently delete the eligible scan and navigation evidence shown in this preview.','confirmed'),'Permanently apply retention','danger'):notice('No scan records are currently eligible for deletion.')}</section>`;}
 
 const fixtures=[{name:'Confirmed malicious URL',expected:'threat',signals:[{code:'malicious_url',status:'detected'}]},{name:'Clear URL check',expected:'benign',signals:[{code:'malicious_url',status:'clear'}]},{name:'Unavailable lookup',expected:'unknown',signals:[{code:'malicious_url',status:'unknown'}]}];
 
@@ -337,7 +341,9 @@ async function access(){
 
 
 
+const operationsContext=()=>({api,can,table,form,field,select,check,reason,notice,details,metrics,date,btn,textarea,selectRows,selected,cache:data=>{pageData=data;if(data.row)selected=data.row.id;}});
 const renderers={access,settings,overview,scan,files,alerts,history:()=>scanHistory(false),myhistory:()=>scanHistory(true),risks,overrides,reports,accounts,cases,policies,privacy,evaluation,usability,guidance,account,
+ workflow:()=>workflowView(operationsContext()),controls:()=>effectivenessView(operationsContext(),controlDays),
 
  findings:()=>listPage('findings',[['Finding','title'],['Risk',r=>tag(r.severity)],['Points','points'],['Evidence','detail'],['Detected',r=>esc(date(r.created_at))],['Scan',r=>btn('Inspect','inspect-scan','small',`data-id="${esc(r.scan_id)}"`)]]),
 
@@ -442,6 +448,8 @@ app.addEventListener('click',async event=>{
     if(action==='scan-active'){scanResult=await send({type:'SCAN_URL',target:pageData.active.url,includePath:false});await renderPopup();}
 
     if(action==='inspect-scan'){const r=await api((pageData.personal?'my/scans/':'scans/')+button.dataset.id);shell(resultCard(r)+btn('Back to results','refresh'));}
+    if(action==='workflow-ack')await commit('workflow/notifications/'+button.dataset.id+'/acknowledge',{});
+    if(action==='workflow-case'){view='cases';selected=button.dataset.id;window.history.replaceState(null,'','#cases');await renderView();}
 
     if(action==='run-ml'){const p=reportPeriod(period),r=await api(`reports/monthly/ml?year=${p.year}&month=${p.month}`);pageData.ml=r;document.querySelector('#ml-result').innerHTML=r.status==='ready'?notice(`${r.unusual_days.length} unusual days. ${r.active_training_days} active historical days. These results support review, not a threat verdict.`)+table(r.daily_results,[['Day','date'],['Scans','scans'],['Unusual','unusual']])+notice(r.limitation,'',true)+btn('Download ML evidence','download-ml','small'):notice(r.reason??'Insufficient historical observations.','warning')+btn('Download ML evidence','download-ml','small');}
 
@@ -524,6 +532,10 @@ app.addEventListener('submit',async event=>{
     else if(action==='account-role'){if(!data.confirmed)throw new Error('Confirm session revocation before applying access changes.');await commit('admin/accounts/'+encodeURIComponent(data.username)+'/'+data.operation,data.operation==='role'?{role:data.role,reason:data.reason}:undefined);}
 
     else if(action==='case-create')await commit('cases',{scan_id:data.scan_id,title:data.title,assignee:data.assignee});
+    else if(action==='workflow-create')await commit('workflow/rules',workflowBody(data));
+    else if(action==='workflow-update')await commit('workflow/rules/'+pageData.row.id+'/update',workflowBody(data,pageData.row.revision));
+    else if(action==='workflow-run')await commit('workflow/run',{reason:data.reason});
+    else if(action==='control-review')await commit('controls/reviews',controlReviewBody(data));
 
     else if(action==='case-note')await commit('cases/'+selected+'/notes',{body:data.body});
 
@@ -556,6 +568,8 @@ app.addEventListener('submit',async event=>{
 app.addEventListener('toggle',event=>{if(event.target.classList.contains('monthly-workspace'))monthlyOpen=event.target.open;},true);
 
 app.addEventListener('change',event=>{
+ if(event.target.hasAttribute('data-control-review')){updateControlReference(event.target.form,pageData.referenceRecords??[]);return;}
+ if(event.target.hasAttribute('data-control-days')){if(busy||loading){event.target.value=String(controlDays);return;}const next=Number(event.target.value);if([7,30,90,365].includes(next)){controlDays=next;renderView();}return;}
  if(event.target.hasAttribute('data-table-size')){
   if(busy||loading){event.target.value=getPreferences().tableSize;toast(translate('Wait for the current action to finish.'),true);return;}
   const size=event.target.value;

@@ -320,7 +320,7 @@ def install_governance(app, session_scope, require_actor, directory):
 
     @app.get('/api/case-assignees', dependencies=[Admin])
     def assignees(db: Session = Depends(session_scope)):
-        return [{'username':name} for name in directory.operators(db)]
+        return [{'username':name, 'role':directory.role(db,name)} for name in directory.operators(db)]
 
     @app.get('/api/governance/audit', dependencies=[Admin])
     def audit_history(db: Session = Depends(session_scope), limit: int = Query(200, ge=1, le=500)):
@@ -424,6 +424,8 @@ def install_governance(app, session_scope, require_actor, directory):
             db.rollback()
             raise HTTPException(409, 'Source scan changed during retention; refresh before creating a case') from None
         audit(db, 'case', row.id, actor, 'created', scan_id=row.scan_id, assignee=row.assignee)
+        from alba_security.operations import attach_workflow
+        attach_workflow(db, row, directory)
         db.commit()
         return case_record(row, db)
 
@@ -472,6 +474,9 @@ def install_governance(app, session_scope, require_actor, directory):
     @app.get('/api/privacy', dependencies=[Admin])
     def privacy(db: Session = Depends(session_scope)):
         return {**privacy_settings(db), 'inventory': [
+            {'data': 'Workflow rules and notifications', 'stored': 'Verified operators, deadlines and audited case references', 'purpose': 'Incident assignment, review and escalation'},
+            {'data': 'Navigation observations', 'stored': 'Actor, linked device, hashed destination and outcome; no URL retained', 'purpose': 'Measure extension-reported blocking and approved visits'},
+            {'data': 'Control assessments', 'stored': 'Evidence reference, reviewer, outcome and independent label', 'purpose': 'Evaluate security controls without changing scores'},
             {'data': 'URL scan', 'stored': 'SHA-256 fingerprint and optional hostname; no URL path/query', 'purpose': 'Correlate security findings'},
             {'data': 'File check', 'stored': 'SHA-256 digest; uploaded bytes discarded', 'purpose': 'Reputation lookup'},
             {'data': 'Device / extension', 'stored': 'References, display names and extension version', 'purpose': 'Associate investigations'},
@@ -497,7 +502,9 @@ def install_governance(app, session_scope, require_actor, directory):
     @app.get('/api/privacy/retention-preview', dependencies=[Admin])
     def preview_retention(db: Session = Depends(session_scope)):
         ids, cutoff, settings = retention_candidates(db)
+        from alba_security.operations import NavigationEvidence
         return {'eligible_scans': len(ids), 'cutoff': iso(cutoff), 'revision': settings['revision'],
+                'eligible_navigation_observations': db.query(NavigationEvidence).filter(NavigationEvidence.created_at < cutoff).count(),
                 'protected_case_scans': db.query(IncidentCase.scan_id).distinct().count()}
 
     @app.post('/api/privacy/retention-apply')
@@ -508,12 +515,14 @@ def install_governance(app, session_scope, require_actor, directory):
         ids, cutoff, _ = retention_candidates(db)
         # Deleting children first respects both PostgreSQL and SQLite FKs.
         try:
+            from alba_security.operations import NavigationEvidence
+            removed_navigation = db.execute(delete(NavigationEvidence).where(NavigationEvidence.created_at < cutoff)).rowcount
             for offset in range(0, len(ids), 200):
                 batch = ids[offset:offset + 200]
                 for model in [SecurityEvent, Alert, Finding]:
                     db.execute(delete(model).where(model.scan_id.in_(batch)))
                 db.execute(delete(Scan).where(Scan.id.in_(batch)))
-            audit(db, 'privacy', 'retention', actor, 'retention_applied', removed_scans=len(ids), cutoff=iso(cutoff))
+            audit(db, 'privacy', 'retention', actor, 'retention_applied', removed_scans=len(ids), removed_navigation_observations=removed_navigation, cutoff=iso(cutoff))
             db.commit()
         except IntegrityError:
             db.rollback()

@@ -1,4 +1,4 @@
-# ExtSecure Chrome extension 0.8.7
+# ExtSecure Chrome extension 0.8.8
 
 The console and popup use teal navigation bars with warm terracotta accents. Choose Light, Dark or
 Use device setting in Settings, then Save preferences. The console header also
@@ -201,3 +201,5 @@ These records describe ExtSecure checks. The extension does not read or execute 
 Use the **Table size** selector above any populated table, or open **Settings**, to choose **Compact**, **Standard**, or **Spacious**. Compact reduces row spacing and text size; Spacious increases them. Standard preserves the previous layout. The setting applies to all console tables and is stored locally in this Chrome profile. It persists after reload and preserves appearance, language and time-zone choices. Changing the size does not reload scan data, reset table search, or hide any rows or columns; wide tables remain horizontally scrollable.
 
 Table sizes save directly in Chrome local storage, persist after reopening, and update other open console tabs. Compact, Standard and Spacious change row spacing without hiding records. This remains compatible with an older running background worker.
+
+Workflow automation (Investigate) provides incident assignment rules, reviewer notifications and overdue-case escalation. Control effectiveness (Govern) provides time-window metrics and evidence assessments for blocking, approvals, exceptions and alerts. Administrators configure rules and record assessments; managers view metrics and their own workflow notifications. The API must run for deadline checks. After installing 0.8.8, reload ExtSecure in chrome://extensions and reopen the console. See ../README.md for metric definitions and limits.

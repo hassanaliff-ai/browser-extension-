@@ -33,6 +33,7 @@ from alba_security.website_access import install_website_access
 from alba_security.inventory import (install_inventory, enforce_device, browser_state,
     device_metadata, extension_metadata, scan_device_fields, DeviceRegistration)
 from alba_security.governance import active_policy, audit, initialize_governance, install_governance, privacy_settings
+from alba_security.operations import automate_scan, install_operations, workflow_lifespan
 from alba_security.overrides import (
     Override, OverrideAudit, create_override, deactivate_override, list_overrides, match_override,
 )
@@ -272,7 +273,7 @@ def create_app(
     with session_factory() as db:
         initialize_governance(db)
         admin_auth.initialize_accounts(db)
-    app = FastAPI(title="ExtSecure Monitoring API", version="0.3.0")
+    app = FastAPI(title="ExtSecure Monitoring API", version="0.4.0", lifespan=workflow_lifespan)
     @app.middleware('http')
     async def private_api_responses(request: Request, call_next):
         response = await call_next(request)
@@ -362,6 +363,7 @@ def create_app(
     install_ai_jobs(app, require_actor, admin_auth)
     install_intelligence(app, session_scope, require_actor, admin_auth)
     install_inventory(app, session_scope, require_actor, admin_auth)
+    install_operations(app, session_scope, require_actor, admin_auth)
 
     def scan_display(db: Session, scan: Scan) -> str:
         if scan.target_kind == "url" and not privacy_settings(db)["show_hostnames"]:
@@ -562,6 +564,7 @@ def create_app(
                     details={**event_identity, "override_id": applied_override.id},
                     created_at=now,
                 ))
+        automate_scan(db, scan, admin_auth)
         db.commit()
         if notify and result.severity in {"High", "Critical"} and not applied_override:
             try:

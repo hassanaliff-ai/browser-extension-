@@ -7,7 +7,7 @@ import hashlib
 import hmac
 import os
 import secrets
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -48,7 +48,11 @@ async def lifespan(application: FastAPI):
     application.state.vt = VirusTotalClient(settings.vt_api_key)
     application.state.cache = TTLCache[ScanResult](settings.cache_ttl_seconds)
     try:
-        yield
+        async with AsyncExitStack() as stack:
+            monitor = application.state.monitoring_app
+            if monitor is not None:
+                await stack.enter_async_context(monitor.router.lifespan_context(monitor))
+            yield
     finally:
         await application.state.vt.aclose()
 

@@ -27,6 +27,7 @@ READ_ROUTES = {
     '/api/policies', '/api/cases', '/api/cases/{case_id}', '/api/privacy',
     '/api/privacy/retention-preview', '/api/evaluations', '/api/usability',
     '/api/case-assignees', '/api/my/scans', '/api/my/scans/{scan_id}',
+    '/api/workflow/rules', '/api/workflow/notifications', '/api/controls/effectiveness', '/api/controls/reviews',
 }
 ADMIN_WRITES = {
     '/api/admin/downloads/scan', '/api/admin/downloads/scan-file',
@@ -37,15 +38,19 @@ ADMIN_WRITES = {
     '/api/cases', '/api/cases/{case_id}/notes', '/api/cases/{case_id}/status',
     '/api/privacy', '/api/privacy/retention-apply', '/api/evaluations',
     '/api/usability', '/api/usability/{record_id}/status',
+    '/api/workflow/rules', '/api/workflow/rules/{rule_id}/update', '/api/workflow/run',
+    '/api/workflow/notifications/{notice_id}/acknowledge', '/api/controls/reviews',
 }
 MANAGER_WRITES = {
     '/api/cases', '/api/cases/{case_id}/notes', '/api/cases/{case_id}/status',
     '/api/alerts/{alert_id}/status',
+    '/api/workflow/notifications/{notice_id}/acknowledge',
 }
 MANAGER_READS = READ_ROUTES - {
     '/api/overrides', '/api/overrides/audit', '/api/policies', '/api/privacy',
     '/api/privacy/retention-preview', '/api/evaluations', '/api/usability',
     '/api/governance/audit',
+    '/api/workflow/rules',
 }
 OWNER_ROUTES = {
     ('POST', '/api/admin/accounts/{username}/disable'),
@@ -53,6 +58,8 @@ OWNER_ROUTES = {
 }
 
 def allowed(role, method, route):
+    if method == 'POST' and route == '/api/controls/navigation':
+        return role in ROLE_LABELS
     if method == 'GET' and route == '/api/ai-jobs/{job_id}':
         return role in ROLE_LABELS
     if role in ROLE_LABELS:
@@ -93,6 +100,7 @@ ALL_VIEWS = [
     'Reports', 'Accounts', 'Incident cases', 'Security policies',
     'Privacy governance', 'Detection evaluation', 'Usability and accessibility',
     'Security guidance', 'My account', 'My file history', 'Website access',
+    'Workflow automation', 'Control effectiveness',
 ]
 
 def profile(username, role):

@@ -1,6 +1,6 @@
 import {validateLogo,logoKey} from './account-logo.js';
 import {API_ORIGIN, VERSION, privateTarget, safeApiPath, apiError} from './core.js';
-import {registerNavigationGate} from './access.js';
+import {registerNavigationGate,reportNavigation} from './access.js';
 import {normalizePreferences} from './locale.js';
 import {enabledExtensions,platformName} from './inventory.js';
 import {safeActiveTab} from './workspace-kit.js';
@@ -198,8 +198,9 @@ export async function handleMessage(message,sender={}) {
     return result;
   }
   if (message.type === 'BLOCKED_STATE') {
-    const {target}=await gate.context(sender);
+    const context=await gate.context(sender),{target}=context;
     const session=await loadSession();
+    if(session.token)void reportNavigation(request,loadSession,context,'blocked');
     return {target,signed_in:!!session.token,role:session.profile?.role,...(session.token?await request('/api/access/check','POST',{target}):{allowed:false})};
   }
   if (message.type === 'OPEN_APPROVED') return gate.open(sender);

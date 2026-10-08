@@ -9,7 +9,7 @@ administrator console. FastAPI remains a separate security backend. The earlier
 Streamlit dashboard is retained for compatibility and is not required to use the
 extension.
 
-## Chrome extension 0.8.7
+## Chrome extension 0.8.8
 
 The extension console uses teal navigation and option bars, with Light, Dark and
 Use device setting appearance choices. Settings saves appearance alongside
@@ -496,3 +496,18 @@ extsecure-integrated/
 
 
 Chrome device enrollment, enabled-extension inventory and device block controls are now available in the MV3 console. See [extension setup and inventory workflow](extension/README.md#basic-device-and-chrome-setup-074) for registration, optional Chrome permissions, access enforcement and limitations.
+
+
+## Incident automation and control effectiveness (0.8.8)
+
+Open **Workflow automation** in the extension console. Administrators create rules with a risk threshold, scan type, priority, investigator, reviewer and escalation deadline (1–720 hours). Rules start disabled. The first enabled matching rule creates and assigns a case for new scans; scans with Unknown severity or an applied exception do not create automatic cases. Assignment and reviewer notices are delivered to a durable in-app inbox. Managers see only their own notices. Administrators can review and acknowledge notices across the team. These workflow notices are not outbound email/webhook messages; the existing high-severity threat notifications remain a separate configured feature.
+
+The API checks unresolved cases every 60 seconds, including when hosted under `/monitor`. Existing manual cases retain their investigator until escalation. A deadline runs from creation or the latest reopen; notes and reassignment do not postpone it. Each case cycle escalates once, with a revision check and a saved notice. A disabled rule stops its linked automation. Editing a rule changes its linked cases' future deadline/recipient settings; completed escalations are not resent. Automation never approves websites, changes scores or resolves cases. Use **Check unresolved cases now** for an immediate, audited sweep. Review notifications in this section and click **Open case** to investigate.
+
+Open **Control effectiveness** under Govern. Choose 7, 30, 90 or 365 days. Activity includes authenticated extension navigation reports, approval decisions, applied exceptions, alert deliveries and repeated High/Critical detections for the same device and target fingerprint. Approval response, first alert acknowledgement/resolution and first case resolution show sample count, median and nearest-rank 95th percentile. The activity cohort contains records created in the selected UTC window, so older pending incidents are not included in that cohort.
+
+Administrators record evidence-backed assessments for blocking, approvals, exceptions and alerts. Relevant evidence choices are filtered by control. Percentages use the latest review per control/reference, exclude inconclusive outcomes, and show **Not assessed** without usable reviews. Detection-quality counts use the latest independent label per scan and a High/Critical warning threshold. Unknown scans and unverified labels remain unassessed. Assessments are review evidence, not objective proof of a control's effectiveness. The latest corrected label replaces the earlier label for metrics; audit/history remains available.
+
+Navigation observations retain a hashed destination, verified user/device identity and outcome, not the URL. They are best-effort reports from signed-in extension pages and cannot prove all browser navigations were enforced. A monitoring outage does not weaken the Chrome navigation gate. Navigation observation cleanup uses the existing configured retention period and explicit retention confirmation. Rule changes, case automation and control reviews are audited. No new Chrome permissions, credentials or external dependencies are required.
+
+API additions: `GET/POST /api/workflow/rules`, `POST /api/workflow/rules/{id}/update`, `POST /api/workflow/run`, `GET /api/workflow/notifications`, `POST /api/workflow/notifications/{id}/acknowledge`, `GET /api/controls/effectiveness?days=30`, `GET/POST /api/controls/reviews`, and `POST /api/controls/navigation`. The deployed prefix is `/monitor`. New tables are created additively with the existing schema initializer.
