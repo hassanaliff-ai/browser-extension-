@@ -1,5 +1,5 @@
 import {normalizePreferences} from './locale.js';
-import {API_ORIGIN, VERSION, apiError, safeApiPath, privateTarget} from './core.js';
+import {API_ORIGIN, VERSION, OPERATIONS_API_CONTRACT, apiError, safeApiPath, privateTarget} from './core.js';
 export const isExtension = location.protocol === 'chrome-extension:' && !!globalThis.chrome?.runtime?.id;
 // The ordinary-browser adapter exists only for an explicitly labelled local UI
 // review. Chrome uses the service worker and chrome.storage.session instead.
@@ -28,11 +28,11 @@ export async function send(message) {
     try { result=await chrome.runtime.sendMessage(message); }
     catch(error) {
       if(/context invalidated|receiving end does not exist|could not establish connection/i.test(error.message??''))
-        throw new Error('This console is disconnected from ExtSecure. Reload ExtSecure on chrome://extensions, close this tab, then reopen the console from the extension icon.');
+        throw workerUpdateError();
       throw error;
     }
     if(!result?.ok){
-      if(result?.error==='Unknown extension action.')throw Object.assign(new Error('Chrome is running an older ExtSecure worker that does not support this action. Click Restart ExtSecure, then reopen the console and sign in. The updated extension folder is C:\\Users\\hassa\\browser-extension-\\extension.'),{code:'EXTENSION_UPDATE_REQUIRED'});
+      if(result?.error==='Unknown extension action.' || (result?.error==='This API action is not supported.' && message.type==='API' && safeApiPath(message.path,message.method??'GET')))throw workerUpdateError();
       throw Object.assign(new Error(result?.error??'The extension service worker did not respond. Reload ExtSecure and reopen its console.'),{status:result?.status});
     }
     return result.data;
@@ -63,6 +63,16 @@ export async function send(message) {
 export function inventoryCompatibility(state) {
   if(!isExtension)return {ready:false};
   const ready=state?.version===VERSION&&Array.isArray(state?.capabilities)&&['device-enrollment','chrome-inventory','device-access-choice'].every(feature=>state.capabilities.includes(feature));
+  return {ready,ui_version:VERSION,worker_version:state?.version??'Unknown'};
+}
+
+export function workerUpdateError() {
+  return Object.assign(new Error('ExtSecure needs to restart to load the updated worker. Click Restart ExtSecure, close this tab, then reopen the console from the extension icon and sign in.'),{code:'EXTENSION_UPDATE_REQUIRED'});
+}
+
+export function operationsCompatibility(state,view) {
+  const feature={workflow:'workflow-automation',controls:'control-effectiveness'}[view];
+  const ready=!feature || (state?.version===VERSION && state?.operations_api_contract===OPERATIONS_API_CONTRACT && Array.isArray(state?.capabilities) && state.capabilities.includes(feature));
   return {ready,ui_version:VERSION,worker_version:state?.version??'Unknown'};
 }
 

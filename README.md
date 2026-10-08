@@ -9,7 +9,7 @@ administrator console. FastAPI remains a separate security backend. The earlier
 Streamlit dashboard is retained for compatibility and is not required to use the
 extension.
 
-## Chrome extension 0.8.8
+## Chrome extension 0.8.9
 
 The extension console uses teal navigation and option bars, with Light, Dark and
 Use device setting appearance choices. Settings saves appearance alongside
@@ -515,10 +515,18 @@ API additions: `GET/POST /api/workflow/rules`, `POST /api/workflow/rules/{id}/up
 
 ## API 0.4.1: new-task compatibility and readiness
 
-The public and monitoring APIs now report version 0.4.1. The extension remains version 0.8.8. Existing scan, health, sign-in and 2FA contracts are preserved.
+The public and monitoring APIs report version 0.4.1. The current extension is version 0.8.9. Existing scan, health, sign-in and 2FA contracts are preserved.
 
 - `GET /extension/capabilities` is public integration metadata. It identifies whether monitoring is configured, the `/monitor/api` prefix, the `/monitor/docs` documentation link, supported operation features and whether the workflow runner has started. It does not expose accounts, incidents, credentials or rule settings. Monitoring-disabled deployments report unavailable support rather than advertising working operations.
 - `GET /monitor/api/operations/status` requires a completed 2FA session from a manager, administrator or head administrator. It returns supported features, workflow runner status and interval, the in-app notification channel, and evaluation periods. A stopped or failed runner reports degraded readiness. Normal users and unauthenticated requests are rejected.
 - Rule updates may pause an existing rule while preserving its recipient settings after a referenced operator is revoked. Re-enabling the rule or changing its recipients still validates active operator accounts and an administrator escalation recipient. Stale revisions are rejected.
 
 Open `/docs` for the main scan and integration API; open `/monitor/docs` for workflow rules, notifications, escalation and control-effectiveness endpoints. Both feature-discovery and private readiness responses use `Cache-Control: no-store`. API capability declarations describe supported implementation; they do not assert that a rule has been enabled or an assessment independently verified.
+
+## Extension 0.8.9: workflow and control worker compatibility
+
+Chrome can continue running an older service worker after the unpacked extension files change. Version 0.8.7 rejected the workflow and control endpoints locally with `This API action is not supported.` before sending an HTTP request. Updating or restarting the API alone cannot replace that Chrome worker.
+
+The console now checks the worker version, operations contract and the required section capability before requesting either task. An incompatible worker displays an English/Arabic recovery panel with console/worker versions and **Restart ExtSecure**. Recognized legacy rejection messages for locally permitted routes also show recovery. Invalid paths and methods remain denied; no retry bypasses the worker allowlist. Restart only happens when explicitly selected.
+
+After updating the unpacked folder, reload ExtSecure on `chrome://extensions`, close old console tabs, and reopen the console from the extension icon. If a recovery panel is already visible, its **Restart ExtSecure** button performs the reload. Sign in again if prompted. The installation preserves private backend configuration and device identity; extension restart may end the current session. See [validation evidence](docs/WORKER_COMPATIBILITY_FIX.md).

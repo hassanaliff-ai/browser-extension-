@@ -17,8 +17,31 @@ globalThis.chrome={
 };
 globalThis.fetch=async(url,options)=>{calls.push({url,options});return new Response(JSON.stringify(responder(url,options)),{status:200,headers:{'Content-Type':'application/json'}});};
 const {handleMessage}=await import('../background.js');
-const {VERSION}=await import('../core.js');
+const {VERSION,WORKER_CAPABILITIES,OPERATIONS_API_CONTRACT}=await import('../core.js');
 const reset=()=>{store={};calls=[];localStore={};sessionRules=[];responder=()=>({});};
+
+test('Actual Chrome message listener forwards every workflow and control route to the authenticated API',async()=>{
+ const uuid='12345678-1234-4234-8234-123456789abc',notice='a'.repeat(64);
+ const routes=[['GET','/api/operations/status'],['GET','/api/workflow/rules'],['GET','/api/workflow/notifications'],['GET','/api/controls/reviews'],
+  ...[7,30,90,365].map(days=>['GET','/api/controls/effectiveness?days='+days]),
+  ['POST','/api/workflow/rules'],['POST',`/api/workflow/rules/${uuid}/update`],['POST','/api/workflow/run'],['POST',`/api/workflow/notifications/${notice}/acknowledge`],['POST','/api/controls/reviews'],['POST','/api/controls/navigation']];
+ for(const [method,path] of routes){
+  reset();store.session={token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()};responder=()=>({recorded:true});
+  const body=method==='POST'?{reason:'Synthetic worker dispatch test'}:undefined;
+  const response=await new Promise(resolve=>listener({type:'API',path,method,body},{id:chrome.runtime.id,url:chrome.runtime.getURL('console.html')},resolve));
+  assert.deepEqual(response,{ok:true,data:{recorded:true}},path);assert.equal(calls.length,1,path);
+  assert.equal(calls[0].url,'http://127.0.0.1:8765/monitor'+path);assert.equal(calls[0].options.method,method);
+  assert.equal(calls[0].options.headers.Authorization,'Bearer test-token');
+  assert.equal(calls[0].options.body,body===undefined?undefined:JSON.stringify(body));
+ }
+});
+test('Actual worker listener denies invalid task routes before any network request',async()=>{
+ for(const [method,path] of [['GET','/api/workflow/unknown'],['DELETE','/api/workflow/rules'],['GET','/api/controls/effectiveness?days=30&token=x'],['POST','/api/workflow/rules/not-an-id/update'],['GET','https://other.test/api/workflow/rules']]){
+  reset();store.session={token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()};
+  const response=await new Promise(resolve=>listener({type:'API',path,method},{id:chrome.runtime.id,url:chrome.runtime.getURL('console.html')},resolve));
+  assert.equal(response.ok,false);assert.equal(response.error,'This API action is not supported.');assert.equal(calls.length,0);
+ }
+});
 
 test('Health checks use only the fixed local endpoint without account or device credentials',async()=>{
  reset();store.session={token:'private-account-token',expires_at:new Date(Date.now()+60000).toISOString()};localStore.deviceCredential={token:'private-device-token'};
@@ -322,7 +345,7 @@ test('A permission API error after registration still returns the connected devi
 
 test('Worker state reports its running version and inventory capabilities',async()=>{
  reset();const state=await handleMessage({type:'STATE'});
- assert.equal(state.version,VERSION);assert.deepEqual(state.capabilities,['device-enrollment','chrome-inventory','device-access-choice']);
+ assert.equal(state.version,VERSION);assert.deepEqual(state.capabilities,[...WORKER_CAPABILITIES]);assert.equal(state.operations_api_contract,OPERATIONS_API_CONTRACT);
  assert.equal(calls.some(c=>c.options),false);
 });
 test('Chrome message listener dispatches device connection instead of an unknown action',async()=>{

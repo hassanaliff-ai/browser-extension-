@@ -1,5 +1,5 @@
 import {validateLogo,logoKey} from './account-logo.js';
-import {API_ORIGIN, VERSION, privateTarget, safeApiPath, apiError} from './core.js';
+import {API_ORIGIN, VERSION, OPERATIONS_API_CONTRACT, WORKER_CAPABILITIES, privateTarget, safeApiPath, apiError} from './core.js';
 import {registerNavigationGate,reportNavigation} from './access.js';
 import {normalizePreferences} from './locale.js';
 import {enabledExtensions,platformName} from './inventory.js';
@@ -231,7 +231,7 @@ export async function handleMessage(message,sender={}) {
       if(profile.inventory?.blocked)await gate.clear({preserveBlocked:true});
       if(session.profile?.inventory?.pending&&profile.inventory?.linked&&!profile.inventory?.blocked&&!profile.inventory?.pending)void autoSyncInventory().catch(()=>{});
     }
-    return {profile:profile?await accountLogo(profile):undefined, expires_at:session.expires_at, challenge:!!session.challenge_token, enrollment:!!session.enrollment_token,version:VERSION,capabilities:['device-enrollment','chrome-inventory','device-access-choice']};
+    return {profile:profile?await accountLogo(profile):undefined, expires_at:session.expires_at, challenge:!!session.challenge_token, enrollment:!!session.enrollment_token,version:VERSION,operations_api_contract:OPERATIONS_API_CONTRACT,capabilities:[...WORKER_CAPABILITIES]};
   }
   if (message.type === 'LOGIN') {
     if (typeof message.username !== 'string' || typeof message.password !== 'string') throw new Error('Enter your username and password.');

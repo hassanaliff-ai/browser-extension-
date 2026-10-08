@@ -16,7 +16,7 @@ import {THEMES,resolvedTheme} from './theme.js';
 
 import {escapeHtml as esc,SEVERITIES,roleCanWrite,completedMonth,reportPeriod,hashFile,validDigest,privateTarget,VERSION,reviewableAccessRequests,accessReviewBody} from './core.js';
 
-import {send,isExtension,previewNotice,inventoryCompatibility,restartExtension} from './transport.js';
+import {send,isExtension,previewNotice,inventoryCompatibility,operationsCompatibility,workerUpdateError,restartExtension} from './transport.js';
 
 import {TABLE_SIZES,LANGUAGES,TIME_ZONES,setPreferences,getPreferences,formatDate,formatNumber,translate,observeLocalization} from './locale.js';
 
@@ -353,7 +353,13 @@ const renderers={access,settings,overview,scan,files,alerts,history:()=>scanHist
 
  events:()=>listPage('events',[['Event','message'],['Risk',r=>tag(r.severity)],['Device',r=>`<span data-no-translate>${esc(r.device_name??'Not recorded')}</span>${r.device_id?`<div class="meta" data-no-translate>${esc(r.device_id)}</div>`:''}`],['User',r=>evidence(r.username??'Not recorded')],['Website / file',r=>evidence(r.target_display??'-')],['Actor','actor'],['Decision / reason','reason'],['Channel','channel'],['Time',r=>esc(date(r.created_at))]])};
 
-async function renderView(){const sequence=++requestSequence;if(!state.profile){await renderAuth();return;}if(popup){await renderPopup();return;}if(!allowedViews().some(r=>r[0]===view))view=allowedViews()[0]?.[0]??'account';loading=true;shell('<div class="pending"><div class="stack"><div class="spinner" aria-hidden="true"></div><p role="status">Loading recorded evidence…</p></div></div>');try{const html=await renderers[view]();if(sequence===requestSequence){shell(html);document.querySelector('#main')?.focus({preventScroll:true});}}catch(error){if(sequence===requestSequence&&!await handleExpiredSession(error))shell(notice(error.message,'error')+btn('Try again','refresh'));}finally{loading=false;if(queuedView&&!busy){const next=queuedView;queuedView='';navigate(next);}}}
+function recoveryContent(error){
+ if(error.code!=='EXTENSION_UPDATE_REQUIRED')return notice(error.message,'error')+btn('Try again','refresh');
+ pageData={};
+ return `<section class="panel stack"><h2>Update the extension connection</h2>${notice(error.message,'warning')}<p class="meta"><span>Console version</span> <bdi data-no-translate>${esc(VERSION)}</bdi> · <span>Worker version</span> <bdi data-no-translate>${esc(state?.version??'Unknown')}</bdi></p>${btn('Restart ExtSecure','restart-extension','primary')}<p class="meta">After restarting, close this tab and reopen the console from the ExtSecure icon. Sign in again if prompted.</p></section>`;
+}
+
+async function renderView(){const sequence=++requestSequence;if(!state.profile){await renderAuth();return;}if(popup){await renderPopup();return;}if(!allowedViews().some(r=>r[0]===view))view=allowedViews()[0]?.[0]??'account';loading=true;shell('<div class="pending"><div class="stack"><div class="spinner" aria-hidden="true"></div><p role="status">Loading recorded evidence…</p></div></div>');try{if(isExtension&&!operationsCompatibility(state,view).ready)throw workerUpdateError();const html=await renderers[view]();if(sequence===requestSequence){shell(html);document.querySelector('#main')?.focus({preventScroll:true});}}catch(error){if(sequence===requestSequence&&!await handleExpiredSession(error))shell(recoveryContent(error));}finally{loading=false;if(queuedView&&!busy){const next=queuedView;queuedView='';navigate(next);}}}
 
 async function renderPopup(){
 
@@ -377,7 +383,7 @@ function applyTableSize(size){setPreferences({...getPreferences(),tableSize:size
 async function savePreferences(preferences){const saved=await send({type:'SAVE_PREFERENCES',preferences});if(preferences.tableSize!==getPreferences().tableSize)await saveTableSize(preferences.tableSize);return {...saved,tableSize:preferences.tableSize};}
 async function commit(path,body){await api(path,'POST',body);await renderView();toast('Saved. The backend recorded the decision.');}
 
-async function mutation(task,element){if(busy)return;busy=true;const previousLabel=element?.innerHTML;if(element){element.disabled=true;element.setAttribute('aria-busy','true');element.textContent=translate('Working…');}try{await task();}catch(error){if(!await handleExpiredSession(error)){const alert=element?.closest('form')?.querySelector('.form-error');if(alert){alert.textContent=error.message;alert.hidden=false;alert.focus({preventScroll:true});}else toast(error.message,true);}}finally{busy=false;if(element){element.disabled=false;element.removeAttribute('aria-busy');if(element.isConnected)element.innerHTML=previousLabel;}if(queuedView&&!loading){const next=queuedView;queuedView='';navigate(next);}}}
+async function mutation(task,element){if(busy)return;busy=true;const previousLabel=element?.innerHTML;if(element){element.disabled=true;element.setAttribute('aria-busy','true');element.textContent=translate('Working…');}try{await task();}catch(error){if(!await handleExpiredSession(error)){if(error.code==='EXTENSION_UPDATE_REQUIRED'){shell(recoveryContent(error));return;}const alert=element?.closest('form')?.querySelector('.form-error');if(alert){alert.textContent=error.message;alert.hidden=false;alert.focus({preventScroll:true});}else toast(error.message,true);}}finally{busy=false;if(element){element.disabled=false;element.removeAttribute('aria-busy');if(element.isConnected)element.innerHTML=previousLabel;}if(queuedView&&!loading){const next=queuedView;queuedView='';navigate(next);}}}
 
 app.addEventListener('click',async event=>{
 
@@ -587,7 +593,7 @@ window.addEventListener('hashchange',()=>{const key=location.hash.slice(1);if(st
 observeLocalization();
 observeTableSize(applyTableSize);
 
-try{const preferences=await send({type:'PREFERENCES'});setPreferences({...preferences,tableSize:await loadTableSize(preferences.tableSize)});state=await send({type:'STATE'});view=location.hash.slice(1);await renderView();}catch(error){app.innerHTML=previewNotice+`<main id="main" class="page stack recovery-page">${brand()}<h1>Reconnect to your workspace</h1>${notice(error.message,'error')}${connectionPanel(connectionStatus)}${btn('Try again','refresh','primary')}</main>`;}
+try{const preferences=await send({type:'PREFERENCES'});setPreferences({...preferences,tableSize:await loadTableSize(preferences.tableSize)});state=await send({type:'STATE'});view=location.hash.slice(1);await renderView();}catch(error){app.innerHTML=previewNotice+`<main id="main" class="page stack recovery-page">${brand()}<h1>Reconnect to your workspace</h1>${error.code==='EXTENSION_UPDATE_REQUIRED'?recoveryContent(error):notice(error.message,'error')+connectionPanel(connectionStatus)+btn('Try again','refresh','primary')}</main>`;}
 
 
 

@@ -18,6 +18,12 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'Update the extension connection':'تحديث اتصال الإضافة',
+ 'Console version':'إصدار لوحة التحكم',
+ 'Worker version':'إصدار عامل الإضافة',
+ 'ExtSecure needs to restart to load the updated worker. Click Restart ExtSecure, close this tab, then reopen the console from the extension icon and sign in.':'تحتاج ExtSecure إلى إعادة تشغيل لتحميل التحديث. اضغط على إعادة تشغيل ExtSecure، وأغلق لوحة التحكم، ثم افتحها من أيقونة الإضافة وسجل الدخول.',
+ 'After restarting, close this tab and reopen the console from the ExtSecure icon. Sign in again if prompted.':'بعد إعادة التشغيل، أغلق علامة التبويب وافتح لوحة التحكم من أيقونة ExtSecure. سجل الدخول مجددًا إذا طُلب منك ذلك.',
+
  'Workflow automation':'أتمتة إجراءات الأمن','Control effectiveness':'فعالية الضوابط الأمنية',
  'Assign new incidents, notify reviewers and escalate unresolved cases.':'تعيين الحوادث الجديدة وإشعار المراجعين وتصعيد الحالات غير المحسومة.',
  'Measure response times and review blocking, approvals, exceptions and alerts.':'قياس أوقات الاستجابة ومراجعة الحظر والموافقات والاستثناءات والتنبيهات.',
