@@ -165,7 +165,7 @@ Signed-in sessions expire 24 hours after successful authenticator verification. 
 4. Click **Connect enabled Chrome extensions** and accept Chrome's optional permission prompt to include other enabled extensions. A declined or failed prompt keeps the device connected and shows an error with retry instructions. Use **Refresh devices & extensions** for an immediate refresh. Once permission is granted, inventory also refreshes after extension changes, at sign-in and every 30 minutes while signed in.
 5. To add another computer, load ExtSecure and click **Add this device on that computer**. The computer must reach the configured backend. The default 127.0.0.1 API address reaches only its own local machine; a remote deployment needs a reachable secured API origin configured in the extension and its CSP.
 
-After installing an update, close existing console tabs and reopen the console from the Chrome extension icon. A console left open during reload can lose its worker connection. Check that Chrome shows **ExtSecure 0.8.3** loaded from `C:\Users\hassa\browser-extension-\extension`. A website preview cannot register Chrome devices or enumerate extensions.
+After installing an update, close existing console tabs and reopen the console from the Chrome extension icon. A console left open during reload can lose its worker connection. Check that Chrome shows **ExtSecure 0.8.11** loaded from `C:\Users\hassa\browser-extension-\extension`. A website preview cannot register Chrome devices or enumerate extensions.
 
 **Unknown extension action** means the running worker does not recognize the requested message; that action did not reach the API. The console now checks the running worker's version and inventory capabilities. If they do not match this package, it replaces device connection actions with **Restart ExtSecure**. That button invokes Chrome's runtime reload directly, so it works even when the old worker lacks inventory message handlers. Close the old tab, reopen through the extension icon and sign in after restarting. Saved device identities and backend records are preserved. If Chrome still shows an older version, use **Load unpacked** with the exact folder above and disable the other old copy; do not load the ZIP or its parent folder.
 
@@ -203,3 +203,48 @@ Use the **Table size** selector above any populated table, or open **Settings**,
 Table sizes save directly in Chrome local storage, persist after reopening, and update other open console tabs. Compact, Standard and Spacious change row spacing without hiding records. This remains compatible with an older running background worker.
 
 Workflow automation (Investigate) provides incident assignment rules, reviewer notifications and overdue-case escalation. Control effectiveness (Govern) provides time-window metrics and evidence assessments for blocking, approvals, exceptions and alerts. Administrators configure rules and record assessments; managers view metrics and their own workflow notifications. The API must run for deadline checks. After installing 0.8.8, reload ExtSecure in chrome://extensions and reopen the console. See ../README.md for metric definitions and limits.
+
+### Reproducible real-browser tests
+
+The browser smoke runner loads this actual Manifest V3 package and its service
+worker into a separate Playwright Chromium profile. It does not attach to your
+personal Chrome, borrow its session, or replace Chrome APIs with mocks. This
+provides a test route when desktop browser-control tools cannot inspect an
+extension URL. It does not modify those tools or disable their URL checks.
+
+Install test-only dependencies from this directory, with TestAPI already running:
+
+```powershell
+npm install
+npx playwright install chromium --no-shell
+npm test
+npm run test:browser
+```
+
+The default browser command checks anonymous startup and API connectivity without
+registering a device or scanning a destination. For the full live test, run from
+the installed project root using its Python environment:
+
+```powershell
+python scripts/test_extension_browser.py --live
+```
+
+The launcher prompts for the existing head-administrator username, masked
+password and masked current authenticator code after the test browser is ready.
+No credentials are passed in command-line arguments, embedded in the test, or
+printed. Both authentication steps go through the shipped UI and real backend.
+Live mode captures read-only database snapshots before and after, registers a
+clearly named QA browser, checks example.com and locally hashes a generated
+harmless text file. It verifies console views, blocking and navigation evidence,
+table sizing and sign-out. Test records remain for inspection; existing records
+are not deleted. Only the test browser's session is signed out.
+
+Artifacts, database hashes, differences and screenshots stay under
+`.private/extension-smoke/`. The database comparison reports row counts and hash
+changes; it does not export account secrets. Tests do not explicitly generate or
+deliver reports. A novel file hash may correctly return Unknown when VirusTotal
+has no report. See [verified results](../docs/Extension%20Browser%20Verification.md).
+
+The launcher follows [Playwright's extension-testing workflow](https://playwright.dev/docs/chrome-extensions)
+using its supported Chromium channel and a persistent test context. The browser
+download is for testing, not a replacement for your regular Chrome installation.
