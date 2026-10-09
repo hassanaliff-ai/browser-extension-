@@ -24,7 +24,7 @@ const AR={
  'Enabled rules reference unavailable accounts. Edit the investigator, reviewer and escalation recipient before automation can run.':'القواعد المفعلة تشير إلى حسابات غير متاحة. عدّل المحقق والمراجع ومستلم التصعيد لتشغيل الأتمتة.',
  'The last workflow check failed. Check the API service and run a workflow check again.':'فشل آخر فحص لسير العمل. تحقق من خدمة API ثم أعد تشغيل الفحص.',
  'The workflow runner is starting. Refresh shortly to check its status.':'جارٍ بدء تشغيل فحوصات سير العمل. حدّث الصفحة بعد قليل للتحقق من الحالة.',
- 'The workflow runner is stopped. Restart the ExtSecure API to resume scheduled checks.':'فحوصات سير العمل متوقفة. أعد تشغيل API الخاص بـ ExtSecure لاستئناف الفحوصات المجدولة.',
+ 'The workflow runner is stopped. Restart the TestAPI to resume scheduled checks.':'فحوصات سير العمل متوقفة. أعد تشغيل API الخاص بـ ExtSecure لاستئناف الفحوصات المجدولة.',
  'Escalation is ready for linked cases. Enable automatic case creation in a rule to assign new scans.':'التصعيد جاهز للحالات المرتبطة. فعّل إنشاء الحالات تلقائيًا في إحدى القواعد لإسناد الفحوصات الجديدة.',
  'Some enabled rules reference unavailable accounts and cannot create automatic cases. Review their recipients.':'بعض القواعد المفعلة تشير إلى حسابات غير متاحة ولا تستطيع إنشاء حالات تلقائية. راجع المستلمين.',
  'enabled rules':'قواعد مفعلة',

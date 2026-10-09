@@ -20,7 +20,7 @@ administrator console. FastAPI remains a separate security backend. The earlier
 Streamlit dashboard is retained for compatibility and is not required to use the
 extension.
 
-## Chrome extension 0.8.10
+## Chrome extension 0.8.11
 
 The extension console uses teal navigation and option bars, with Light, Dark and
 Use device setting appearance choices. Settings saves appearance alongside
@@ -251,7 +251,7 @@ password, then a fresh six-digit authenticator code.
 
 ### `GET /` and `GET /health`
 
-Liveness check. Returns `{"status": "ok", "service": "ExtSecure API"}`.
+Liveness check. Returns `{"status": "ok", "service": "TestAPI"}`.
 
 ### `POST /scan`
 

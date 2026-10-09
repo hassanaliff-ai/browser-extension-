@@ -193,11 +193,11 @@ async def virustotal_error_handler(_: Request, exc: VirusTotalError) -> JSONResp
 
 
 async def root() -> HealthResponse:
-    return HealthResponse(status="ok", service="ExtSecure API")
+    return HealthResponse(status="ok", service="TestAPI")
 
 
 async def health() -> HealthResponse:
-    return HealthResponse(status="ok", service="ExtSecure API")
+    return HealthResponse(status="ok", service="TestAPI")
 
 
 def _monitoring_payload(body: ScanRequest, verdict: str | None):
@@ -321,7 +321,7 @@ def create_app() -> FastAPI:
     # Load the same project file without replacing explicit process settings.
     load_dotenv(dotenv_path=Path(__file__).with_name(".env"), override=False)
     application = FastAPI(
-        title="ExtSecure API",
+        title="TestAPI",
         description="ExtSecure scanning and administrator operations API. Workflow automation and control-effectiveness routes are documented at /monitor/docs and use the /monitor/api prefix. Check /extension/capabilities for enabled feature support.",
         version="0.4.1",
         docs_url="/docs",

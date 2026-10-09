@@ -45,10 +45,14 @@ test('Actual worker listener denies invalid task routes before any network reque
 
 test('Health checks use only the fixed local endpoint without account or device credentials',async()=>{
  reset();store.session={token:'private-account-token',expires_at:new Date(Date.now()+60000).toISOString()};localStore.deviceCredential={token:'private-device-token'};
- responder=()=>({status:'ok',service:'ExtSecure API',private_value:'not forwarded'});
+ responder=()=>({status:'ok',service:'TestAPI',private_value:'not forwarded'});
  const result=await handleMessage({type:'HEALTH',url:'https://other.test'});
  assert.equal(result.status,'ready');assert.equal(calls[0].url,'http://127.0.0.1:8765/health');
  assert.deepEqual(calls[0].options.headers,{Accept:'application/json'});assert.equal(JSON.stringify(result).includes('private'),false);
+});
+test('Health checks remain compatible with the former API name during upgrades',async()=>{
+ reset();responder=()=>({status:'ok',service:'ExtSecure API'});
+ assert.equal((await handleMessage({type:'HEALTH'})).status,'ready');
 });
 test('Health checks work anonymously and never mislabel an unreachable API as connected',async()=>{
  reset();const original=fetch;globalThis.fetch=async()=>{throw new Error('Offline');};

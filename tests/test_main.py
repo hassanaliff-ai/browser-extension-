@@ -25,7 +25,10 @@ class TestHealth:
     def test_health_endpoints(self, client, path):
         response = client.get(path)
         assert response.status_code == 200
-        assert response.json() == {"status": "ok", "service": "ExtSecure API"}
+        assert response.json() == {"status": "ok", "service": "TestAPI"}
+
+    def test_documentation_uses_the_api_name(self, client):
+        assert client.get('/openapi.json').json()['info']['title'] == 'TestAPI'
 
     def test_feature_discovery_is_explicit_when_monitoring_is_not_configured(self, client):
         response=client.get('/extension/capabilities')

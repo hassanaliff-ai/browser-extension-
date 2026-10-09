@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ExtSecure",
-  "version": "0.8.10",
+  "version": "0.8.11",
   "description": "Browser security checks, explainable risk findings and controlled administrator workflows.",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "activeTab", "declarativeNetRequest", "webNavigation", "alarms"],

@@ -129,7 +129,7 @@ export async function handleMessage(message,sender={}) {
     try {
       const response=await fetch(API_ORIGIN+'/health',{method:'GET',headers:{Accept:'application/json'},credentials:'omit',cache:'no-store',redirect:'error',signal:AbortSignal.timeout(5000)});
       const data=await response.json();
-      return {status:response.ok&&data.status==='ok'&&data.service==='ExtSecure API'?'ready':'offline',checked_at:new Date().toISOString()};
+      return {status:response.ok&&data.status==='ok'&&['TestAPI','ExtSecure API'].includes(data.service)?'ready':'offline',checked_at:new Date().toISOString()};
     } catch {return {status:'offline',checked_at:new Date().toISOString()};}
   }
   if (message.type === 'PREFERENCES') return normalizePreferences((await chrome.storage.local.get('preferences')).preferences);

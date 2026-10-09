@@ -47,7 +47,7 @@ def start_api(values):
         for _ in range(50):
             if child.poll() is not None:break
             try:
-                if client.get('http://127.0.0.1:8765/health').json().get('service')=='ExtSecure API':return
+                if client.get('http://127.0.0.1:8765/health').json().get('service') in {'TestAPI','ExtSecure API'}:return
             except (httpx.HTTPError,ValueError):pass
             time.sleep(.5)
     raise RuntimeError('API failed to become ready; inspect its private log')
@@ -84,7 +84,7 @@ def activate():
             assert client.get('http://127.0.0.1:8765/monitor/api/scans').status_code==401
         import psycopg
         with psycopg.connect(**admin_connection()) as admin:
-            assert admin.execute("SELECT count(*) FROM pg_stat_activity WHERE datname=%s AND usename=%s AND application_name='ExtSecure API'",(app_url.database,app_url.username)).fetchone()[0]>0
+            assert admin.execute("SELECT count(*) FROM pg_stat_activity WHERE datname=%s AND usename=%s AND application_name='TestAPI'",(app_url.database,app_url.username)).fetchone()[0]>0
         print(json.dumps({'activated':True,'database':'extsecure','verified_tables':len(counts),'existing_rows_preserved':True,'api_running':True}))
     except Exception:
         stop_api(api_process())

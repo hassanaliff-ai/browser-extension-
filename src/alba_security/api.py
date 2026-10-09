@@ -259,7 +259,7 @@ def create_app(
 
     engine_options: dict = {"pool_pre_ping": True}
     if database_url.startswith('postgresql'):
-        engine_options['connect_args']={'application_name':'ExtSecure API'}
+        engine_options['connect_args']={'application_name':'TestAPI'}
     if database_url.startswith("sqlite"):
         engine_options["connect_args"] = {"check_same_thread": False}
         if database_url in {"sqlite://", "sqlite:///:memory:"}:
@@ -276,7 +276,7 @@ def create_app(
     with session_factory() as db:
         initialize_governance(db)
         admin_auth.initialize_accounts(db)
-    app = FastAPI(title="ExtSecure Monitoring API", version="0.4.1", lifespan=workflow_lifespan)
+    app = FastAPI(title="TestAPI Monitoring", version="0.4.1", lifespan=workflow_lifespan)
     @app.middleware('http')
     async def private_api_responses(request: Request, call_next):
         response = await call_next(request)

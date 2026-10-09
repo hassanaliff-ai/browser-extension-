@@ -152,7 +152,7 @@ and restricted runtime/audit permissions. Test runs used disposable
 `extsecure_test_*` databases, removed afterward. SQLite compatibility suites also
 passed (99 tests; a subsequent focused API/governance/query run passed 55).
 The live migration verified all 41 tables and confirmed a PostgreSQL connection
-from `ExtSecure API` using `extsecure_app`, API health, workflow readiness and
+from `TestAPI` using `extsecure_app`, API health, workflow readiness and
 unauthenticated request rejection. Private records and credentials were not published.
 
 The professional database revision additionally tests cross-device and extension
