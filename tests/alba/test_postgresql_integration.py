@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError,ProgrammingError
 from sqlalchemy.orm import Session
 from alba_security.database_migration import load_metadata,migrate_snapshot
 from alba_security.database_queries import record_domain,scan_history_query,scan_statistics_query
-from alba_security.models import Device,Domain,Scan
+from alba_security.models import Device,Domain,Scan,Finding,Alert,SecurityEvent,Extension
 from alba_security.schema import ensure_schema
 from tests.alba.test_governance import system,scan
 
@@ -147,3 +147,72 @@ def test_runtime_can_startup_and_append_audit_but_cannot_change_schema_or_histor
                 with pytest.raises(ProgrammingError),db.begin_nested():db.execute(text(command))
             assert db.scalar(select(func.count()).select_from(GovernanceAudit))==1
     finally:runtime.dispose()
+
+
+def test_cross_device_context_and_child_validation_are_enforced(pg_engine):
+    engine,_,_=pg_engine
+    with Session(engine) as db:
+        seed(db,datetime(2026,10,9,tzinfo=timezone.utc));db.add(Device(id='other',name='Other'));db.commit()
+        scan_id=db.scalar(select(Scan.id))
+        db.add(Extension(id='test-extension',device_id='other',extension_key='test',name='Test'));db.commit()
+        invalid=[Finding(scan_id=scan_id,device_id='other',signal_code='malicious_url',title='Mismatch',points=80,severity='High'),
+                 Finding(scan_id=scan_id,device_id='isolated-device',signal_code='malicious_url',title='Invalid points',points=-1,severity='High'),
+                 SecurityEvent(scan_id=scan_id,device_id='other',event_type='scan_completed',message='Mismatch',severity='High'),
+                 Alert(scan_id=scan_id,severity='High',message='Invalid status',status='fake'),
+                 Domain(hostname='invalid.example',first_seen=datetime(2026,10,10,tzinfo=timezone.utc),last_seen=datetime(2026,10,9,tzinfo=timezone.utc))]
+        for row in invalid:
+            with pytest.raises(IntegrityError),db.begin_nested():db.add(row);db.flush()
+        # A valid extension on the same device still cannot be attributed to
+        # a scan which did not inspect that extension.
+        db.add(Extension(id='same-device-extension',device_id='isolated-device',extension_key='same',name='Same device'));db.commit()
+        for row in [Finding(scan_id=scan_id,device_id='isolated-device',extension_id='same-device-extension',
+                            signal_code='malicious_url',title='Mismatch',points=80,severity='High'),
+                    SecurityEvent(scan_id=scan_id,device_id='isolated-device',extension_id='same-device-extension',
+                                  event_type='scan_completed',message='Mismatch',severity='High')]:
+            with pytest.raises(IntegrityError),db.begin_nested():db.add(row);db.flush()
+        with pytest.raises(IntegrityError),db.begin_nested():
+            db.execute(text('UPDATE scans SET extension_id=\'test-extension\' WHERE id=:id'),{'id':scan_id})
+
+
+def test_owner_upgrade_restores_missing_constraints_and_views_without_changing_rows(pg_engine):
+    engine,_,_=pg_engine
+    now=datetime(2026,10,9,tzinfo=timezone.utc)
+    with Session(engine) as db:seed(db,now);db.commit()
+    with engine.begin() as db:
+        db.exec_driver_sql('ALTER TABLE findings DROP CONSTRAINT fk_findings_scan_device')
+        db.exec_driver_sql('ALTER TABLE domains DROP CONSTRAINT ck_domains_time_order')
+        db.exec_driver_sql('DROP INDEX ix_scans_device_history')
+        db.exec_driver_sql('DROP VIEW extsecure_scan_evidence')
+    ensure_schema(engine);ensure_schema(engine)
+    from alba_security.database_health import database_status
+    status=database_status(engine)
+    assert status['healthy'] and status['table_rows']['scans']==1 and status['view_count']==8
+
+
+def test_conflicting_existing_context_aborts_upgrade_instead_of_rewriting_records(pg_engine):
+    engine,_,_=pg_engine
+    with Session(engine) as db:
+        seed(db,datetime(2026,10,9,tzinfo=timezone.utc));db.add(Device(id='other',name='Other'));db.commit()
+        identity=db.scalar(select(Scan.id))
+    with engine.begin() as db:
+        db.exec_driver_sql('ALTER TABLE findings DROP CONSTRAINT fk_findings_scan_device')
+        db.exec_driver_sql('ALTER TABLE findings DROP CONSTRAINT ck_findings_points_range')
+    with Session(engine) as db:
+        db.add(Finding(scan_id=identity,device_id='other',signal_code='malicious_url',title='Legacy conflict',points=80,severity='High'));db.commit()
+    with pytest.raises(IntegrityError):ensure_schema(engine)
+    from sqlalchemy import inspect
+    assert 'fk_findings_scan_device' not in {c['name'] for c in inspect(engine).get_foreign_keys('findings')}
+    assert 'ck_findings_points_range' not in {c['name'] for c in inspect(engine).get_check_constraints('findings')}
+    with Session(engine) as db:assert db.scalar(select(Finding.device_id))=='other'
+
+
+def test_evidence_view_counts_each_child_collection_once(pg_engine):
+    engine,_,_=pg_engine
+    with Session(engine) as db:
+        seed(db,datetime(2026,10,9,tzinfo=timezone.utc));db.commit();identity=db.scalar(select(Scan.id))
+        for _ in range(2):db.add(Finding(scan_id=identity,device_id='isolated-device',signal_code='malicious_url',title='Finding',points=80,severity='High'))
+        for _ in range(3):db.add(Alert(scan_id=identity,severity='High',message='Alert'))
+        for _ in range(4):db.add(SecurityEvent(scan_id=identity,device_id='isolated-device',event_type='scan_completed',severity='High',message='Event'))
+        db.commit()
+        assert db.execute(text('SELECT finding_count,alert_count,event_count FROM extsecure_scan_evidence')).one()==(2,3,4)
+        assert db.execute(text('SELECT total_scans,highest_score FROM extsecure_domain_risk')).one()==(1,0)

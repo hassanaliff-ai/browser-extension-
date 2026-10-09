@@ -6,6 +6,10 @@ The local database now uses PostgreSQL with verified migration of the existing
 records. See [database setup, schema, queries and verification](docs/PostgreSQL%20Database.md).
 The API uses a restricted application role; private credentials and backups stay
 outside Git. SQL artifacts are in `sql/` and database integration tests in `tests/alba/`.
+The database upgrade adds device/extension attribution constraints, cursor-based
+history queries, eight reporting views and a read-only health check. Existing
+PostgreSQL deployments should run `scripts/upgrade_postgresql.py` with the configured
+local owner credentials before starting the updated API.
 
 One FastAPI process serves the original ExtSecure VirusTotal lookup API and
 the Alba risk and monitoring service. The existing `POST /scan` contract remains

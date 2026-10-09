@@ -1,5 +1,6 @@
 """Additive database evolution and PostgreSQL reporting views."""
-from sqlalchemy import inspect,select,update,CheckConstraint
+from sqlalchemy import inspect,select,update,CheckConstraint,UniqueConstraint,ForeignKeyConstraint,Index
+from sqlalchemy.schema import AddConstraint,CreateIndex
 from alba_security.models import Base,Scan,SecurityEvent
 from alba_security.database_queries import record_domain
 
@@ -23,6 +24,20 @@ for period in ('day','week','month'):
  count(*) FILTER (WHERE severity='Unknown') AS unknown_scans
  FROM scans GROUP BY 1'''
 
+VIEW_SQL['extsecure_scan_evidence'] = '''SELECT s.id AS scan_id, s.device_id,
+ s.created_at, s.severity, s.completeness, s.risk_policy_version,
+ COALESCE(f.total,0) AS finding_count, COALESCE(a.total,0) AS alert_count,
+ COALESCE(e.total,0) AS event_count
+ FROM scans s
+ LEFT JOIN (SELECT scan_id,count(*) AS total FROM findings GROUP BY scan_id) f ON f.scan_id=s.id
+ LEFT JOIN (SELECT scan_id,count(*) AS total FROM alerts GROUP BY scan_id) a ON a.scan_id=s.id
+ LEFT JOIN (SELECT scan_id,count(*) AS total FROM security_events GROUP BY scan_id) e ON e.scan_id=s.id'''
+VIEW_SQL['extsecure_domain_risk'] = '''SELECT d.id AS domain_id,d.hostname,
+ count(s.id) AS total_scans,max(s.score) AS highest_score,max(s.created_at) AS last_scan,
+ count(*) FILTER (WHERE s.severity IN ('High','Critical')) AS high_risk_scans,
+ count(*) FILTER (WHERE s.severity='Unknown') AS unknown_scans
+ FROM domains d JOIN scans s ON s.domain_id=d.id GROUP BY d.id,d.hostname'''
+
 
 def extend_database_schema(engine):
     inspector=inspect(engine)
@@ -41,11 +56,23 @@ def extend_database_schema(engine):
     if engine.dialect.name!='postgresql':
         return
     with engine.begin() as connection:
-        for table in ('scans','domains'):
-            existing={item['name'] for item in inspect(connection).get_check_constraints(table)}
-            for constraint in Base.metadata.tables[table].constraints:
-                if isinstance(constraint,CheckConstraint) and constraint.name not in existing:
-                    connection.exec_driver_sql(f'ALTER TABLE {table} ADD CONSTRAINT {constraint.name} CHECK ({constraint.sqltext})')
+        # Serialize owner upgrades. Existing rows must validate; never silently
+        # rewrite or discard conflicting security evidence.
+        connection.exec_driver_sql('SELECT pg_advisory_xact_lock(867431902)')
+        connection.exec_driver_sql("SET LOCAL lock_timeout = '5s'")
+        core=('extensions','scans','domains','findings','alerts','security_events')
+        for kind,inspect_method in [(UniqueConstraint,'get_unique_constraints'),
+                                     (ForeignKeyConstraint,'get_foreign_keys'),
+                                     (CheckConstraint,'get_check_constraints')]:
+            for table_name in core:
+                existing={item['name'] for item in getattr(inspect(connection),inspect_method)(table_name)}
+                for constraint in sorted(Base.metadata.tables[table_name].constraints,key=lambda c:c.name or ''):
+                    if isinstance(constraint,kind) and constraint.name and constraint.name not in existing:
+                        connection.execute(AddConstraint(constraint))
+        for table_name in core:
+            existing={item['name'] for item in inspect(connection).get_indexes(table_name)}
+            for index in sorted(Base.metadata.tables[table_name].indexes,key=lambda i:i.name):
+                if index.name not in existing:connection.execute(CreateIndex(index))
         views=set(inspect(connection).get_view_names())
         for name,sql in VIEW_SQL.items():
             if name not in views:
