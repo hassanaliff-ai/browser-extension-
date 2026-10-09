@@ -13,3 +13,5 @@ __pycache__/
 *.sqlite
 *.sqlite3
 *.dump
+# Chrome regenerates compiled declarative request rules for its browser build.
+extension/_metadata/
