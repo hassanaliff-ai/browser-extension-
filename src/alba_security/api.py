@@ -47,6 +47,7 @@ from alba_security.reports import (
 )
 from alba_security.request_limits import DownloadRequestLimit, SignInRateLimit
 from alba_security.schema import ensure_schema
+from alba_security.database_queries import record_domain
 from alba_security.risk import RiskFinding, RiskResult, SignalInput, assess, suggested_action
 
 
@@ -257,6 +258,8 @@ def create_app(
         raise RuntimeError("INGEST_TOKEN is required")
 
     engine_options: dict = {"pool_pre_ping": True}
+    if database_url.startswith('postgresql'):
+        engine_options['connect_args']={'application_name':'ExtSecure API'}
     if database_url.startswith("sqlite"):
         engine_options["connect_args"] = {"check_same_thread": False}
         if database_url in {"sqlite://", "sqlite:///:memory:"}:
@@ -479,6 +482,8 @@ def create_app(
             device_id=device.id,
             extension_id=extension.id if extension else None,
             override_id=applied_override.id if applied_override else None,
+            domain_id=record_domain(db,payload.target,now) if payload.target_kind=='url' and privacy_settings(db)['show_hostnames'] else None,
+            risk_policy_version=policy['version'],
             target_kind=payload.target_kind,
             target_fingerprint=fingerprint,
             target_display=display,
@@ -820,6 +825,8 @@ def create_app(
                 "device_id": item.device_id,
                 "extension_id": item.extension_id,
                 "override_id": item.override_id,
+                "domain_id": item.domain_id,
+                "risk_policy_version": item.risk_policy_version,
                 "target_kind": item.target_kind,
                 "target_display": scan_display(db, item),
                 "score": item.score,
@@ -838,7 +845,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="Scan not found")
         findings = db.scalars(select(Finding).where(Finding.scan_id == scan_id).order_by(Finding.points.desc())).all()
         events = db.scalars(select(SecurityEvent).where(SecurityEvent.scan_id == scan_id).order_by(SecurityEvent.created_at, SecurityEvent.id)).all()
-        version = next((event.details.get("risk_policy_version") for event in events
+        version = item.risk_policy_version or next((event.details.get("risk_policy_version") for event in events
                         if event.event_type == "scan_completed"), None)
         unknown_codes = [signal["code"] for signal in item.signals if signal.get("status") == "unknown"]
         stored_result = RiskResult(score=item.score, severity=item.severity, completeness=item.completeness,

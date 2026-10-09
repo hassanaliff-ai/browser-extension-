@@ -522,6 +522,9 @@ def install_governance(app, session_scope, require_actor, directory):
                 for model in [SecurityEvent, Alert, Finding]:
                     db.execute(delete(model).where(model.scan_id.in_(batch)))
                 db.execute(delete(Scan).where(Scan.id.in_(batch)))
+            from alba_security.models import Domain
+            db.execute(delete(Domain).where(Domain.last_seen < cutoff,
+                Domain.id.not_in(select(Scan.domain_id).where(Scan.domain_id.is_not(None)))))
             audit(db, 'privacy', 'retention', actor, 'retention_applied', removed_scans=len(ids), removed_navigation_observations=removed_navigation, cutoff=iso(cutoff))
             db.commit()
         except IntegrityError:

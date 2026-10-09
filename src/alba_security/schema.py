@@ -58,7 +58,9 @@ def ensure_schema(engine: Engine) -> None:
                 )
             else:
                 raise RuntimeError("Existing database upgrade supports PostgreSQL or SQLite only")
-    with engine.begin() as connection:
-        connection.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_scans_override_id ON scans (override_id)"
-        )
+    existing_indexes={item['name'] for item in inspect(engine).get_indexes('scans')}
+    if 'ix_scans_override_id' not in existing_indexes:
+        with engine.begin() as connection:
+            connection.exec_driver_sql('CREATE INDEX ix_scans_override_id ON scans (override_id)')
+    from alba_security.postgresql import extend_database_schema
+    extend_database_schema(engine)

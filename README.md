@@ -1,5 +1,12 @@
 # ExtSecure browser extension and backend
 
+## PostgreSQL database
+
+The local database now uses PostgreSQL with verified migration of the existing
+records. See [database setup, schema, queries and verification](docs/PostgreSQL%20Database.md).
+The API uses a restricted application role; private credentials and backups stay
+outside Git. SQL artifacts are in `sql/` and database integration tests in `tests/alba/`.
+
 One FastAPI process serves the original ExtSecure VirusTotal lookup API and
 the Alba risk and monitoring service. The existing `POST /scan` contract remains
 at the root. When monitoring is configured, administrator and ingestion routes
