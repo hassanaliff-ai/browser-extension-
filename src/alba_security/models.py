@@ -127,6 +127,7 @@ class Alert(Base):
     __tablename__ = "alerts"
     __table_args__ = (
         Index("ix_alerts_status_created", "status", "created_at"),
+        Index('ix_alerts_created_at', 'created_at'),
         CheckConstraint("status IN ('open','acknowledged','resolved','suppressed')", name='ck_alerts_status'),
         CheckConstraint("severity IN ('Unknown','Low','Medium','High','Critical')", name='ck_alerts_severity'),
     )

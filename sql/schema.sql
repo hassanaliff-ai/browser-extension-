@@ -544,6 +544,8 @@ CREATE INDEX ix_ai_scan_explanations_created_at ON ai_scan_explanations (created
 
 CREATE INDEX ix_ai_scan_explanations_scan_id ON ai_scan_explanations (scan_id);
 
+CREATE INDEX ix_alerts_created_at ON alerts (created_at);
+
 CREATE INDEX ix_alerts_scan_id ON alerts (scan_id);
 
 CREATE INDEX ix_alerts_status_created ON alerts (status, created_at);

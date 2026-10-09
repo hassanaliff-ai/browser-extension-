@@ -6,7 +6,7 @@ authentication, approvals and API routes remain compatible.
 
 ## Data model and integrity
 
-The live schema contains 41 tables and eight reporting views. Indexes include
+The live schema contains 41 application tables, a migration ledger, and eight reporting views. Indexes include
 primary/unique keys and dedicated device/time/cursor history indexes. It stores
 devices, scans, domains, findings, alerts, security events, incidents, approvals,
 reports, account/session records and audit history. Risk results remain on the
@@ -135,9 +135,13 @@ restore a database dump or overwrite new data.
 device/extension attribution errors, table counts and runtime capabilities.
 It uses read-only transactions and emits no passwords, session tokens or stored
 record content. Exit code 1 indicates an incomplete schema or integrity error.
-The schema revision reported is the code's expected revision, not a database
-migration ledger. `export_database_schema.py` regenerates the empty-database SQL
+The schema revision reported is the code's expected revision; applied numbered
+migrations are listed separately from `extsecure_schema_migrations`.
+`export_database_schema.py` regenerates the empty-database SQL
 artifact deterministically from the same model definitions and views.
+The numbered migration files add the ledger-managed operations history after
+provisioning. See [database operations](Database%20Operations.md) for backups,
+restore tests, benchmarks, monitoring and controlled data exchange.
 
 PostgreSQL enforces named checks and composite relationships directly; legacy
 SQLite files retain the earlier additive upgrade path and are not rebuilt to

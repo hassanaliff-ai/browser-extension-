@@ -3,7 +3,7 @@ from sqlalchemy import inspect,text
 from alba_security.database_migration import load_metadata
 from alba_security.postgresql import VIEW_SQL
 
-SCHEMA_REVISION = '2026-10-09.2'
+SCHEMA_REVISION = '2026-10-09.3'
 
 
 def database_status(engine):
@@ -46,10 +46,12 @@ def database_status(engine):
             has_table_privilege(current_user,'governance_audit','UPDATE') AS can_update_audit,
             has_table_privilege(current_user,'governance_audit','DELETE') AS can_delete_audit,
             has_schema_privilege(current_user,current_schema(),'CREATE') AS can_create_tables''')).mappings().one()) if 'governance_audit' in tables else {}
+        migrations=[row[0] for row in connection.execute(text('SELECT version FROM extsecure_schema_migrations ORDER BY version'))] if 'extsecure_schema_migrations' in tables else []
     return {'schema_revision':SCHEMA_REVISION,
         'healthy':not (missing_tables or missing_views or missing_constraints or missing_indexes or any(context_errors.values())),
         'table_count':len(tables),'view_count':len(inspector.get_view_names()),
         'table_rows':counts,'total_rows':sum(counts.values()),'context_errors':context_errors,
         'missing_tables':missing_tables,'missing_views':missing_views,
         'missing_constraints':sorted(missing_constraints),'missing_indexes':sorted(missing_indexes),
+        'applied_migrations':migrations,
         'permissions':permissions}

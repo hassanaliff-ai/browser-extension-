@@ -6,6 +6,7 @@ from setup_postgresql import ROOT,stored_urls,provision
 from activate_postgresql import api_process,stop_api,start_api
 from alba_security.database_migration import load_metadata,table_digest
 from alba_security.database_health import database_status
+from alba_security.dbops.migrations import apply_migrations
 
 
 def upgrade():
@@ -29,6 +30,7 @@ def upgrade():
         with engine.connect() as connection:
             before={table.name:table_digest(connection,table) for table in metadata.sorted_tables}
         provision()
+        apply_migrations(engine, ROOT/'sql/migrations', runtime_role=app_url.username)
         with engine.connect() as connection:
             after={table.name:table_digest(connection,table) for table in metadata.sorted_tables}
         if before!=after:raise RuntimeError('Existing row verification did not match')

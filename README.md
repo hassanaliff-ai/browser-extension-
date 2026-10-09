@@ -11,6 +11,11 @@ history queries, eight reporting views and a read-only health check. Existing
 PostgreSQL deployments should run `scripts/upgrade_postgresql.py` with the configured
 local owner credentials before starting the updated API.
 
+Database operator tools now provide private scheduled backups and isolated restore
+tests, synthetic performance benchmarks, checksum-tracked SQL migrations, aggregate
+capacity monitoring, and allowlisted JSON/CSV exchange. See
+[database operations](docs/Database%20Operations.md) for commands and scheduling.
+
 One FastAPI process serves the original ExtSecure VirusTotal lookup API and
 the Alba risk and monitoring service. The existing `POST /scan` contract remains
 at the root. When monitoring is configured, administrator and ingestion routes
