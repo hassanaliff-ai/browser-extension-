@@ -19,7 +19,14 @@ def render(view, token, fetch, post):
     st.header(view)
     st.caption('Review the evidence, record the decision, and keep the next action clear.')
 
-    if view == 'Incident cases':
+    if view == 'Threat blocklist':
+        rows = get('threat-blocks')
+        if rows is None:
+            return
+        st.info('Active High/Critical blocks override approvals and whitelist entries. Investigate the linked case before a reviewed administrator release in the Chrome extension console.')
+        st.dataframe([{key: row.get(key) for key in ('target_display','severity','active','case_id','case_status','updated_at')} for row in rows], hide_index=True, use_container_width=True)
+
+    elif view == 'Incident cases':
         accounts = get('case-assignees')
         scans = get('scans')
         cases = get('cases')
@@ -79,56 +86,6 @@ def render(view, token, fetch, post):
             reason = st.text_area('Decision or resolution reason', max_chars=2000)
             if st.form_submit_button('Update case'):
                 save(f'cases/{chosen}/status', {'status': status, 'assignee': assignee, 'reason': reason, 'expected_revision': case['revision']})
-
-    elif view == 'Security policies':
-        data = get('policies', dict)
-        if data is None:
-            return
-        policy = data['active']
-        st.caption(f"Active scoring version: {policy['version']}")
-        st.info('Drafts cannot change live scoring. Another configured administrator must approve a draft before activation. Previous scan results retain their original policy version.')
-        if not data['independent_review_available']:
-            st.warning('An independent reviewer account has not been configured. Drafting is available; approval and activation require a second administrator.')
-        with st.expander('Create a scoring-policy draft'):
-            with st.form('policy_draft'):
-                st.markdown('**Points per confirmed signal**')
-                weights = {}
-                columns = st.columns(2)
-                for i, signal in enumerate(policy['signals']):
-                    with columns[i % 2]:
-                        weights[signal['code']] = st.number_input(signal['title'], min_value=1, max_value=100, value=signal['points'], step=1, key='weight_' + signal['code'])
-                bands = {r['severity']: r['min_score'] for r in policy['severity_bands']}
-                medium = st.number_input('Medium starts at', min_value=1, max_value=98, value=bands['Medium'])
-                high = st.number_input('High starts at', min_value=2, max_value=99, value=bands['High'])
-                critical = st.number_input('Critical starts at', min_value=3, max_value=100, value=bands['Critical'])
-                reason = st.text_area('Reason for scoring change', max_chars=2000)
-                if st.form_submit_button('Save policy draft'):
-                    save('policies', {'base_version': policy['version'], 'weights': weights, 'medium': medium, 'high': high, 'critical': critical, 'reason': reason})
-        revisions = data['revisions']
-        if not revisions:
-            st.info('No scoring changes have been drafted.')
-            return
-        st.dataframe([{k: r[k] for k in ['id', 'author', 'reviewer', 'status', 'reason']} for r in revisions], hide_index=True, use_container_width=True)
-        options = {r['id']: r for r in revisions}
-        selected = st.selectbox('Policy revision', options, format_func=lambda k: f"{k[:8]} · {options[k]['status']} · {options[k]['author']}")
-        revision = options[selected]
-        st.write('Draft reason: ' + revision['reason'])
-        current_weights = {r['code']: r['points'] for r in policy['signals']}
-        st.dataframe([{'Signal': r['title'], 'Active points': current_weights[r['code']], 'Draft points': r['points']} for r in revision['policy']['signals']], hide_index=True, use_container_width=True)
-        st.markdown('**Draft severity thresholds**')
-        st.dataframe(revision['policy']['severity_bands'], hide_index=True, use_container_width=True)
-        if revision['status'] == 'draft':
-            with st.form('policy_review'):
-                decision = st.selectbox('Review decision', ['approved', 'rejected'])
-                reason = st.text_area('Independent review reason', max_chars=2000)
-                if st.form_submit_button('Submit independent review'):
-                    save(f'policies/{selected}/review', {'decision': decision, 'reason': reason})
-        elif revision['status'] == 'approved':
-            st.write(f"Approved by {revision['reviewer']}: {revision['review_reason']}")
-            with st.form('policy_activate'):
-                reason = st.text_area('Activation reason', max_chars=2000)
-                if st.form_submit_button('Activate approved policy', type='primary'):
-                    save(f'policies/{selected}/activate', {'reason': reason})
 
     elif view == 'Privacy governance':
         rules = get('privacy', dict)
@@ -192,7 +149,7 @@ def render(view, token, fetch, post):
             st.caption(f"Precision: {result['precision'] if result['precision'] is not None else 'Not available'} · Recall: {result['recall'] if result['recall'] is not None else 'Not available'} · Coverage: {result['coverage']:.0%}")
             st.dataframe(result['scenarios'], hide_index=True, use_container_width=True)
         st.subheader('Scoring review recommendations')
-        st.caption('Suggestions use the labelled scenarios in this run. They do not change the active policy. Review and approval remain required.')
+        st.caption('Suggestions use the labelled scenarios in this run. They do not change the active policy. Recommendations are reviewed by an administrator.')
         recommendations = row['results'].get('recommendations', [])
         if not recommendations:
             st.info('This older run has no stored recommendations. Run its unchanged dataset again to generate review suggestions.')
@@ -208,7 +165,7 @@ def render(view, token, fetch, post):
     elif view == 'Usability and accessibility':
         st.write('Record an actual walkthrough, identify a problem, document its fix, then verify the retest. A failed or blocked task remains visible until the fix has been checked.')
         with st.expander('Walkthrough checklist', expanded=True):
-            st.markdown('- Sign in using the keyboard and complete both authentication steps.\n- Read a risk result without relying on colour.\n- Explain the difference between Low and Unknown.\n- Open an alert, find its evidence, and create an incident case.\n- Check focus visibility, labels, contrast, and layout at enlarged zoom.\n- Draft a policy and complete review with another administrator.')
+            st.markdown('- Sign in using the keyboard and complete both authentication steps.\n- Read a risk result without relying on colour.\n- Explain the difference between Low and Unknown.\n- Open an alert, find its evidence, and create an incident case.\n- Check focus visibility, labels, contrast, and layout at enlarged zoom.')
         with st.form('usability_record'):
             task = st.text_input('Task tested', max_chars=200)
             category = st.selectbox('Test category', ['keyboard', 'contrast', 'screen_reader', 'comprehension', 'workflow'])
@@ -242,7 +199,6 @@ def render(view, token, fetch, post):
             ('Review a threat', 'Avoid opening the flagged destination or file. Inspect the scan evidence, open a case, assign an administrator, and record investigation notes. Resolve only after documenting the evidence and decision.'),
             ('Check a downloaded file', 'Use a SHA-256 hash when possible. Uploading a file sends its bytes to the backend for hashing; only its hash is sent to the reputation provider. Unknown requires follow-up and is not a clean verdict.'),
             ('Use an exception responsibly', 'An exception suppresses external notifications for its exact matching target. It does not erase findings, lower a score, prove a destination is safe, or cover subdomains automatically. Include a reason and expiry.'),
-            ('Change a policy', 'Create a draft, compare the weights and severity thresholds, and test labelled scenarios. Another administrator must approve the draft. Activation changes future scans; historical evidence keeps its recorded version.'),
             ('Prepare a monthly report', 'Review the aggregate totals and generated narrative before sending. The report uses the saved statistics, and SMTP acceptance does not confirm delivery to an inbox.'),
             ('Protect browsing data', 'Keep private URLs, passwords and local file paths out of notes. Review collection and retention rules. Linked cases and pending alerts protect their source scan evidence from the retention operation.'),
         ]:

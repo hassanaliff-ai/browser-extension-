@@ -13,7 +13,7 @@ local owner credentials before starting the updated API.
 
 Database operator tools now provide private scheduled backups and isolated restore
 tests, synthetic performance benchmarks, checksum-tracked SQL migrations, aggregate
-capacity monitoring, and allowlisted JSON/CSV exchange. See
+basic migrations, and allowlisted JSON/CSV export. See
 [database operations](docs/Database%20Operations.md) for commands and scheduling.
 
 One FastAPI process serves the original ExtSecure VirusTotal lookup API and
@@ -155,7 +155,6 @@ security responsibilities and the six additional investigation and governance ro
 | Incident response and cases | Scan-linked cases, administrator assignment, notes, audited status changes and resolution reasons. |
 | Detection quality evaluation | Immutable labelled datasets, baseline comparisons, false positives, missed threats and separate Unknown outcomes. |
 | Security awareness | In-app onboarding and response guidance using current scoring thresholds. |
-| Policy change management | Immutable scoring drafts, independent administrator review, controlled activation and historical scoring versions. |
 
 Keep `dashboard.py`, `dashboard.css`, and `.streamlit/config.toml` together when
 copying the dashboard. Start it from this project directory to load the theme.
@@ -163,7 +162,7 @@ Also copy `dashboard_governance.py`, which supplies the six new console views.
 The console uses real backend results; an unavailable lookup remains **Unknown**.
 
 See [Administrator workflows](docs/Administrator%20workflows.md) for the new
-screens, independent reviewer setup, retention scope and evaluation interpretation.
+screens, incident investigation, retention scope and evaluation interpretation.
 
 ## Setup
 
@@ -514,43 +513,10 @@ extsecure-integrated/
 Chrome device enrollment, enabled-extension inventory and device block controls are now available in the MV3 console. See [extension setup and inventory workflow](extension/README.md#basic-device-and-chrome-setup-074) for registration, optional Chrome permissions, access enforcement and limitations.
 
 
-## Incident automation and control effectiveness (0.8.8)
+## Core scope (0.8.13)
 
-Open **Workflow automation** in the extension console. Administrators create rules with a risk threshold, scan type, priority, investigator, reviewer and escalation deadline (1–720 hours). Rules start disabled. The first enabled matching rule creates and assigns a case for new scans; scans with Unknown severity or an applied exception do not create automatic cases. Assignment and reviewer notices are delivered to a durable in-app inbox. Managers see only their own notices. Administrators can review and acknowledge notices across the team. These workflow notices are not outbound email/webhook messages; the existing high-severity threat notifications remain a separate configured feature.
+Optional workflow automation, policy-change approval, control-effectiveness analytics, advanced database monitoring, domain importing and migration checksum comparison have been removed. See [current project scope](docs/Project%20Scope.md).
 
-The API checks unresolved cases every 60 seconds, including when hosted under `/monitor`. Existing manual cases retain their investigator until escalation. A deadline runs from creation or the latest reopen; notes and reassignment do not postpone it. Each case cycle escalates once, with a revision check and a saved notice. A disabled rule stops its linked automation. Editing a rule changes its linked cases' future deadline/recipient settings; completed escalations are not resent. Automation never approves websites, changes scores or resolves cases. Use **Check unresolved cases now** for an immediate, audited sweep. Review notifications in this section and click **Open case** to investigate.
+Incident investigation, persistent High/Critical containment, scanning, access approval, accounts and 2FA, reports, privacy, detection evaluation, usability testing and safe exports remain available. See [incident response and containment](docs/Incident%20Response%20and%20Threat%20Containment.md).
 
-Open **Control effectiveness** under Govern. Choose 7, 30, 90 or 365 days. Activity includes authenticated extension navigation reports, approval decisions, applied exceptions, alert deliveries and repeated High/Critical detections for the same device and target fingerprint. Approval response, first alert acknowledgement/resolution and first case resolution show sample count, median and nearest-rank 95th percentile. The activity cohort contains records created in the selected UTC window, so older pending incidents are not included in that cohort.
-
-Administrators record evidence-backed assessments for blocking, approvals, exceptions and alerts. Relevant evidence choices are filtered by control. Percentages use the latest review per control/reference, exclude inconclusive outcomes, and show **Not assessed** without usable reviews. Detection-quality counts use the latest independent label per scan and a High/Critical warning threshold. Unknown scans and unverified labels remain unassessed. Assessments are review evidence, not objective proof of a control's effectiveness. The latest corrected label replaces the earlier label for metrics; audit/history remains available.
-
-Navigation observations retain a hashed destination, verified user/device identity and outcome, not the URL. They are best-effort reports from signed-in extension pages and cannot prove all browser navigations were enforced. A monitoring outage does not weaken the Chrome navigation gate. Navigation observation cleanup uses the existing configured retention period and explicit retention confirmation. Rule changes, case automation and control reviews are audited. No new Chrome permissions, credentials or external dependencies are required.
-
-API additions: `GET/POST /api/workflow/rules`, `POST /api/workflow/rules/{id}/update`, `POST /api/workflow/run`, `GET /api/workflow/notifications`, `POST /api/workflow/notifications/{id}/acknowledge`, `GET /api/controls/effectiveness?days=30`, `GET/POST /api/controls/reviews`, and `POST /api/controls/navigation`. The deployed prefix is `/monitor`. New tables are created additively with the existing schema initializer.
-
-
-## API 0.4.1: new-task compatibility and readiness
-
-The public and monitoring APIs report version 0.4.1. The current extension is version 0.8.10. Existing scan, health, sign-in and 2FA contracts are preserved.
-
-- `GET /extension/capabilities` is public integration metadata. It identifies whether monitoring is configured, the `/monitor/api` prefix, the `/monitor/docs` documentation link, supported operation features and whether the workflow runner has started. It does not expose accounts, incidents, credentials or rule settings. Monitoring-disabled deployments report unavailable support rather than advertising working operations.
-- `GET /monitor/api/operations/status` requires a completed 2FA session from a manager, administrator or head administrator. It returns supported features, workflow runner status and interval, the in-app notification channel, and evaluation periods. A stopped or failed runner reports degraded readiness. Normal users and unauthenticated requests are rejected.
-- Rule updates may pause an existing rule while preserving its recipient settings after a referenced operator is revoked. Re-enabling the rule or changing its recipients still validates active operator accounts and an administrator escalation recipient. Stale revisions are rejected.
-
-Open `/docs` for the main scan and integration API; open `/monitor/docs` for workflow rules, notifications, escalation and control-effectiveness endpoints. Both feature-discovery and private readiness responses use `Cache-Control: no-store`. API capability declarations describe supported implementation; they do not assert that a rule has been enabled or an assessment independently verified.
-
-## Extension 0.8.9: workflow and control worker compatibility
-
-Chrome can continue running an older service worker after the unpacked extension files change. Version 0.8.7 rejected the workflow and control endpoints locally with `This API action is not supported.` before sending an HTTP request. Updating or restarting the API alone cannot replace that Chrome worker.
-
-The console now checks the worker version, operations contract and the required section capability before requesting either task. An incompatible worker displays an English/Arabic recovery panel with console/worker versions and **Restart ExtSecure**. Recognized legacy rejection messages for locally permitted routes also show recovery. Invalid paths and methods remain denied; no retry bypasses the worker allowlist. Restart only happens when explicitly selected.
-
-After updating the unpacked folder, reload ExtSecure on `chrome://extensions`, close old console tabs, and reopen the console from the extension icon. If a recovery panel is already visible, its **Restart ExtSecure** button performs the reload. Sign in again if prompted. The installation preserves private backend configuration and device identity; extension restart may end the current session. See [validation evidence](docs/WORKER_COMPATIBILITY_FIX.md).
-
-## Extension 0.8.10: visible workflow readiness
-
-Workflow automation now displays its actual setup and runner readiness, the enabled-rule count, the automatic-case-rule count, and unread notifications. Missing rules, revoked recipients, manual-case-only rules, stopped checks and failed checks have distinct explanations. Notification actions have readable labels and a **Refresh notifications** button. Detailed workflow guidance is available under **How automation works**.
-
-Automation requires at least one enabled rule. For an existing local SQLite deployment with no rules, the project owner can run `python scripts/enable_default_workflow.py --confirm` using the project's Python environment. This local maintenance tool creates an audited High/Critical website/file rule for the configured head administrator, with review notifications and 24-hour escalation. It backs up the database in `.private`, validates the configured owner, preserves existing rules, and never changes historical scans. Existing rules should be managed through the authenticated extension interface. This tool does not support PostgreSQL; use the extension/API for those deployments.
-
-Notifications appear on new matching incidents. Low/Unknown results do not trigger this rule, and existing scans are not automatically backfilled. Acknowledgement marks a notification as read; investigation and resolution remain explicit case actions. Escalating to the same head administrator still creates an escalation notice without changing the investigator. See [workflow activation verification](docs/WORKFLOW_ACTIVATION.md).
+Reload the unpacked Chrome extension after updating its files. Migration 0004 removes the six optional-feature tables. It preserves security evidence, incidents, threat blocks and the administrative audit trail.

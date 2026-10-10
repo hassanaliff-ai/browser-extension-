@@ -62,7 +62,7 @@ def test_sensitive_api_responses_and_errors_are_not_cacheable(roles):
     client, _, headers, _ = roles
     owner = headers['head_administrator']
     for path in ('/api/overview', '/api/scans', '/api/events', '/api/cases',
-                 '/api/privacy', '/api/policies', '/api/reports/monthly', '/api/alerts'):
+                 '/api/privacy', '/api/reports/monthly', '/api/alerts'):
         response = client.get(path, headers=owner)
         assert response.status_code == 200
         assert response.headers.get('cache-control') == 'no-store', path
@@ -114,33 +114,6 @@ def test_account_reviews_need_a_reason_after_trimming(roles):
     assert client.get('/api/admin/me', headers=headers['normal_user']).status_code == 200
 
 
-def test_finding_severity_uses_approved_thresholds_and_preserves_history(roles):
-    client, _, headers, _ = roles
-    author, reviewer = headers['head_administrator'], headers['administrator']
-    before = scan(client, detected='suspicious_url')
-    assert before['severity'] == 'Medium'
-    policy = client.get('/api/risk-policy', headers=author).json()
-    proposed = client.post('/api/policies', headers=author, json={
-        'base_version': policy['version'],
-        'weights': {r['code']: r['points'] for r in policy['signals']},
-        'medium': 10, 'high': 20, 'critical': 40,
-        'reason': 'Review labelled scenarios with tighter severity thresholds',
-    })
-    assert proposed.status_code == 201, proposed.text
-    revision = '/api/policies/' + proposed.json()['id']
-    assert client.post(revision + '/review', headers=reviewer, json={
-        'decision': 'approved', 'reason': 'Independently reviewed the threshold evaluation',
-    }).status_code == 200
-    assert client.post(revision + '/activate', headers=author, json={
-        'reason': 'Activate the independently reviewed scoring revision',
-    }).status_code == 200
-    after = scan(client, detected='suspicious_url')
-    assert after['severity'] == 'High'
-    current = client.get('/api/scans/' + after['id'], headers=author).json()
-    historic = client.get('/api/scans/' + before['id'], headers=author).json()
-    assert current['findings'][0]['severity'] == 'High'
-    assert historic['findings'][0]['severity'] == 'Medium'
-    assert current['risk_policy_version'] != historic['risk_policy_version']
 
 def test_read_permissions_apply_to_every_protected_data_route(roles):
     client, _, headers, _ = roles
@@ -173,7 +146,7 @@ def test_manager_and_normal_user_cannot_change_security_configuration(roles):
 
 def test_manager_cannot_fetch_hidden_governance_or_exception_data(roles):
     client, _, headers, _ = roles
-    for path in ('/api/overrides','/api/overrides/audit','/api/policies','/api/privacy',
+    for path in ('/api/overrides','/api/overrides/audit','/api/privacy',
                  '/api/privacy/retention-preview','/api/evaluations','/api/usability','/api/governance/audit'):
         assert client.get(path,headers=headers['manager']).status_code == 403
     assert client.get('/api/reports/monthly',headers=headers['manager']).status_code == 200

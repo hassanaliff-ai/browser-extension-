@@ -142,18 +142,6 @@ CREATE TABLE governance_state (
 	PRIMARY KEY (id)
 );
 
-CREATE TABLE incident_workflow_rules (
-	id VARCHAR(36) NOT NULL,
-	name VARCHAR(120) NOT NULL,
-	enabled BOOLEAN NOT NULL,
-	priority INTEGER NOT NULL,
-	revision INTEGER NOT NULL,
-	settings JSON NOT NULL,
-	author VARCHAR(120) NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-	PRIMARY KEY (id)
-);
-
 CREATE TABLE inventory_policy (
 	id SERIAL NOT NULL,
 	enrollment_required BOOLEAN NOT NULL,
@@ -185,42 +173,6 @@ CREATE TABLE registered_administrators (
 	approved_at TIMESTAMP WITH TIME ZONE,
 	created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 	PRIMARY KEY (username)
-);
-
-CREATE TABLE security_control_reviews (
-	id VARCHAR(36) NOT NULL,
-	control VARCHAR(24) NOT NULL,
-	reference_type VARCHAR(24) NOT NULL,
-	reference_id VARCHAR(36) NOT NULL,
-	outcome VARCHAR(24) NOT NULL,
-	ground_truth VARCHAR(16) NOT NULL,
-	evidence TEXT NOT NULL,
-	actor VARCHAR(120) NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-	PRIMARY KEY (id)
-);
-
-CREATE TABLE security_navigation_evidence (
-	id VARCHAR(64) NOT NULL,
-	actor VARCHAR(120) NOT NULL,
-	device_id VARCHAR(100),
-	target_fingerprint VARCHAR(64) NOT NULL,
-	outcome VARCHAR(16) NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-	PRIMARY KEY (id)
-);
-
-CREATE TABLE security_policy_revisions (
-	id VARCHAR(36) NOT NULL,
-	base_version VARCHAR(60) NOT NULL,
-	author VARCHAR(120) NOT NULL,
-	reviewer VARCHAR(120),
-	status VARCHAR(20) NOT NULL,
-	reason TEXT NOT NULL,
-	review_reason TEXT,
-	policy JSON NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-	PRIMARY KEY (id)
 );
 
 CREATE TABLE usability_records (
@@ -456,6 +408,22 @@ CREATE TABLE security_events (
 	FOREIGN KEY(extension_id) REFERENCES extensions (id)
 );
 
+CREATE TABLE security_threat_blocks (
+	id VARCHAR(80) NOT NULL,
+	kind VARCHAR(16) NOT NULL,
+	fingerprint VARCHAR(64) NOT NULL,
+	scan_id VARCHAR(36) NOT NULL,
+	target_display VARCHAR(180) NOT NULL,
+	severity VARCHAR(12) NOT NULL,
+	active BOOLEAN NOT NULL,
+	revision INTEGER NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_threat_block_severity CHECK (severity IN ('High','Critical')),
+	FOREIGN KEY(scan_id) REFERENCES scans (id)
+);
+
 CREATE TABLE incident_case_notes (
 	id VARCHAR(36) NOT NULL,
 	case_id VARCHAR(36) NOT NULL,
@@ -464,28 +432,6 @@ CREATE TABLE incident_case_notes (
 	created_at TIMESTAMP WITH TIME ZONE NOT NULL,
 	PRIMARY KEY (id),
 	FOREIGN KEY(case_id) REFERENCES incident_cases (id)
-);
-
-CREATE TABLE incident_workflow_links (
-	case_id VARCHAR(36) NOT NULL,
-	rule_id VARCHAR(36) NOT NULL,
-	PRIMARY KEY (case_id),
-	FOREIGN KEY(case_id) REFERENCES incident_cases (id),
-	FOREIGN KEY(rule_id) REFERENCES incident_workflow_rules (id)
-);
-
-CREATE TABLE incident_workflow_notices (
-	id VARCHAR(64) NOT NULL,
-	case_id VARCHAR(36) NOT NULL,
-	rule_id VARCHAR(36) NOT NULL,
-	recipient VARCHAR(120) NOT NULL,
-	phase VARCHAR(24) NOT NULL,
-	details JSON NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-	acknowledged_at TIMESTAMP WITH TIME ZONE,
-	PRIMARY KEY (id),
-	FOREIGN KEY(case_id) REFERENCES incident_cases (id),
-	FOREIGN KEY(rule_id) REFERENCES incident_workflow_rules (id)
 );
 
 CREATE INDEX ix_admin_overrides_match ON admin_overrides (kind, match_key, active);
@@ -497,14 +443,6 @@ CREATE INDEX ix_domains_last_seen ON domains (last_seen);
 CREATE INDEX ix_governance_audit_area ON governance_audit (area);
 
 CREATE UNIQUE INDEX ix_monthly_reports_period ON monthly_reports (period);
-
-CREATE INDEX ix_security_control_reviews_control ON security_control_reviews (control);
-
-CREATE INDEX ix_security_control_reviews_reference_id ON security_control_reviews (reference_id);
-
-CREATE INDEX ix_security_navigation_evidence_actor ON security_navigation_evidence (actor);
-
-CREATE INDEX ix_security_navigation_evidence_created_at ON security_navigation_evidence (created_at);
 
 CREATE INDEX ix_website_access_requests_requester ON website_access_requests (requester);
 
@@ -570,13 +508,11 @@ CREATE INDEX ix_security_events_extension_id ON security_events (extension_id);
 
 CREATE INDEX ix_security_events_scan_id ON security_events (scan_id);
 
+CREATE INDEX ix_security_threat_blocks_fingerprint ON security_threat_blocks (fingerprint);
+
+CREATE INDEX ix_security_threat_blocks_scan_id ON security_threat_blocks (scan_id);
+
 CREATE INDEX ix_incident_case_notes_case_id ON incident_case_notes (case_id);
-
-CREATE INDEX ix_incident_workflow_links_rule_id ON incident_workflow_links (rule_id);
-
-CREATE INDEX ix_incident_workflow_notices_case_id ON incident_workflow_notices (case_id);
-
-CREATE INDEX ix_incident_workflow_notices_recipient ON incident_workflow_notices (recipient);
 
 CREATE VIEW extsecure_risk_results AS SELECT id AS scan_id, device_id, domain_id, target_kind, score,
  severity, completeness, risk_policy_version, override_id, created_at FROM scans;

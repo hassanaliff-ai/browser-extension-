@@ -6,7 +6,7 @@ authentication, approvals and API routes remain compatible.
 
 ## Data model and integrity
 
-The live schema contains 41 application tables, a migration ledger, and eight reporting views. Indexes include
+The live schema contains 36 application tables, a migration ledger, and eight reporting views. Indexes include
 primary/unique keys and dedicated device/time/cursor history indexes. It stores
 devices, scans, domains, findings, alerts, security events, incidents, approvals,
 reports, account/session records and audit history. Risk results remain on the
@@ -141,7 +141,7 @@ migrations are listed separately from `extsecure_schema_migrations`.
 artifact deterministically from the same model definitions and views.
 The numbered migration files add the ledger-managed operations history after
 provisioning. See [database operations](Database%20Operations.md) for backups,
-restore tests, benchmarks, monitoring and controlled data exchange.
+restore tests, benchmarks, basic migrations and controlled evidence export.
 
 PostgreSQL enforces named checks and composite relationships directly; legacy
 SQLite files retain the earlier additive upgrade path and are not rebuilt to
@@ -156,7 +156,7 @@ and restricted runtime/audit permissions. Test runs used disposable
 `extsecure_test_*` databases, removed afterward. SQLite compatibility suites also
 passed (99 tests; a subsequent focused API/governance/query run passed 55).
 The live migration verified all 41 tables and confirmed a PostgreSQL connection
-from `TestAPI` using `extsecure_app`, API health, workflow readiness and
+from `TestAPI` using `extsecure_app`, API health, incident routes and
 unauthenticated request rejection. Private records and credentials were not published.
 
 The professional database revision additionally tests cross-device and extension

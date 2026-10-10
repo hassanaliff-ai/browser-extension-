@@ -1,26 +1,3 @@
-# ExtSecure Chrome extension 0.8.8
-
-The console and popup use teal navigation bars with warm terracotta accents. Choose Light, Dark or
-Use device setting in Settings, then Save preferences. The console header also
-has a Dark mode toggle. Appearance is stored locally with language and time
-zone; no backend setting or permission is added. The saved choice also applies
-to sign-in and the blocked-page screen. System mode follows the device theme;
-explicit light/dark choices remain fixed. Warning panels use warm rose and rust
-tones, with labelled risk levels retained. See
-`../docs/Release 0.8.3 Appearance Verification.md` for test evidence.
-
-Version 0.6 adds evidence-based AI explanation forms to URL/file risk results
-and weekly/monthly report snapshots within the Reports panel. The
-backend keeps the LLM key, verifies optional file hashes and exact page scope,
-and enforces the existing account privileges. Content sharing starts unchecked.
-Generated prose is a review draft and never changes severity or grants access.
-See `AI_INTEGRATION.md` at the project root for model configuration, privacy
-scope, API paths and the repeatable weekly/monthly preparation command.
-
-The primary interface is a Manifest V3 extension: a toolbar popup, extension-owned
-console and blocked-page screen. Its service worker talks to the existing FastAPI
-backend. These pages run at `chrome-extension://`; Streamlit is not required.
-
 ## Install or update
 
 1. Start the configured backend at `http://127.0.0.1:8765`.
@@ -202,7 +179,6 @@ Use the **Table size** selector above any populated table, or open **Settings**,
 
 Table sizes save directly in Chrome local storage, persist after reopening, and update other open console tabs. Compact, Standard and Spacious change row spacing without hiding records. This remains compatible with an older running background worker.
 
-Workflow automation (Investigate) provides incident assignment rules, reviewer notifications and overdue-case escalation. Control effectiveness (Govern) provides time-window metrics and evidence assessments for blocking, approvals, exceptions and alerts. Administrators configure rules and record assessments; managers view metrics and their own workflow notifications. The API must run for deadline checks. After installing 0.8.8, reload ExtSecure in chrome://extensions and reopen the console. See ../README.md for metric definitions and limits.
 
 ### Reproducible real-browser tests
 

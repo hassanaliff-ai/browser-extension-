@@ -50,25 +50,17 @@ def scan(client, detected='malicious_url', status='detected'):
     return response.json()
 
 
-def draft(client, header, malicious_weight=80):
-    policy = client.get('/api/risk-policy', headers=header).json()
-    weights = {r['code']: r['points'] for r in policy['signals']}
-    weights['malicious_url'] = malicious_weight
-    response = client.post('/api/policies', headers=header, json={'base_version': policy['version'], 'weights': weights,
-                           'medium': 30, 'high': 60, 'critical': 80, 'reason': 'Reviewed labelled scoring fixtures'})
-    assert response.status_code == 201, response.text
-    return response.json()
 
 
-@pytest.mark.parametrize('path', ['cases', 'policies', 'privacy', 'privacy/retention-preview', 'evaluations', 'usability', 'governance/audit', 'admin/accounts'])
+@pytest.mark.parametrize('path', ['cases', 'privacy', 'privacy/retention-preview', 'evaluations', 'usability', 'governance/audit', 'admin/accounts'])
 def test_new_data_views_require_completed_two_factor_session(system, path):
     client, _, _, _ = system
     assert client.get('/api/' + path).status_code == 401
     assert client.get('/api/' + path, headers=INGEST).status_code == 401
 
 
-@pytest.mark.parametrize('path', ['cases', 'cases/missing/notes', 'cases/missing/status', 'policies',
-                                 'policies/missing/review', 'policies/missing/activate', 'privacy',
+@pytest.mark.parametrize('path', ['cases', 'cases/missing/notes', 'cases/missing/status',
+                                 'privacy',
                                  'privacy/retention-apply', 'evaluations', 'usability', 'usability/missing/status'])
 def test_new_mutations_reject_ingest_tokens_and_password_only_challenges(system, path):
     client, _, _, _ = system
@@ -79,52 +71,10 @@ def test_new_mutations_reject_ingest_tokens_and_password_only_challenges(system,
     assert client.post('/api/' + path, headers=INGEST, json={}).status_code == 401
 
 
-def test_policy_requires_independent_review_and_preserves_historical_scans(system):
-    client, _, headers, _ = system
-    author, reviewer = headers['hasan'], headers['reviewer']
-    before = scan(client)
-    proposed = draft(client, author, 50)
-    path = '/api/policies/' + proposed['id']
-    assert client.post(path + '/activate', headers=author, json={'reason': 'Activate scoring after evaluation'}).status_code == 409
-    assert client.post(path + '/review', headers=author, json={'decision': 'approved', 'reason': 'Approve my own draft attempt'}).status_code == 403
-    approved = client.post(path + '/review', headers=reviewer, json={'decision': 'approved', 'reason': 'Reviewed the independent evaluation'})
-    assert approved.status_code == 200, approved.text
-    assert approved.json()['reviewer'] == 'reviewer'
-    assert client.post(path + '/review', headers=reviewer, json={'decision': 'rejected', 'reason': 'Duplicate review attempt'}).status_code == 409
-    activated = client.post(path + '/activate', headers=author, json={'reason': 'Activate approved policy after review'})
-    assert activated.status_code == 200, activated.text
-    after = scan(client)
-    assert (before['score'], before['severity']) == (80, 'Critical')
-    assert (after['score'], after['severity']) == (50, 'Medium')
-    assert after['risk_policy_version'] == proposed['id']
-    historic = client.get('/api/scans/' + before['id'], headers=author).json()
-    assert historic['risk_policy_version'] == before['risk_policy_version']
-    assert historic['score'] == 80
-    audit = client.get('/api/governance/audit', headers=author).json()
-    assert any(r['action'] == 'approved' and r['actor'] == 'reviewer' for r in audit)
-    assert any(r['action'] == 'activated' and r['actor'] == 'hasan' for r in audit)
 
 
-def test_outdated_policy_cannot_replace_a_newer_active_version(system):
-    client, _, headers, _ = system
-    a = draft(client, headers['hasan'])
-    b = draft(client, headers['hasan'], 70)
-    for row in [a, b]:
-        response = client.post('/api/policies/' + row['id'] + '/review', headers=headers['reviewer'],
-                               json={'decision': 'approved', 'reason': 'Reviewed valid draft independently'})
-        assert response.status_code == 200
-    assert client.post('/api/policies/' + a['id'] + '/activate', headers=headers['hasan'], json={'reason': 'Activate first approved policy'}).status_code == 200
-    assert client.post('/api/policies/' + b['id'] + '/activate', headers=headers['hasan'], json={'reason': 'Try stale policy activation'}).status_code == 409
 
 
-@pytest.mark.parametrize('invalid', [True, 0, 101, '25'])
-def test_policy_cannot_accept_unvalidated_weights(system, invalid):
-    client, _, headers, _ = system
-    policy = client.get('/api/risk-policy', headers=headers['hasan']).json()
-    weights = {r['code']: r['points'] for r in policy['signals']}
-    weights['malicious_url'] = invalid
-    assert client.post('/api/policies', headers=headers['hasan'], json={'base_version': policy['version'], 'weights': weights,
-                       'medium': 30, 'high': 60, 'critical': 80, 'reason': 'Weight validation scenario'}).status_code == 422
 
 
 def test_cases_require_real_scan_real_assignee_and_audited_investigation(system):
@@ -239,8 +189,8 @@ def test_reviewer_identity_is_preserved_in_original_exception_workflow(system):
 def test_signout_revokes_only_the_selected_administrator(system):
     client, _, headers, _ = system
     assert client.post('/api/admin/logout', headers=headers['reviewer']).status_code == 200
-    assert client.get('/api/policies', headers=headers['reviewer']).status_code == 401
-    assert client.get('/api/policies', headers=headers['hasan']).status_code == 200
+    assert client.get('/api/risk-policy', headers=headers['reviewer']).status_code == 401
+    assert client.get('/api/risk-policy', headers=headers['hasan']).status_code == 200
 
 
 def test_evaluation_recommends_evidence_review_without_changing_policy(system):
@@ -273,55 +223,3 @@ def test_clean_fixture_recommends_broader_validation_instead_of_accuracy_claim(s
         ]})
     assert response.status_code == 201
     assert response.json()['results']['recommendations'][0]['category'] == 'expand_validation'
-
-
-def test_combined_investigation_policy_privacy_and_reporting_workflow(system):
-    """New governance decisions operate on original scan/alert/report evidence."""
-    client, _, headers, _ = system
-    author, reviewer = headers['hasan'], headers['reviewer']
-    original = scan(client)
-    alerts = client.get('/api/alerts', headers=author).json()
-    original_alert = next(r for r in alerts if r['scan_id'] == original['id'])
-    case_response = client.post('/api/cases', headers=author, json={
-        'scan_id': original['id'], 'title': 'Review scoring and reputation evidence', 'assignee': 'reviewer'})
-    assert case_response.status_code == 201
-    case_id = case_response.json()['id']
-    assert client.post('/api/cases/' + case_id + '/notes', headers=reviewer,
-                       json={'body': 'Review the original finding before adjusting the policy.'}).status_code == 201
-    proposed = draft(client, author, 50)
-    route = '/api/policies/' + proposed['id']
-    assert client.post(route + '/review', headers=reviewer,
-                       json={'decision': 'approved', 'reason': 'Reviewed independent scoring fixtures'}).status_code == 200
-    assert client.post(route + '/activate', headers=author,
-                       json={'reason': 'Activate approved scoring adjustment'}).status_code == 200
-    evaluation = client.post('/api/evaluations', headers=reviewer, json={
-        'dataset_version': 'integrated-regression-v1', 'scenarios': [
-            {'name': 'Confirmed malicious URL', 'expected': 'threat', 'signals': [{'code': 'malicious_url', 'status': 'detected'}]},
-        ]})
-    assert evaluation.status_code == 201
-    assert evaluation.json()['policy_version'] == proposed['id']
-    assert 'baseline_regression' in [r['category'] for r in evaluation.json()['results']['recommendations']]
-    rules = client.get('/api/privacy', headers=author).json()
-    assert client.post('/api/privacy', headers=author, json={
-        'expected_revision': rules['revision'], 'retention_days': 30, 'show_hostnames': False,
-        'collection_purpose': 'Store security evidence for accountable investigations.',
-        'reason': 'Minimise browsing data while retaining case evidence'}).status_code == 200
-    later = scan(client)
-    assert later['severity'] == 'Medium'
-    assert later['target_display'].startswith('URL ')
-    historical = client.get('/api/scans/' + original['id'], headers=author).json()
-    assert historical['score'] == 80 and historical['risk_policy_version'] == original['risk_policy_version']
-    assert client.get('/api/cases/' + case_id, headers=author).json()['severity'] == 'Critical'
-    alerts_after = client.get('/api/alerts', headers=author).json()
-    assert len(alerts_after) == 1 and alerts_after[0]['id'] == original_alert['id']
-    overview = client.get('/api/overview', headers=author).json()
-    assert overview['total_scans'] == 2 and overview['high_risk'] == 1
-    now = utc_now()
-    stats = client.get(f'/api/reports/monthly/stats?year={now.year}&month={now.month}', headers=author)
-    assert stats.status_code == 200
-    assert stats.json()['total_scans'] == 2
-    assert 'private.example' not in stats.text
-    events = client.get('/api/events', headers=author).json()
-    assert any(r['scan_id'] == original['id'] for r in events)
-    audit = client.get('/api/governance/audit', headers=author).json()
-    assert {'case', 'policy', 'privacy', 'evaluation'} <= {r['area'] for r in audit}

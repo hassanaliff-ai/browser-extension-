@@ -90,7 +90,6 @@ class CapabilitiesResponse(BaseModel):
     monitoring_base: str | None
     monitoring_docs: str | None
     capabilities: list[str]
-    workflow_runner_started: bool
 
 
 def extension_capabilities(request: Request, response: Response) -> CapabilitiesResponse:
@@ -99,12 +98,10 @@ def extension_capabilities(request: Request, response: Response) -> Capabilities
     response.headers['Cache-Control'] = 'no-store'
     features = []
     if monitor is not None:
-        from alba_security.operations import OPERATIONS_CAPABILITIES
-        features = list(OPERATIONS_CAPABILITIES)
+        features = ["incident_cases", "threat_containment", "evidence_export"]
     return CapabilitiesResponse(api_version=request.app.version, monitoring_available=monitor is not None,
         monitoring_base='/monitor/api' if monitor is not None else None,
-        monitoring_docs='/monitor/docs' if monitor is not None else None, capabilities=features,
-        workflow_runner_started=bool(monitor is not None and getattr(monitor.state, 'workflow_running', False)))
+        monitoring_docs='/monitor/docs' if monitor is not None else None, capabilities=features)
 
 
 class ExtensionScanRequest(BaseModel):
@@ -322,7 +319,7 @@ def create_app() -> FastAPI:
     load_dotenv(dotenv_path=Path(__file__).with_name(".env"), override=False)
     application = FastAPI(
         title="TestAPI",
-        description="ExtSecure scanning and administrator operations API. Workflow automation and control-effectiveness routes are documented at /monitor/docs and use the /monitor/api prefix. Check /extension/capabilities for enabled feature support.",
+        description="ExtSecure scanning and administrator operations API. Incident investigations and threat containment are documented at /monitor/docs and use the /monitor/api prefix. Check /extension/capabilities for enabled feature support.",
         version="0.4.1",
         docs_url="/docs",
         redoc_url="/redoc",

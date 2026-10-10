@@ -20,18 +20,6 @@ export function navigationTarget(value){
   return original.href;
 }
 
-// Observation is best-effort: a monitoring outage must never bypass the gate.
-export async function reportNavigation(request, loadSession, context, outcome) {
-  try {
-    const session=await loadSession();
-    if(!session.token || !session.profile?.username)return;
-    const target=accessTarget(context.original),bytes=new TextEncoder().encode(`${session.profile.username}:${context.tabId}:${context.capturedAt}:${outcome}`);
-    const digest=await crypto.subtle.digest('SHA-256',bytes);
-    const event_id=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
-    await request('/api/controls/navigation','POST',{event_id,target,outcome});
-  }catch{/* Retain the browser gate even when monitoring is unavailable. */}
-}
-
 // Static rules redirect before the request is sent, even while this worker sleeps.
 // A temporary allow rule grants one GET navigation in one tab. It is removed on
 // commit/error/closure and by a 30-second alarm if navigation never completes.
@@ -72,11 +60,7 @@ export function registerNavigationGate(request, loadSession, {reconcileThreatHos
   chrome.webNavigation.onCommitted.addListener(details=>{
     if(details.frameId!==0 || !/^https?:\/\//i.test(details.url))return;
     void (async()=>{
-      const stored=await chrome.storage.session.get(['visit:'+details.tabId,'blocked:'+details.tabId]);
-      const visit=stored['visit:'+details.tabId],blocked=stored['blocked:'+details.tabId];
       await clearTab(details.tabId);await chrome.storage.session.remove('blocked:'+details.tabId);
-      if(visit&&blocked&&visit.target===accessTarget(details.url))
-        await reportNavigation(request,loadSession,{tabId:details.tabId,original:details.url,capturedAt:blocked.captured_at},'opened');
     })().catch(()=>{});
   });
   chrome.webNavigation.onErrorOccurred.addListener(details=>{

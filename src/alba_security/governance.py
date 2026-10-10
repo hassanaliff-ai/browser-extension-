@@ -33,17 +33,6 @@ class GovernanceState(Base):
     data: Mapped[dict] = mapped_column(JSON)
 
 
-class PolicyRevision(Base):
-    __tablename__ = 'security_policy_revisions'
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    base_version: Mapped[str] = mapped_column(String(60))
-    author: Mapped[str] = mapped_column(String(120))
-    reviewer: Mapped[str | None] = mapped_column(String(120))
-    status: Mapped[str] = mapped_column(String(20), default='draft')
-    reason: Mapped[str] = mapped_column(Text)
-    review_reason: Mapped[str | None] = mapped_column(Text)
-    policy: Mapped[dict] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class IncidentCase(Base):
@@ -108,25 +97,8 @@ class Reason(Input):
     reason: str = Field(min_length=8, max_length=2000)
 
 
-class PolicyDraft(Reason):
-    base_version: str = Field(min_length=1, max_length=60)
-    weights: dict[str, Annotated[int, Field(strict=True, ge=1, le=100)]]
-    medium: int = Field(strict=True, ge=1, le=98)
-    high: int = Field(strict=True, ge=2, le=99)
-    critical: int = Field(strict=True, ge=3, le=100)
-
-    @model_validator(mode='after')
-    def valid_policy(self):
-        expected = {row['code'] for row in risk_policy()['signals']}
-        if set(self.weights) != expected or any(type(v) is not int or not 1 <= v <= 100 for v in self.weights.values()):
-            raise ValueError('Provide every known signal with an integer weight from 1 to 100')
-        if not self.medium < self.high < self.critical:
-            raise ValueError('Severity thresholds must increase: Medium < High < Critical')
-        return self
 
 
-class PolicyReview(Reason):
-    decision: Literal['approved', 'rejected']
 
 
 class CaseCreate(Input):
@@ -328,73 +300,10 @@ def install_governance(app, session_scope, require_actor, directory):
                  'details': r.details, 'created_at': iso(r.created_at)}
                 for r in db.scalars(select(GovernanceAudit).order_by(GovernanceAudit.created_at.desc()).limit(limit))]
 
-    def revision_record(r):
-        return {'id': r.id, 'base_version': r.base_version, 'author': r.author, 'reviewer': r.reviewer,
-                'status': r.status, 'reason': r.reason, 'review_reason': r.review_reason, 'policy': r.policy,
-                'created_at': iso(r.created_at)}
 
-    @app.get('/api/policies', dependencies=[Admin])
-    def policies(db: Session = Depends(session_scope)):
-        active = active_policy(db)
-        return {'active': active, 'baseline': risk_policy(), 'revisions': [revision_record(r)
-                for r in db.scalars(select(PolicyRevision).order_by(PolicyRevision.created_at.desc()).limit(200))],
-                'independent_review_available': sum(directory.role(db,name) in {'head_administrator','administrator'} for name in directory.all_accounts(db)) > 1}
 
-    @app.post('/api/policies', status_code=201)
-    def draft(payload: PolicyDraft, actor: str = Admin, db: Session = Depends(session_scope)):
-        current = active_policy(db)
-        if payload.base_version != current['version']:
-            raise HTTPException(409, 'Active policy changed; refresh before drafting')
-        policy = copy.deepcopy(current)
-        identifier = new_id()
-        policy['version'] = identifier
-        for signal in policy['signals']:
-            signal['points'] = payload.weights[signal['code']]
-        bounds = [0, payload.medium, payload.high, payload.critical, 101]
-        policy['severity_bands'] = [{'severity': label, 'min_score': bounds[i], 'max_score': bounds[i + 1] - 1}
-                                    for i, label in enumerate(['Low', 'Medium', 'High', 'Critical'])]
-        row = PolicyRevision(id=identifier, base_version=payload.base_version, author=actor, reason=payload.reason, policy=policy)
-        db.add(row)
-        audit(db, 'policy', identifier, actor, 'draft_created', base_version=payload.base_version, reason=payload.reason)
-        db.commit()
-        return revision_record(row)
 
-    @app.post('/api/policies/{revision_id}/review')
-    def review(revision_id: str, payload: PolicyReview, actor: str = Admin, db: Session = Depends(session_scope)):
-        row = db.get(PolicyRevision, revision_id)
-        if row is None:
-            raise HTTPException(404, 'Policy draft not found')
-        if row.author == actor:
-            raise HTTPException(403, 'A different administrator must review this draft')
-        changed = db.execute(update(PolicyRevision).where(PolicyRevision.id == revision_id, PolicyRevision.status == 'draft')
-                             .values(status=payload.decision, reviewer=actor, review_reason=payload.reason))
-        if changed.rowcount != 1:
-            db.rollback()
-            raise HTTPException(409, 'This draft has already been reviewed')
-        audit(db, 'policy', revision_id, actor, payload.decision, reason=payload.reason)
-        db.commit()
-        db.refresh(row)
-        return revision_record(row)
 
-    @app.post('/api/policies/{revision_id}/activate')
-    def activate(revision_id: str, payload: Reason, actor: str = Admin, db: Session = Depends(session_scope)):
-        state = db.scalar(select(GovernanceState).where(GovernanceState.id == 'policy').with_for_update())
-        row = db.get(PolicyRevision, revision_id)
-        if row is None:
-            raise HTTPException(404, 'Policy draft not found')
-        if row.status != 'approved' or not row.reviewer or row.reviewer == row.author:
-            raise HTTPException(409, 'Independent approval is required before activation')
-        if row.base_version != state.data['version']:
-            raise HTTPException(409, 'Draft is based on an outdated policy; create a new draft')
-        claimed = db.execute(update(GovernanceState).where(GovernanceState.id == 'policy', GovernanceState.version == state.version)
-                             .values(data=row.policy, version=state.version + 1).execution_options(synchronize_session=False))
-        if claimed.rowcount != 1:
-            db.rollback()
-            raise HTTPException(409, 'Policy changed concurrently; refresh')
-        row.status = 'activated'
-        audit(db, 'policy', revision_id, actor, 'activated', previous_version=row.base_version, reason=payload.reason)
-        db.commit()
-        return active_policy(db)
 
     def case_record(row, db, include_notes=False):
         scan = db.get(Scan, row.scan_id)
@@ -425,7 +334,7 @@ def install_governance(app, session_scope, require_actor, directory):
         existing = db.scalar(select(IncidentCase).where(IncidentCase.scan_id == payload.scan_id).order_by(IncidentCase.created_at))
         if existing:
             # High-risk scans already have a containment investigation. Reuse it
-            # rather than duplicate notes, ownership and workflow notifications.
+            # rather than duplicate notes, ownership and investigation evidence.
             return case_record(existing, db)
         row = IncidentCase(**payload.model_dump())
         db.add(row)
@@ -435,8 +344,6 @@ def install_governance(app, session_scope, require_actor, directory):
             db.rollback()
             raise HTTPException(409, 'Source scan changed during retention; refresh before creating a case') from None
         audit(db, 'case', row.id, actor, 'created', scan_id=row.scan_id, assignee=row.assignee)
-        from alba_security.operations import attach_workflow
-        attach_workflow(db, row, directory)
         db.commit()
         return case_record(row, db)
 
@@ -485,9 +392,6 @@ def install_governance(app, session_scope, require_actor, directory):
     @app.get('/api/privacy', dependencies=[Admin])
     def privacy(db: Session = Depends(session_scope)):
         return {**privacy_settings(db), 'inventory': [
-            {'data': 'Workflow rules and notifications', 'stored': 'Verified operators, deadlines and audited case references', 'purpose': 'Incident assignment, review and escalation'},
-            {'data': 'Navigation observations', 'stored': 'Actor, linked device, hashed destination and outcome; no URL retained', 'purpose': 'Measure extension-reported blocking and approved visits'},
-            {'data': 'Control assessments', 'stored': 'Evidence reference, reviewer, outcome and independent label', 'purpose': 'Evaluate security controls without changing scores'},
             {'data': 'URL scan', 'stored': 'SHA-256 fingerprint and optional hostname; no URL path/query', 'purpose': 'Correlate security findings'},
             {'data': 'File check', 'stored': 'SHA-256 digest; uploaded bytes discarded', 'purpose': 'Reputation lookup'},
             {'data': 'Device / extension', 'stored': 'References, display names and extension version', 'purpose': 'Associate investigations'},
@@ -495,7 +399,7 @@ def install_governance(app, session_scope, require_actor, directory):
             {'data': 'Case / audit', 'stored': 'Administrator identity, decisions and notes', 'purpose': 'Accountable response and change review'},
             {'data': 'Monthly report', 'stored': 'Aggregate counts and reviewed summary', 'purpose': 'Security reporting'},
             {'data': 'Website approval', 'stored': 'Explicitly requested URL scheme, host, port and path; requester, reviewer, reasons and expiry; no query or fragment', 'purpose': 'Controlled website access and decision audit'},
-        ], 'ai_processing': 'By default the model receives fixed security categories and aggregate counts. Optional public-page or matching text-file excerpts require explicit consent, are bounded, and are not persisted as raw content. AI explanations follow scan deletion through their scan foreign key. Saved weekly/monthly report snapshots are retained separately for administrator review; deleting a scan does not rewrite a historical report snapshot.', 'retention_scope': 'Scan evidence without a linked case or an open/acknowledged alert. Cases, policy history, reports, website approval history and administrative audit records are held for investigation and review. Approval expiry ends access; it does not erase the decision history.',
+        ], 'ai_processing': 'By default the model receives fixed security categories and aggregate counts. Optional public-page or matching text-file excerpts require explicit consent, are bounded, and are not persisted as raw content. AI explanations follow scan deletion through their scan foreign key. Saved weekly/monthly report snapshots are retained separately for administrator review; deleting a scan does not rewrite a historical report snapshot.', 'retention_scope': 'Scan evidence without a linked case or an open/acknowledged alert. Cases, reports, website approval history and administrative audit records are held for investigation and review. Approval expiry ends access; it does not erase the decision history.',
             'note_guidance': 'Do not enter passwords, full browsing URLs, file paths or personal details in free-text fields.'}
 
     @app.post('/api/privacy')
@@ -514,9 +418,7 @@ def install_governance(app, session_scope, require_actor, directory):
     @app.get('/api/privacy/retention-preview', dependencies=[Admin])
     def preview_retention(db: Session = Depends(session_scope)):
         ids, cutoff, settings = retention_candidates(db)
-        from alba_security.operations import NavigationEvidence
         return {'eligible_scans': len(ids), 'cutoff': iso(cutoff), 'revision': settings['revision'],
-                'eligible_navigation_observations': db.query(NavigationEvidence).filter(NavigationEvidence.created_at < cutoff).count(),
                 'protected_case_scans': db.query(IncidentCase.scan_id).distinct().count()}
 
     @app.post('/api/privacy/retention-apply')
@@ -527,8 +429,6 @@ def install_governance(app, session_scope, require_actor, directory):
         ids, cutoff, _ = retention_candidates(db)
         # Deleting children first respects both PostgreSQL and SQLite FKs.
         try:
-            from alba_security.operations import NavigationEvidence
-            removed_navigation = db.execute(delete(NavigationEvidence).where(NavigationEvidence.created_at < cutoff)).rowcount
             for offset in range(0, len(ids), 200):
                 batch = ids[offset:offset + 200]
                 for model in [SecurityEvent, Alert, Finding]:
@@ -537,7 +437,7 @@ def install_governance(app, session_scope, require_actor, directory):
             from alba_security.models import Domain
             db.execute(delete(Domain).where(Domain.last_seen < cutoff,
                 Domain.id.not_in(select(Scan.domain_id).where(Scan.domain_id.is_not(None)))))
-            audit(db, 'privacy', 'retention', actor, 'retention_applied', removed_scans=len(ids), removed_navigation_observations=removed_navigation, cutoff=iso(cutoff))
+            audit(db, 'privacy', 'retention', actor, 'retention_applied', removed_scans=len(ids), cutoff=iso(cutoff))
             db.commit()
         except IntegrityError:
             db.rollback()

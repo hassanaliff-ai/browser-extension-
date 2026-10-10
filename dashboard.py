@@ -185,7 +185,7 @@ def show_accounts(token: str) -> None:
     show_table([
         {'Role':'Normal user','Privileges':'Personal file checks, own results, account and security guidance'},
         {'Role':'Manager','Privileges':'Monitoring, reports and ML review, alert reviews and incident cases'},
-        {'Role':'Administrator','Privileges':'Security operations, scans, exceptions, policies, privacy and report delivery'},
+        {'Role':'Administrator','Privileges':'Security operations, scans, exceptions, privacy and report delivery'},
         {'Role':'Head of Administrator','Privileges':'All workflows plus account approval, roles and access revocation'},
     ], '')
     requests = fetch('/api/admin/registrations', token, list)
@@ -1223,7 +1223,7 @@ def main() -> None:
         "Accounts": show_accounts,
     }
     for governance_view in (
-        "Incident cases", "Security policies", "Privacy governance", "Detection evaluation",
+        "Threat blocklist", "Incident cases", "Privacy governance", "Detection evaluation",
         "Usability and accessibility", "Security guidance",
     ):
         views[governance_view] = partial(render_governance, governance_view, fetch=fetch, post=post_admin)

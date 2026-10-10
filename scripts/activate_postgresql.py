@@ -80,7 +80,7 @@ def activate():
         set_key(str(environment_path),'DATABASE_URL',app_url.render_as_string(hide_password=False))
         new_values=dotenv_values(environment_path);start_api(new_values)
         with httpx.Client(timeout=10,trust_env=False) as client:
-            assert client.get('http://127.0.0.1:8765/extension/capabilities').json()['workflow_runner_started']
+            assert 'threat_containment' in client.get('http://127.0.0.1:8765/extension/capabilities').json()['capabilities']
             assert client.get('http://127.0.0.1:8765/monitor/api/scans').status_code==401
         import psycopg
         with psycopg.connect(**admin_connection()) as admin:

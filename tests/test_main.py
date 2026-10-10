@@ -34,7 +34,7 @@ class TestHealth:
         response=client.get('/extension/capabilities')
         assert response.status_code==200 and response.headers['cache-control']=='no-store'
         assert response.json()=={'api_version':'0.4.1','monitoring_available':False,'monitoring_base':None,
-            'monitoring_docs':None,'capabilities':[],'workflow_runner_started':False}
+            'monitoring_docs':None,'capabilities':[]}
 
 
 class TestScanShape:

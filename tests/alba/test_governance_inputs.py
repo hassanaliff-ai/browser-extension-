@@ -4,26 +4,14 @@ from datetime import timedelta
 import pytest
 from pydantic import ValidationError
 
-from alba_security.governance import CaseChange, PolicyDraft, PrivacyChange, RetentionApply, UsabilityChange
+from alba_security.governance import CaseChange, PrivacyChange, RetentionApply, UsabilityChange
 from alba_security.models import Scan, utc_now
 from alba_security.risk import risk_policy
 from tests.alba.test_governance import scan, system  # noqa: F401
 
 
-def policy_payload():
-    return {
-        'base_version': 'test-policy', 'weights': {r['code']: r['points'] for r in risk_policy()['signals']},
-        'medium': 30, 'high': 60, 'critical': 80, 'reason': 'Typed threshold validation scenario',
-    }
 
 
-@pytest.mark.parametrize('field,value', [
-    ('medium', True), ('medium', 30.0), ('medium', '30'),
-    ('high', 60.0), ('high', '60'), ('critical', 80.0), ('critical', '80'),
-])
-def test_policy_thresholds_require_json_integers(field, value):
-    with pytest.raises(ValidationError):
-        PolicyDraft(**{**policy_payload(), field: value})
 
 
 @pytest.mark.parametrize('model,payload', [
@@ -65,13 +53,3 @@ def test_numeric_confirmation_cannot_delete_scan_evidence(system):
                          json={'expected_revision': preview['revision'], 'confirm': 1})
     assert denied.status_code == 422
     assert client.get('/api/scans/' + evidence['id'], headers=headers['hasan']).status_code == 200
-
-
-def test_coerced_threshold_cannot_create_a_policy_draft(system):
-    client, _, headers, _ = system
-    current = client.get('/api/risk-policy', headers=headers['hasan']).json()
-    response = client.post('/api/policies', headers=headers['hasan'],
-                           json={**policy_payload(), 'base_version': current['version'], 'medium': True})
-    assert response.status_code == 422
-    stored = client.get('/api/policies', headers=headers['hasan']).json()
-    assert stored['active']['version'] == current['version'] and stored['revisions'] == []

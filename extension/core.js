@@ -12,9 +12,8 @@ export function accessReviewBody(request, form) {
   if(!['24','168'].includes(form.duration))throw new Error('Choose 24 hours, 7 days or Forever.');
   return {...body,decision:'temporary',duration_hours:Number(form.duration)};
 }
-export const VERSION = '0.8.12';
-export const OPERATIONS_API_CONTRACT = 1;
-export const WORKER_CAPABILITIES = Object.freeze(['device-enrollment','chrome-inventory','device-access-choice','workflow-automation','control-effectiveness']);
+export const VERSION = '0.8.13';
+export const WORKER_CAPABILITIES = Object.freeze(['device-enrollment','chrome-inventory','device-access-choice']);
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;
 export const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Unknown'];
 export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -27,6 +26,7 @@ export function privateTarget(value, includePath = false) {
   return url.href;
 }
 export function roleCanWrite(profile, area) {
+  if (['workflow','controls','policies'].includes(area)) return false;
   const role = profile?.role;
   if (area === 'accounts') return role === 'head_administrator';
   if (area === 'scan') return ['head_administrator','administrator','normal_user'].includes(role);
@@ -57,9 +57,6 @@ export function validDigest(value) {
 export function safeApiPath(path, method = 'GET') {
   if(method==='GET'&&path==='/api/threat-blocks')return true;
   if(method==='POST'&&/^\/api\/threat-blocks\/(?:host|file|ip|extension):[a-f0-9]{32,64}\/release$/.test(path))return true;
-  if(method==='GET'&&path==='/api/operations/status')return true;
-  if(method==='GET'&&/^\/api\/(workflow\/(rules|notifications)|controls\/(reviews|effectiveness(?:\?days=\d{1,3})?))$/.test(path))return true;
-  if(method==='POST'&&/^\/api\/(workflow\/(rules(?:\/[a-f0-9-]{36}\/update)?|run|notifications\/[a-f0-9]{64}\/acknowledge)|controls\/(reviews|navigation))$/.test(path))return true;
   if(method==='GET'&&/^\/api\/ai-jobs\/[a-f0-9-]{36}$/.test(path))return true;
   if(method==='GET'&&path==='/api/inventory/self')return true;
   if(method==='POST'&&/^\/api\/inventory\/(connect|pair|sync|devices(?:\/device-[a-f0-9-]+\/(status|pairing-code))?)$/.test(path))return true;
@@ -67,9 +64,9 @@ export function safeApiPath(path, method = 'GET') {
   if(method==='POST'&&/^\/api\/intelligence\/(scans\/[a-zA-Z0-9-]+\/explain|reports\/generate)$/.test(path))return true;
   if (method === 'GET' && /^\/api\/access\/(requests|whitelist)$/.test(path)) return true;
   if (method === 'POST' && /^\/api\/access\/(requests(?:\/[a-zA-Z0-9-]+\/review)?|whitelist\/[a-zA-Z0-9-]+\/revoke|check|consume)$/.test(path)) return true;
-  if (method === 'GET') return /^\/api\/(admin\/(me|accounts|registrations)|overview|risk-policy|devices|extensions|findings|scans(?:\/[a-zA-Z0-9-]+)?|my\/scans(?:\/[a-zA-Z0-9-]+)?|overrides(?:\/audit)?|reports\/monthly(?:\/(stats|ml))?|alerts|events|cases(?:\/[a-zA-Z0-9-]+)?|case-assignees|policies|privacy(?:\/retention-preview)?|evaluations|usability|governance\/audit)(?:\?[a-zA-Z0-9=&-]+)?$/.test(path);
+  if (method === 'GET') return /^\/api\/(admin\/(me|accounts|registrations)|overview|risk-policy|devices|extensions|findings|scans(?:\/[a-zA-Z0-9-]+)?|my\/scans(?:\/[a-zA-Z0-9-]+)?|overrides(?:\/audit)?|reports\/monthly(?:\/(stats|ml))?|alerts|events|cases(?:\/[a-zA-Z0-9-]+)?|case-assignees|privacy(?:\/retention-preview)?|evaluations|usability|governance\/audit)(?:\?[a-zA-Z0-9=&-]+)?$/.test(path);
   if (method !== 'POST') return false;
-  return /^\/api\/(admin\/(login|verify|logout|register(?:\/(verify|cancel|qr))?|downloads\/scan|registrations\/[a-z0-9._-]+\/(approve|reject)|accounts\/[a-z0-9._-]+\/(role|disable))|overrides(?:\/[a-zA-Z0-9-]+\/deactivate)?|reports\/monthly\/(generate|20\d{2}-(0[1-9]|1[0-2])\/send)|alerts\/[a-zA-Z0-9-]+\/status|cases(?:\/[a-zA-Z0-9-]+\/(notes|status))?|policies(?:\/[a-zA-Z0-9-]+\/(review|activate))?|privacy(?:\/retention-apply)?|evaluations|usability(?:\/[a-zA-Z0-9-]+\/status)?)$/.test(path);
+  return /^\/api\/(admin\/(login|verify|logout|register(?:\/(verify|cancel|qr))?|downloads\/scan|registrations\/[a-z0-9._-]+\/(approve|reject)|accounts\/[a-z0-9._-]+\/(role|disable))|overrides(?:\/[a-zA-Z0-9-]+\/deactivate)?|reports\/monthly\/(generate|20\d{2}-(0[1-9]|1[0-2])\/send)|alerts\/[a-zA-Z0-9-]+\/status|cases(?:\/[a-zA-Z0-9-]+\/(notes|status))?|privacy(?:\/retention-apply)?|evaluations|usability(?:\/[a-zA-Z0-9-]+\/status)?)$/.test(path);
 }
 export function apiError(status, body) {
   if (status === 401) return 'Sign-in or verification was not accepted. Check your credentials; expired sessions need a new sign-in.';

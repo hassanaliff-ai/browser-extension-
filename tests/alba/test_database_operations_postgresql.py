@@ -15,9 +15,7 @@ from alba_security.governance import initialize_governance
 from alba_security.dbops.common import disposable_database
 from alba_security.dbops.backup import create_backup,verify_restore
 from alba_security.dbops.migrations import apply_migrations,rollback_test_migration
-from alba_security.dbops.monitoring import Thresholds,collect_metrics
 from alba_security.dbops.benchmark import benchmark
-from alba_security.dbops.transfer import import_domains
 
 MIGRATIONS=Path(__file__).resolve().parents[2]/'sql/migrations'
 
@@ -42,7 +40,7 @@ def test_backup_restore_verifies_snapshot_even_after_source_changes(operator_dat
     result=create_backup(tmp_path,url)
     with Session(engine) as db: db.get(Device,'test').name='Changed after backup';db.commit()
     restored=verify_restore(tmp_path,result['backup_file'],admin,url)
-    assert restored['verified'] and restored['tables']==41 and restored['disposable_database_removed']
+    assert restored['verified'] and restored['tables']==len(load_metadata().tables) and restored['disposable_database_removed']
     with Session(engine) as db: assert db.get(Device,'test').name=='Changed after backup'
 
 
@@ -59,58 +57,32 @@ def test_migrations_are_idempotent_readonly_to_runtime_and_test_rollback_works(o
     engine,url,_=operator_database
     role=make_url(os.environ['EXTSECURE_TEST_RUNTIME_URL']).username
     first=apply_migrations(engine,MIGRATIONS,runtime_role=role)
-    assert first['applied_now']==['0001','0002']
+    assert first['applied_now']==['0001','0002','0003','0004']
     assert apply_migrations(engine,MIGRATIONS)['applied_now']==[]
     with engine.connect() as db:
         assert not db.scalar(text("SELECT has_table_privilege(:role,'extsecure_schema_migrations','UPDATE')"),{'role':role})
-    assert rollback_test_migration(engine,MIGRATIONS)=={'rolled_back':'0002'}
-    assert apply_migrations(engine,MIGRATIONS)['applied_now']==['0002']
+    assert rollback_test_migration(engine,MIGRATIONS)=={'rolled_back':'0004'}
+    assert apply_migrations(engine,MIGRATIONS)['applied_now']==['0004']
     production=create_engine(url.set(database='extsecure'))
     try:
         with pytest.raises(ValueError):rollback_test_migration(production,MIGRATIONS)
     finally:production.dispose()
 
 
-def test_changed_applied_migration_is_rejected_without_changes(operator_database,tmp_path):
-    engine,_,_=operator_database
-    shutil.copytree(MIGRATIONS,tmp_path/'migrations'); folder=tmp_path/'migrations'
-    apply_migrations(engine,folder)
-    path=folder/'0001_baseline.sql';path.write_text(path.read_text()+'\n-- changed history\n')
-    with pytest.raises(ValueError,match='immutable'):apply_migrations(engine,folder)
-    with engine.connect() as db:assert db.scalar(text('SELECT count(*) FROM extsecure_schema_migrations'))==2
 
 
 def test_failed_migration_rolls_back_ddl_and_ledger(operator_database,tmp_path):
     engine,_,_=operator_database
     shutil.copytree(MIGRATIONS,tmp_path/'migrations');folder=tmp_path/'migrations';apply_migrations(engine,folder)
-    (folder/'0003_failure.sql').write_text('-- migrate:up\nCREATE TABLE rollback_probe(id INT); SELECT 1/0;\n-- migrate:down\nDROP TABLE rollback_probe;\n')
+    (folder/'0005_failure.sql').write_text('-- migrate:up\nCREATE TABLE rollback_probe(id INT); SELECT 1/0;\n-- migrate:down\nDROP TABLE rollback_probe;\n')
     with pytest.raises(DBAPIError):apply_migrations(engine,folder)
     with engine.connect() as db:
         assert db.scalar(text("SELECT to_regclass('public.rollback_probe')")) is None
-        assert db.scalar(text('SELECT count(*) FROM extsecure_schema_migrations'))==2
+        assert db.scalar(text('SELECT count(*) FROM extsecure_schema_migrations'))==4
 
 
-def test_real_domain_import_dryrun_commit_and_validation(operator_database,tmp_path):
-    engine,_,_=operator_database
-    path=tmp_path/'domains.json'
-    row={'hostname':'example.test','first_seen':'2026-10-01T00:00:00Z','last_seen':'2026-10-09T00:00:00Z'}
-    path.write_text(json.dumps([row,row|{'hostname':'EXAMPLE.TEST'}]))
-    assert import_domains(engine,path)['duplicate_rows']==1
-    with Session(engine) as db:assert db.scalar(select(func.count()).select_from(Domain))==0
-    assert import_domains(engine,path,commit=True)['new_domains']==1
-    with Session(engine) as db:assert db.scalar(select(func.count()).select_from(Domain))==1
 
 
-def test_live_monitor_uses_numeric_metrics_and_thresholds(operator_database):
-    _,url,admin=operator_database
-    admin_url=url.set(username=admin['user'],password=admin['password'])
-    engine=create_engine(admin_url)
-    try:
-        result=collect_metrics(engine,Thresholds(database_mb=0.001))
-        assert result['metrics']['database_connections']>=1
-        assert any(alert['code']=='database_size' for alert in result['alerts'])
-        assert 'password' not in json.dumps(result) and 'query_text' not in json.dumps(result)
-    finally:engine.dispose()
 
 
 def test_benchmark_uses_synthetic_data_and_measures_plans(operator_database):

@@ -1,5 +1,5 @@
 import {normalizePreferences} from './locale.js';
-import {API_ORIGIN, VERSION, OPERATIONS_API_CONTRACT, apiError, safeApiPath, privateTarget} from './core.js';
+import {API_ORIGIN, VERSION, apiError, safeApiPath, privateTarget} from './core.js';
 export const isExtension = location.protocol === 'chrome-extension:' && !!globalThis.chrome?.runtime?.id;
 // The ordinary-browser adapter exists only for an explicitly labelled local UI
 // review. Chrome uses the service worker and chrome.storage.session instead.
@@ -68,12 +68,6 @@ export function inventoryCompatibility(state) {
 
 export function workerUpdateError() {
   return Object.assign(new Error('ExtSecure needs to restart to load the updated worker. Click Restart ExtSecure, close this tab, then reopen the console from the extension icon and sign in.'),{code:'EXTENSION_UPDATE_REQUIRED'});
-}
-
-export function operationsCompatibility(state,view) {
-  const feature={workflow:'workflow-automation',controls:'control-effectiveness'}[view];
-  const ready=!feature || (state?.version===VERSION && state?.operations_api_contract===OPERATIONS_API_CONTRACT && Array.isArray(state?.capabilities) && state.capabilities.includes(feature));
-  return {ready,ui_version:VERSION,worker_version:state?.version??'Unknown'};
 }
 
 export function restartExtension() {

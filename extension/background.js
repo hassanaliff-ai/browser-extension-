@@ -1,6 +1,6 @@
 import {validateLogo,logoKey} from './account-logo.js';
-import {API_ORIGIN, VERSION, OPERATIONS_API_CONTRACT, WORKER_CAPABILITIES, privateTarget, safeApiPath, apiError} from './core.js';
-import {registerNavigationGate,reportNavigation} from './access.js';
+import {API_ORIGIN, VERSION, WORKER_CAPABILITIES, privateTarget, safeApiPath, apiError} from './core.js';
+import {registerNavigationGate} from './access.js';
 import {containThreat,reconcileThreatHost,restoreThreatRules} from './threat-containment.js';
 import {normalizePreferences} from './locale.js';
 import {enabledExtensions,platformName} from './inventory.js';
@@ -204,7 +204,6 @@ export async function handleMessage(message,sender={}) {
   if (message.type === 'BLOCKED_STATE') {
     const context=await gate.context(sender),{target}=context;
     const session=await loadSession();
-    if(session.token)void reportNavigation(request,loadSession,context,'blocked');
     return {target,signed_in:!!session.token,role:session.profile?.role,...(session.token?await request('/api/access/check','POST',{target}):{allowed:false})};
   }
   if (message.type === 'OPEN_APPROVED') return gate.open(sender);
@@ -235,7 +234,7 @@ export async function handleMessage(message,sender={}) {
       if(profile.inventory?.blocked)await gate.clear({preserveBlocked:true});
       if(session.profile?.inventory?.pending&&profile.inventory?.linked&&!profile.inventory?.blocked&&!profile.inventory?.pending)void autoSyncInventory().catch(()=>{});
     }
-    return {profile:profile?await accountLogo(profile):undefined, expires_at:session.expires_at, challenge:!!session.challenge_token, enrollment:!!session.enrollment_token,version:VERSION,operations_api_contract:OPERATIONS_API_CONTRACT,capabilities:[...WORKER_CAPABILITIES]};
+    return {profile:profile?await accountLogo(profile):undefined, expires_at:session.expires_at, challenge:!!session.challenge_token, enrollment:!!session.enrollment_token,version:VERSION,capabilities:[...WORKER_CAPABILITIES]};
   }
   if (message.type === 'LOGIN') {
     if (typeof message.username !== 'string' || typeof message.password !== 'string') throw new Error('Enter your username and password.');

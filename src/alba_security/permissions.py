@@ -23,36 +23,28 @@ READ_ROUTES = {
     '/api/overview', '/api/risk-policy', '/api/devices', '/api/extensions',
     '/api/findings', '/api/scans', '/api/scans/{scan_id}', '/api/overrides',
     '/api/overrides/audit', '/api/reports/monthly/stats', '/api/reports/monthly/ml',
-    '/api/reports/monthly', '/api/alerts', '/api/events', '/api/governance/audit',
-    '/api/policies', '/api/cases', '/api/cases/{case_id}', '/api/privacy',
+    '/api/reports/monthly', '/api/alerts', '/api/events', '/api/governance/audit', '/api/cases', '/api/cases/{case_id}', '/api/privacy',
     '/api/privacy/retention-preview', '/api/evaluations', '/api/usability',
     '/api/threat-blocks', '/api/case-assignees', '/api/my/scans', '/api/my/scans/{scan_id}',
-    '/api/workflow/rules', '/api/workflow/notifications', '/api/controls/effectiveness', '/api/controls/reviews',
-    '/api/operations/status',
 }
 ADMIN_WRITES = {
     '/api/threat-blocks/{block_id}/release',
     '/api/admin/downloads/scan', '/api/admin/downloads/scan-file',
     '/api/overrides', '/api/overrides/{override_id}/deactivate',
     '/api/reports/monthly/generate', '/api/reports/monthly/{period}/send',
-    '/api/alerts/{alert_id}/status', '/api/policies',
-    '/api/policies/{revision_id}/review', '/api/policies/{revision_id}/activate',
+    '/api/alerts/{alert_id}/status',
     '/api/cases', '/api/cases/{case_id}/notes', '/api/cases/{case_id}/status',
     '/api/privacy', '/api/privacy/retention-apply', '/api/evaluations',
     '/api/usability', '/api/usability/{record_id}/status',
-    '/api/workflow/rules', '/api/workflow/rules/{rule_id}/update', '/api/workflow/run',
-    '/api/workflow/notifications/{notice_id}/acknowledge', '/api/controls/reviews',
 }
 MANAGER_WRITES = {
     '/api/cases', '/api/cases/{case_id}/notes', '/api/cases/{case_id}/status',
     '/api/alerts/{alert_id}/status',
-    '/api/workflow/notifications/{notice_id}/acknowledge',
 }
 MANAGER_READS = READ_ROUTES - {
-    '/api/overrides', '/api/overrides/audit', '/api/policies', '/api/privacy',
+    '/api/overrides', '/api/overrides/audit', '/api/privacy',
     '/api/privacy/retention-preview', '/api/evaluations', '/api/usability',
     '/api/governance/audit',
-    '/api/workflow/rules',
 }
 OWNER_ROUTES = {
     ('POST', '/api/admin/accounts/{username}/disable'),
@@ -60,8 +52,6 @@ OWNER_ROUTES = {
 }
 
 def allowed(role, method, route):
-    if method == 'POST' and route == '/api/controls/navigation':
-        return role in ROLE_LABELS
     if method == 'GET' and route == '/api/ai-jobs/{job_id}':
         return role in ROLE_LABELS
     if role in ROLE_LABELS:
@@ -99,10 +89,10 @@ def allowed(role, method, route):
 ALL_VIEWS = [
     'Threat blocklist', 'Overview', 'Alerts', 'Findings', 'Risk levels', 'Downloaded-file checks',
     'Scan history', 'Devices', 'Extensions', 'Security events', 'Whitelist & overrides',
-    'Reports', 'Accounts', 'Incident cases', 'Security policies',
+    'Reports', 'Accounts', 'Incident cases',
     'Privacy governance', 'Detection evaluation', 'Usability and accessibility',
     'Security guidance', 'My account', 'My file history', 'Website access',
-    'Workflow automation', 'Control effectiveness',
+
 ]
 
 def profile(username, role):
@@ -110,7 +100,7 @@ def profile(username, role):
     if role not in ROLE_LABELS: views = []
     elif role == 'manager':
         views = [v for v in views if v not in {'Downloaded-file checks',
-            'Whitelist & overrides', 'Security policies', 'Privacy governance',
+            'Whitelist & overrides', 'Privacy governance',
             'Detection evaluation', 'Usability and accessibility'}]
     elif role == 'normal_user': views = ['Downloaded-file checks', 'My file history', 'Security guidance', 'My account', 'Website access']
     return {'username': username, 'display_name': 'Head of Administrator' if role == 'head_administrator' else username,
