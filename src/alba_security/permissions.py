@@ -28,6 +28,7 @@ READ_ROUTES = {
     '/api/threat-blocks', '/api/case-assignees', '/api/my/scans', '/api/my/scans/{scan_id}',
 }
 ADMIN_WRITES = {
+    '/api/cases/{case_id}/remove', '/api/cases/{case_id}/block-device', '/api/cases/{case_id}/safety',
     '/api/threat-blocks/{block_id}/release',
     '/api/admin/downloads/scan', '/api/admin/downloads/scan-file',
     '/api/overrides', '/api/overrides/{override_id}/deactivate',
@@ -38,6 +39,7 @@ ADMIN_WRITES = {
     '/api/usability', '/api/usability/{record_id}/status',
 }
 MANAGER_WRITES = {
+    '/api/cases/{case_id}/safety',
     '/api/cases', '/api/cases/{case_id}/notes', '/api/cases/{case_id}/status',
     '/api/alerts/{alert_id}/status',
 }

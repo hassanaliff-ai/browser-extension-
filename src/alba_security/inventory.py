@@ -258,6 +258,21 @@ def save_extensions(db, row, items, *, full_snapshot=False):
         row.last_sync = now
 
 
+def apply_device_decision(db, device_id, payload, actor):
+    """Shared transactional device protection for inventory and incident actions."""
+    result = db.execute(update(DeviceRegistration).where(DeviceRegistration.device_id == device_id,
+        DeviceRegistration.revision == payload.expected_revision).values(blocked=payload.blocked,
+        revision=DeviceRegistration.revision + 1))
+    if result.rowcount != 1:
+        raise HTTPException(409, 'Device changed or was not registered. Refresh the inventory.')
+    enrollment = db.get(DeviceEnrollment, device_id)
+    action = 'device_blocked' if payload.blocked else 'device_unblocked'
+    if enrollment and enrollment.status in {'pending', 'rejected', 'blocked'}:
+        enrollment.status = 'rejected' if payload.blocked else 'approved'
+        action = 'device_rejected' if payload.blocked else 'device_approved'
+    audit(db, 'inventory', device_id, actor, action, reason=payload.reason)
+
+
 def install_inventory(app, session_scope, require_actor, directory):
     def pairing_code(row):
         code = secrets.token_urlsafe(24)
@@ -381,17 +396,7 @@ def install_inventory(app, session_scope, require_actor, directory):
 
     @app.post('/api/inventory/devices/{device_id}/status')
     def change_status(device_id: str, payload: DeviceDecision, actor: str = Depends(require_actor), db: Session = Depends(session_scope)):
-        result = db.execute(update(DeviceRegistration).where(DeviceRegistration.device_id == device_id,
-            DeviceRegistration.revision == payload.expected_revision).values(blocked=payload.blocked,
-            revision=DeviceRegistration.revision + 1))
-        if result.rowcount != 1:
-            raise HTTPException(409, 'Device changed or was not registered. Refresh the inventory.')
-        enrollment = db.get(DeviceEnrollment, device_id)
-        action = 'device_blocked' if payload.blocked else 'device_unblocked'
-        if enrollment and enrollment.status in {'pending', 'rejected', 'blocked'}:
-            enrollment.status = 'rejected' if payload.blocked else 'approved'
-            action = 'device_rejected' if payload.blocked else 'device_approved'
-        audit(db, 'inventory', device_id, actor, action, reason=payload.reason)
+        apply_device_decision(db, device_id, payload, actor)
         db.commit()
         return {'id': device_id, **device_metadata(db, device_id)}
 

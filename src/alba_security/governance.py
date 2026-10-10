@@ -117,6 +117,37 @@ class NoteCreate(Input):
     body: str = Field(min_length=8, max_length=4000)
 
 
+SAFETY_ACTIONS = {
+    'evidence_reviewed': 'Review the linked findings and unavailable checks before giving advice.',
+    'user_notified': 'Notify the affected user through an approved channel; do not include private URLs or credentials.',
+    'interaction_stopped': 'Ask the user to stop interacting with the suspicious destination or file.',
+    'file_not_executed': 'Ask the user not to open or execute the suspect file; use approved endpoint protection if needed.',
+    'credentials_reviewed': 'If credentials were entered, advise changing them through the official service and reviewing active sessions and MFA.',
+    'followup_reviewed': 'Review a fresh scan and the available evidence before considering a release.',
+}
+
+
+class CaseConfirmedAction(Reason):
+    expected_revision: int = Field(strict=True, ge=1)
+    confirmed: bool = Field(strict=True)
+
+
+class CaseSafety(Reason):
+    expected_revision: int = Field(strict=True, ge=1)
+    checks: list[Literal['evidence_reviewed','user_notified','interaction_stopped','file_not_executed','credentials_reviewed','followup_reviewed']] = Field(min_length=1, max_length=6)
+
+    @field_validator('checks')
+    @classmethod
+    def distinct_checks(cls, values):
+        if len(set(values)) != len(values):
+            raise ValueError('Choose each safety action only once')
+        return values
+
+
+class CaseDeviceBlock(CaseConfirmedAction):
+    expected_device_revision: int = Field(strict=True, ge=1)
+
+
 class PrivacyChange(Reason):
     expected_revision: int = Field(strict=True, ge=1)
     retention_days: int = Field(strict=True, ge=7, le=3650)
@@ -273,9 +304,11 @@ def retention_candidates(db: Session):
     cutoff = utc_now() - timedelta(days=settings['retention_days'])
     # Every linked case is an investigation hold, including resolved cases.
     # High-severity evidence stays while any alert remains open/acknowledged.
+    from alba_security.threat_blocks import ThreatBlock
+    held_blocks = select(ThreatBlock.scan_id)
     held_cases = select(IncidentCase.scan_id)
     held_alerts = select(Alert.scan_id).where(Alert.status.in_(['open', 'acknowledged']))
-    query = select(Scan.id).where(Scan.created_at < cutoff, Scan.id.not_in(held_cases), Scan.id.not_in(held_alerts))
+    query = select(Scan.id).where(Scan.created_at < cutoff, Scan.id.not_in(held_cases), Scan.id.not_in(held_alerts), Scan.id.not_in(held_blocks))
     return list(db.scalars(query).all()), cutoff, settings
 
 
@@ -314,6 +347,14 @@ def install_governance(app, session_scope, require_actor, directory):
             from alba_security.threat_blocks import ThreatBlock, block_record
             blocked = db.scalar(select(ThreatBlock).where(ThreatBlock.scan_id == row.scan_id))
             result['containment'] = block_record(blocked, db) if blocked else None
+            from alba_security.inventory import DeviceRegistration
+            device = db.get(DeviceRegistration, scan.device_id)
+            result['device_protection'] = {'registered': device is not None, 'blocked': bool(device and device.blocked), 'revision': device.revision if device else None}
+            result['target_kind'] = scan.target_kind
+            latest = db.scalar(select(GovernanceAudit).where(GovernanceAudit.area == 'case', GovernanceAudit.reference == row.id, GovernanceAudit.action == 'safety_reviewed').order_by(GovernanceAudit.created_at.desc(), GovernanceAudit.id.desc()))
+            checks = latest.details.get('checks', []) if latest else []
+            codes = ['evidence_reviewed','user_notified','interaction_stopped', 'file_not_executed' if scan.target_kind in {'download','file','hash'} else 'credentials_reviewed','followup_reviewed']
+            result['safety_plan'] = {'actions': [{'code': code, 'description': SAFETY_ACTIONS[code], 'completed': code in checks} for code in codes], 'recorded_by': latest.actor if latest else None, 'recorded_at': iso(latest.created_at) if latest else None}
             result['device_id'] = scan.device_id
             result['device_name'] = db.get(Device, scan.device_id).name
             result['timeline'] = [{'action': entry.action, 'actor': entry.actor, 'details': entry.details, 'created_at': iso(entry.created_at)} for entry in db.scalars(select(GovernanceAudit).where(GovernanceAudit.area == 'case', GovernanceAudit.reference == row.id).order_by(GovernanceAudit.created_at))]
@@ -356,12 +397,13 @@ def install_governance(app, session_scope, require_actor, directory):
 
     @app.post('/api/cases/{case_id}/notes', status_code=201)
     def add_note(case_id: str, payload: NoteCreate, actor: str = Admin, db: Session = Depends(session_scope)):
-        row = db.get(IncidentCase, case_id)
+        row = db.scalar(select(IncidentCase).where(IncidentCase.id == case_id).with_for_update())
         if row is None:
             raise HTTPException(404, 'Case not found')
         note = CaseNote(case_id=case_id, author=actor, body=payload.body)
         db.add(note)
         row.updated_at = utc_now()
+        row.revision += 1
         audit(db, 'case', case_id, actor, 'note_added')
         db.commit()
         return case_record(row, db, True)
@@ -388,6 +430,60 @@ def install_governance(app, session_scope, require_actor, directory):
         db.commit()
         db.refresh(row)
         return case_record(row, db, True)
+
+    @app.post('/api/cases/{case_id}/safety')
+    def record_safety(case_id: str, payload: CaseSafety, actor: str = Admin, db: Session = Depends(session_scope)):
+        row = db.scalar(select(IncidentCase).where(IncidentCase.id == case_id).with_for_update())
+        if row is None:
+            raise HTTPException(404, 'Case not found')
+        scan = db.get(Scan, row.scan_id)
+        allowed = {'evidence_reviewed','user_notified','interaction_stopped','followup_reviewed', 'file_not_executed' if scan.target_kind in {'download','file','hash'} else 'credentials_reviewed'}
+        if not set(payload.checks) <= allowed:
+            raise HTTPException(422, 'Choose safety actions relevant to this incident type')
+        changed = db.execute(update(IncidentCase).where(IncidentCase.id == case_id, IncidentCase.revision == payload.expected_revision).values(revision=IncidentCase.revision + 1, updated_at=utc_now()))
+        if changed.rowcount != 1:
+            raise HTTPException(409, 'Case changed; refresh before recording safety actions')
+        audit(db, 'case', case_id, actor, 'safety_reviewed', checks=payload.checks, reason=payload.reason)
+        db.commit(); db.refresh(row)
+        return case_record(row, db, True)
+
+    @app.post('/api/cases/{case_id}/block-device')
+    def protect_device(case_id: str, payload: CaseDeviceBlock, actor: str = Admin, db: Session = Depends(session_scope)):
+        if not payload.confirmed:
+            raise HTTPException(422, 'Confirm that ExtSecure access for the affected device should be blocked')
+        row = db.scalar(select(IncidentCase).where(IncidentCase.id == case_id).with_for_update())
+        if row is None:
+            raise HTTPException(404, 'Case not found')
+        changed = db.execute(update(IncidentCase).where(IncidentCase.id == case_id, IncidentCase.revision == payload.expected_revision).values(revision=IncidentCase.revision + 1, updated_at=utc_now()))
+        if changed.rowcount != 1:
+            raise HTTPException(409, 'Case changed; refresh before blocking its device')
+        from alba_security.inventory import DeviceDecision, apply_device_decision
+        scan = db.get(Scan, row.scan_id)
+        apply_device_decision(db, scan.device_id, DeviceDecision(blocked=True, expected_revision=payload.expected_device_revision, reason=payload.reason), actor)
+        audit(db, 'case', case_id, actor, 'device_blocked', device_id=scan.device_id, reason=payload.reason)
+        db.commit(); db.refresh(row)
+        return case_record(row, db, True)
+
+    @app.post('/api/cases/{case_id}/remove')
+    def remove_case(case_id: str, payload: CaseConfirmedAction, actor: str = Admin, db: Session = Depends(session_scope)):
+        if not payload.confirmed:
+            raise HTTPException(422, 'Confirm removal of the incident and its notes')
+        row = db.scalar(select(IncidentCase).where(IncidentCase.id == case_id).with_for_update())
+        if row is None:
+            raise HTTPException(404, 'Case not found')
+        if row.revision != payload.expected_revision:
+            raise HTTPException(409, 'Case changed; refresh before removing it')
+        from alba_security.threat_blocks import ThreatBlock
+        blocked = db.scalar(select(ThreatBlock.id).where(ThreatBlock.scan_id == row.scan_id, ThreatBlock.active.is_(True)))
+        scan_id, previous_status = row.scan_id, row.status
+        db.execute(delete(CaseNote).where(CaseNote.case_id == case_id))
+        changed = db.execute(delete(IncidentCase).where(IncidentCase.id == case_id, IncidentCase.revision == payload.expected_revision))
+        if changed.rowcount != 1:
+            db.rollback()
+            raise HTTPException(409, 'Case changed; refresh before removing it')
+        audit(db, 'case', case_id, actor, 'removed', scan_id=scan_id, previous_status=previous_status, reason=payload.reason, active_block_preserved=bool(blocked))
+        db.commit()
+        return {'removed': True, 'id': case_id, 'scan_id': scan_id, 'active_block_preserved': bool(blocked)}
 
     @app.get('/api/privacy', dependencies=[Admin])
     def privacy(db: Session = Depends(session_scope)):

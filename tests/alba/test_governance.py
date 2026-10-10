@@ -92,11 +92,11 @@ def test_cases_require_real_scan_real_assignee_and_audited_investigation(system)
     assert client.post(route + '/status', headers=header, json={'expected_revision': 1, 'status': 'open', 'assignee': 'hasan', 'reason': 'Concurrent stale edit attempt'}).status_code == 409
     note = client.post(route + '/notes', headers=headers['reviewer'], json={'body': 'Checked the original scan and evidence.'})
     assert note.json()['notes'][0]['author'] == 'reviewer'
-    resolved = client.post(route + '/status', headers=headers['reviewer'], json={'expected_revision': 2, 'status': 'resolved', 'assignee': 'reviewer', 'reason': 'Reputation evidence reviewed; case resolved'})
+    resolved = client.post(route + '/status', headers=headers['reviewer'], json={'expected_revision': note.json()['revision'], 'status': 'resolved', 'assignee': 'reviewer', 'reason': 'Reputation evidence reviewed; case resolved'})
     assert resolved.status_code == 200
     assert resolved.json()['resolution']
     assert client.get('/api/scans/' + result['id'], headers=header).json()['score'] == 80
-    reopened = client.post(route + '/status', headers=header, json={'expected_revision': 3, 'status': 'open', 'assignee': 'hasan', 'reason': 'Reopened after additional evidence'})
+    reopened = client.post(route + '/status', headers=header, json={'expected_revision': resolved.json()['revision'], 'status': 'open', 'assignee': 'hasan', 'reason': 'Reopened after additional evidence'})
     assert reopened.status_code == 200
     assert reopened.json()['resolution'] is None
 
