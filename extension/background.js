@@ -1,6 +1,7 @@
 import {validateLogo,logoKey} from './account-logo.js';
 import {API_ORIGIN, VERSION, OPERATIONS_API_CONTRACT, WORKER_CAPABILITIES, privateTarget, safeApiPath, apiError} from './core.js';
 import {registerNavigationGate,reportNavigation} from './access.js';
+import {containThreat,reconcileThreatHost,restoreThreatRules} from './threat-containment.js';
 import {normalizePreferences} from './locale.js';
 import {enabledExtensions,platformName} from './inventory.js';
 import {safeActiveTab} from './workspace-kit.js';
@@ -32,9 +33,10 @@ async function accountLogo(profile) {
 }
 
 async function updateBadge(data) {
-  if (!['Low','Medium','High','Critical','Unknown'].includes(data?.severity)) return;
-  await chrome.action.setBadgeBackgroundColor({color:['High','Critical'].includes(data.severity) ? '#c54446' : '#1d6c65'});
-  await chrome.action.setBadgeText({text:['High','Critical'].includes(data.severity) ? '!' : data.severity === 'Unknown' ? '?' : ''});
+  const severity=data?.containment?.active?data.containment.severity:data?.severity;
+  if (!['Low','Medium','High','Critical','Unknown'].includes(severity)) return;
+  await chrome.action.setBadgeBackgroundColor({color:['High','Critical'].includes(severity) ? '#c54446' : '#1d6c65'});
+  await chrome.action.setBadgeText({text:['High','Critical'].includes(severity) ? '!' : severity === 'Unknown' ? '?' : ''});
 }
 async function request(path, method = 'GET', body, direct = false) {
   if (!direct && !safeApiPath(path,method)) throw new Error('This API action is not supported.');
@@ -86,7 +88,9 @@ async function request(path, method = 'GET', body, direct = false) {
   }
   return data;
 }
-const gate = registerNavigationGate(request,loadSession);
+const gate = registerNavigationGate(request,loadSession,{reconcileThreatHost});
+chrome.runtime.onStartup.addListener(()=>void restoreThreatRules().catch(()=>{}));
+chrome.runtime.onInstalled.addListener(()=>void restoreThreatRules().catch(()=>{}));
 let syncQueue=Promise.resolve();
 let connectQueue=Promise.resolve();
 const inventoryEventsRegistered=new Set();
@@ -285,7 +289,10 @@ export async function handleMessage(message,sender={}) {
     if (AUTH_PUBLIC.has(message.path) || message.path === '/api/admin/logout') throw new Error('Use the dedicated sign-in action.');
     if(['/api/inventory/connect','/api/inventory/pair','/api/inventory/sync'].includes(message.path))throw new Error('Use the dedicated Chrome inventory action.');
     const data = await request(message.path,message.method ?? 'GET',message.body);
-    if (message.path === '/api/admin/downloads/scan') await updateBadge(data);
+    if (message.path === '/api/admin/downloads/scan') {
+      await updateBadge(data);
+      data.protection=await containThreat(data,undefined,gate.clear);
+    }
     return data;
   }
   if (message.type === 'ACTIVE_TAB') {
@@ -301,6 +308,7 @@ export async function handleMessage(message,sender={}) {
     const target = privateTarget(message.target,!!message.includePath);
     const data = await request('/extension/scan','POST',{target},true);
     await updateBadge(data);
+    data.protection=await containThreat(data,target,gate.clear);
     return data;
   }
   if (message.type === 'OPEN_CONSOLE') {

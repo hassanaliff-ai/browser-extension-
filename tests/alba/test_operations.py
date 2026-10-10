@@ -37,14 +37,14 @@ def test_new_routes_require_two_factor_and_roles(roles):
     assert client.post('/api/controls/navigation',headers=headers['normal_user'],json={}).status_code == 422
 
 
-def test_disabled_by_default_and_unknown_scans_never_create_cases(system):
+def test_disabled_workflow_still_contains_high_risk_and_unknown_adds_no_case(system):
     client, _, headers, _ = system
     rule(client,headers['hasan'],enabled=False)
     scan(client)
-    assert client.get('/api/cases',headers=headers['hasan']).json() == []
+    assert len(client.get('/api/cases',headers=headers['hasan']).json()) == 1
     rule(client,headers['hasan'])
     scan(client,status='unknown')
-    assert client.get('/api/cases',headers=headers['hasan']).json() == []
+    assert len(client.get('/api/cases',headers=headers['hasan']).json()) == 1
 
 
 def test_first_matching_rule_creates_one_case_and_durable_notices(system):
@@ -79,7 +79,7 @@ def test_head_workflow_acknowledgement_does_not_resolve_or_stop_escalation(syste
     assert run_workflows(app,now=utc_now()+timedelta(hours=26))['escalated']==0
 
 
-def test_exception_suppression_does_not_create_an_automatic_case(system):
+def test_notification_exception_does_not_bypass_containment_case(system):
     client, _, headers, _ = system
     rule(client,headers['hasan'])
     response=client.post('/api/overrides',headers=headers['hasan'],json={
@@ -87,7 +87,8 @@ def test_exception_suppression_does_not_create_an_automatic_case(system):
     assert response.status_code == 201, response.text
     result=scan(client)
     assert result['override_id']
-    assert client.get('/api/cases',headers=headers['hasan']).json()==[]
+    assert len(client.get('/api/cases',headers=headers['hasan']).json())==1
+    assert result['containment']['active']
 
 
 def test_deadline_ignores_notes_escalates_once_and_respects_revision(system):
@@ -153,6 +154,8 @@ def test_manual_assignment_is_preserved_and_notifications_are_private(roles):
     result=scan(client)
     case=client.post('/api/cases',headers=headers['head_administrator'],json={'scan_id':result['id'],
         'title':'Manual investigator assignment','assignee':'administrator'}).json()
+    reassigned=client.post('/api/cases/'+case['id']+'/status',headers=headers['head_administrator'],json={'status':'investigating','assignee':'administrator','expected_revision':case['revision'],'reason':'Manually assigned investigator for containment evidence'})
+    assert reassigned.status_code==200, reassigned.text
     run_workflows(app)
     assert client.get('/api/cases/'+case['id'],headers=headers['head_administrator']).json()['assignee']=='administrator'
     inbox=client.get('/api/workflow/notifications',headers=headers['manager']).json()

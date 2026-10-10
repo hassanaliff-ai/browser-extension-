@@ -18,6 +18,24 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'Workflow rules do not automatically assign exceptions or Unknown results. High and Critical results still create a containment investigation.':'لا تسند قواعد سير العمل الاستثناءات أو النتائج غير المعروفة تلقائيًا. لكن النتائج العالية والحرجة تنشئ تحقيقًا لاحتواء التهديد.',
+ 'Threat blocklist':'القائمة المحظورة للتهديدات',
+ 'Active threat blocks':'التهديدات المحظورة النشطة',
+ 'Awaiting investigation':'بانتظار التحقيق',
+ 'High-risk threat contained':'تم احتواء تهديد عالي الخطورة',
+ 'Release a reviewed block':'فك حظر تمت مراجعته',
+ 'Resolved investigation':'تحقيق تم حله',
+ 'Release threat block':'فك حظر التهديد',
+ 'Investigation timeline':'سجل إجراءات التحقيق',
+ 'Recorded resolution':'الحل المسجل',
+ 'Destination / file':'الموقع أو الملف',
+ 'I have reviewed the resolved investigation and accept this release.':'راجعت التحقيق المحلول وأوافق على فك هذا الحظر.',
+ 'High and Critical results block the hostname immediately. Existing approvals and whitelist entries cannot bypass an active threat block.':'تحظر النتائج العالية والحرجة اسم المضيف فورًا. لا تتجاوز الموافقات السابقة أو القائمة البيضاء حظر التهديد النشط.',
+ 'Resolve the linked investigation before an administrator can release a block.':'يجب حل التحقيق المرتبط قبل أن يتمكن المسؤول من فك الحظر.',
+ 'Threat containment is active. Resolving this case does not release the block.':'حظر التهديد نشط. حل هذه الحادثة لا يفك الحظر.',
+ 'The threat block was explicitly released.':'تم فك حظر التهديد بإجراء صريح.',
+ 'High-risk threat blocked. An administrator must investigate and explicitly release the block. Website approvals and whitelist entries cannot override it.':'تم حظر تهديد عالي الخطورة. يجب على المسؤول التحقيق وفك الحظر صراحة. لا تتجاوز موافقات المواقع أو القائمة البيضاء هذا الحظر.',
+
  'Workflow status':'حالة سير العمل',
  'Automation is ready. New matching scans will be assigned automatically.':'الأتمتة جاهزة. سيتم إسناد حالات الفحوصات الجديدة المطابقة تلقائيًا.',
  'Automation is not enabled. Create and enable a rule to start assignment, review notifications and escalation.':'الأتمتة غير مفعلة. أنشئ قاعدة وفعّلها لبدء الإسناد وإشعارات المراجعة والتصعيد.',

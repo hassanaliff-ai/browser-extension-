@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, delete, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from sqlalchemy.exc import IntegrityError
-from alba_security.models import Alert, Base, Finding, Scan, SecurityEvent, new_id, utc_now
+from alba_security.models import Alert, Base, Device, Finding, Scan, SecurityEvent, new_id, utc_now
 from alba_security.risk import SignalInput, assess, risk_policy
 
 
@@ -402,6 +402,12 @@ def install_governance(app, session_scope, require_actor, directory):
                   'status': row.status, 'resolution': row.resolution, 'revision': row.revision,
                   'severity': scan.severity, 'created_at': iso(row.created_at), 'updated_at': iso(row.updated_at)}
         if include_notes:
+            from alba_security.threat_blocks import ThreatBlock, block_record
+            blocked = db.scalar(select(ThreatBlock).where(ThreatBlock.scan_id == row.scan_id))
+            result['containment'] = block_record(blocked, db) if blocked else None
+            result['device_id'] = scan.device_id
+            result['device_name'] = db.get(Device, scan.device_id).name
+            result['timeline'] = [{'action': entry.action, 'actor': entry.actor, 'details': entry.details, 'created_at': iso(entry.created_at)} for entry in db.scalars(select(GovernanceAudit).where(GovernanceAudit.area == 'case', GovernanceAudit.reference == row.id).order_by(GovernanceAudit.created_at))]
             result['notes'] = [{'id': n.id, 'author': n.author, 'body': n.body, 'created_at': iso(n.created_at)}
                                for n in db.scalars(select(CaseNote).where(CaseNote.case_id == row.id).order_by(CaseNote.created_at))]
         return result
@@ -416,6 +422,11 @@ def install_governance(app, session_scope, require_actor, directory):
             raise HTTPException(404, 'Scan not found')
         if payload.assignee not in directory.operators(db):
             raise HTTPException(422, 'Choose a configured administrator')
+        existing = db.scalar(select(IncidentCase).where(IncidentCase.scan_id == payload.scan_id).order_by(IncidentCase.created_at))
+        if existing:
+            # High-risk scans already have a containment investigation. Reuse it
+            # rather than duplicate notes, ownership and workflow notifications.
+            return case_record(existing, db)
         row = IncidentCase(**payload.model_dump())
         db.add(row)
         try:
@@ -480,6 +491,7 @@ def install_governance(app, session_scope, require_actor, directory):
             {'data': 'URL scan', 'stored': 'SHA-256 fingerprint and optional hostname; no URL path/query', 'purpose': 'Correlate security findings'},
             {'data': 'File check', 'stored': 'SHA-256 digest; uploaded bytes discarded', 'purpose': 'Reputation lookup'},
             {'data': 'Device / extension', 'stored': 'References, display names and extension version', 'purpose': 'Associate investigations'},
+            {'data': 'Threat containment', 'stored': 'Hashed hostname or file fingerprint, source scan, severity, active state and revision; no raw URL path or query', 'purpose': 'Deny known high-risk destinations until investigated and explicitly released'},
             {'data': 'Case / audit', 'stored': 'Administrator identity, decisions and notes', 'purpose': 'Accountable response and change review'},
             {'data': 'Monthly report', 'stored': 'Aggregate counts and reviewed summary', 'purpose': 'Security reporting'},
             {'data': 'Website approval', 'stored': 'Explicitly requested URL scheme, host, port and path; requester, reviewer, reasons and expiry; no query or fragment', 'purpose': 'Controlled website access and decision audit'},

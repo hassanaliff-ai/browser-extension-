@@ -30,6 +30,7 @@ from alba_security.admin_directory import AdminDirectory
 from alba_security.registration import install_registration
 from alba_security.intelligence import install_intelligence
 from alba_security.website_access import install_website_access
+from alba_security.threat_blocks import contain_scan, active_block, block_record, block_identity, install_threat_blocks
 from alba_security.inventory import (install_inventory, enforce_device, browser_state,
     device_metadata, extension_metadata, scan_device_fields, DeviceRegistration)
 from alba_security.governance import active_policy, audit, initialize_governance, install_governance, privacy_settings
@@ -362,6 +363,7 @@ def create_app(
     install_governance(app, session_scope, require_actor, admin_auth)
     install_registration(app, session_scope, require_actor, admin_auth, require_sign_in_capacity)
     install_website_access(app, session_scope, require_actor, admin_auth)
+    install_threat_blocks(app, session_scope, require_actor)
     from alba_security.ai_jobs import install_ai_jobs
     install_ai_jobs(app, require_actor, admin_auth)
     install_intelligence(app, session_scope, require_actor, admin_auth)
@@ -570,6 +572,11 @@ def create_app(
                     created_at=now,
                 ))
         automate_scan(db, scan, admin_auth)
+        containment = contain_scan(db, scan, payload.target, admin_auth)
+        if containment is None:
+            existing_block = active_block(db, payload.target_kind, payload.target)
+            if existing_block:
+                containment = block_record(existing_block, db) | {"host": block_identity(payload.target_kind, payload.target)[2]}
         db.commit()
         if notify and result.severity in {"High", "Critical"} and not applied_override:
             try:
@@ -605,7 +612,8 @@ def create_app(
             "target_display": display,
             "override_id": scan.override_id,
             "risk_policy_version": policy["version"],
-            "suggested_action": suggested_action(result),
+            "containment": containment,
+            "suggested_action": "Threat blocked. Investigate the linked case before requesting release." if containment else suggested_action(result),
         }
 
     app.state.record_scan = record_scan

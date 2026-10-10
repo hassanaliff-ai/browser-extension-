@@ -112,6 +112,11 @@ def install_website_access(app, session_scope, require_actor, directory):
         return record(item) | {'requester_role': requester_role,
             'can_review': can_approve_role(role(db, actor), requester_role, own=item.requester == actor)}
 
+    def reject_threat(db, target):
+        from alba_security.threat_blocks import active_block
+        if active_block(db, 'url', target):
+            raise HTTPException(403, 'High-risk threat is blocked. Resolve the investigation and release the block first.')
+
     def current_whitelist(db, target):
         return db.scalar(select(WebsiteWhitelist).where(WebsiteWhitelist.target == target,
             WebsiteWhitelist.active.is_(True), WebsiteWhitelist.expires_at > utc_now()).order_by(WebsiteWhitelist.created_at.desc()))
@@ -125,6 +130,7 @@ def install_website_access(app, session_scope, require_actor, directory):
 
     @app.post('/api/access/requests', status_code=201)
     def request_access(payload: Create, actor: str = Actor, db: Session = DB):
+        reject_threat(db, payload.target)
         entry = current_whitelist(db, payload.target)
         if entry and expiry_fields(entry.expires_at)['permanent']:
             return {'target': payload.target, 'status': 'approved', 'decision': 'whitelist',
@@ -160,6 +166,8 @@ def install_website_access(app, session_scope, require_actor, directory):
             raise HTTPException(404, 'Website request not found')
         if not can_approve_role(role(db, actor), role(db, item.requester), own=item.requester == actor):
             raise HTTPException(403, 'Approval requires a higher role; only the head administrator may review their own request')
+        if payload.decision != "reject":
+            reject_threat(db, item.target)
         now = utc_now()
         outcome = 'rejected' if payload.decision == 'reject' else 'approved'
         if payload.decision == 'whitelist' and payload.whitelist_forever:
@@ -218,17 +226,21 @@ def install_website_access(app, session_scope, require_actor, directory):
         return {'revoked': True, 'revoked_entries': changed.rowcount}
 
     def permit(db, actor, target, consume=False):
+        from alba_security.threat_blocks import active_block
+        blocked = active_block(db, "url", target)
+        if blocked:
+            return {"containment_checked": True, "allowed": False, "kind": "threat_block", "threat_blocked": True, "severity": blocked.severity}
         entry = current_whitelist(db, target)
         if entry:
             if consume:
                 audit(db, 'website_access', entry.id, actor, 'whitelist_visit')
                 db.commit()
-            return {'allowed': True, 'kind': 'whitelist', **expiry_fields(entry.expires_at)}
+            return {'containment_checked': True, 'allowed': True, 'kind': 'whitelist', **expiry_fields(entry.expires_at)}
         query = select(WebsiteRequest).where(WebsiteRequest.requester == actor, WebsiteRequest.target == target,
             WebsiteRequest.status == 'approved', WebsiteRequest.decision.in_(['once', 'temporary']), WebsiteRequest.expires_at > utc_now())
         item = db.scalar(query.order_by(WebsiteRequest.created_at.desc()))
         if not item:
-            return {'allowed': False, 'kind': None}
+            return {'containment_checked': True, 'allowed': False, 'kind': None}
         if item.decision == 'temporary':
             if consume:
                 audit(db, 'website_access', item.id, actor, 'temporary_visit')
@@ -252,5 +264,7 @@ def install_website_access(app, session_scope, require_actor, directory):
     def consume(payload: Target, actor: str = Actor, db: Session = DB):
         result = permit(db, actor, payload.target, consume=True)
         if not result['allowed']:
+            if result.get('threat_blocked'):
+                raise HTTPException(403, 'High-risk threat is blocked. Resolve the investigation and release the block first.')
             raise HTTPException(403, 'A manager or administrator must approve this URL first')
         return result

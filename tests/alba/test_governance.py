@@ -186,7 +186,7 @@ def test_retention_protects_case_evidence_and_pending_alerts(system):
         db.commit()
     preview = client.get('/api/privacy/retention-preview', headers=header).json()
     assert preview['eligible_scans'] == 1
-    assert preview['protected_case_scans'] == 1
+    assert preview['protected_case_scans'] == 2  # Manual case plus automatic high-risk containment case
     assert client.post('/api/privacy/retention-apply', headers=header, json={'expected_revision': preview['revision'], 'confirm': False}).status_code == 422
     deleted = client.post('/api/privacy/retention-apply', headers=header, json={'expected_revision': preview['revision'], 'confirm': True})
     assert deleted.status_code == 200, deleted.text

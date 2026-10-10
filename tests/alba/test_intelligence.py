@@ -221,7 +221,7 @@ def test_reader_does_not_follow_redirects_and_rejects_compression(monkeypatch):
 
 def test_explanation_deletion_follows_source_scan(system):
     from sqlalchemy import delete
-    client,app,headers,_=system;record=scan(client)
+    client,app,headers,_=system;record=scan(client,status='clear')
     with app.state.session_factory() as db:
         db.add(ExplanationRecord(scan_id=record['id'],language='en',context_digest='x'*64,narrative={},context_scope='reputation_evidence_only'))
         db.commit()

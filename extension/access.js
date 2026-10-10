@@ -35,7 +35,7 @@ export async function reportNavigation(request, loadSession, context, outcome) {
 // Static rules redirect before the request is sent, even while this worker sleeps.
 // A temporary allow rule grants one GET navigation in one tab. It is removed on
 // commit/error/closure and by a 30-second alarm if navigation never completes.
-export function registerNavigationGate(request, loadSession) {
+export function registerNavigationGate(request, loadSession, {reconcileThreatHost=async()=>{}}={}) {
   const pending = new Map();
   const navigationVersions = new Map();
   let generation = 0;
@@ -113,6 +113,10 @@ export function registerNavigationGate(request, loadSession) {
     try {
       const openingSession=await loadSession();
       if(!openingSession.token)throw Object.assign(new Error('Sign in with your approved account first.'),{status:401});
+      const check=await request('/api/access/check','POST',{target});
+      if(check.threat_blocked)throw new Error('High-risk threat is blocked. Resolve its investigation before requesting release.');
+      if(check.containment_checked===true)await reconcileThreatHost(target,false);
+      unchanged();
       const rule=visitRule(tabId,target);
       const supported=await chrome.declarativeNetRequest.isRegexSupported({regex:rule.condition.regexFilter,isCaseSensitive:true});
       if(!supported.isSupported)throw new Error('Chrome cannot safely match this URL. It remains blocked.');

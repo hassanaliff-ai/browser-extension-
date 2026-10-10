@@ -26,11 +26,12 @@ READ_ROUTES = {
     '/api/reports/monthly', '/api/alerts', '/api/events', '/api/governance/audit',
     '/api/policies', '/api/cases', '/api/cases/{case_id}', '/api/privacy',
     '/api/privacy/retention-preview', '/api/evaluations', '/api/usability',
-    '/api/case-assignees', '/api/my/scans', '/api/my/scans/{scan_id}',
+    '/api/threat-blocks', '/api/case-assignees', '/api/my/scans', '/api/my/scans/{scan_id}',
     '/api/workflow/rules', '/api/workflow/notifications', '/api/controls/effectiveness', '/api/controls/reviews',
     '/api/operations/status',
 }
 ADMIN_WRITES = {
+    '/api/threat-blocks/{block_id}/release',
     '/api/admin/downloads/scan', '/api/admin/downloads/scan-file',
     '/api/overrides', '/api/overrides/{override_id}/deactivate',
     '/api/reports/monthly/generate', '/api/reports/monthly/{period}/send',
@@ -96,7 +97,7 @@ def allowed(role, method, route):
     return False
 
 ALL_VIEWS = [
-    'Overview', 'Alerts', 'Findings', 'Risk levels', 'Downloaded-file checks',
+    'Threat blocklist', 'Overview', 'Alerts', 'Findings', 'Risk levels', 'Downloaded-file checks',
     'Scan history', 'Devices', 'Extensions', 'Security events', 'Whitelist & overrides',
     'Reports', 'Accounts', 'Incident cases', 'Security policies',
     'Privacy governance', 'Detection evaluation', 'Usability and accessibility',

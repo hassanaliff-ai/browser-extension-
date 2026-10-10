@@ -10,7 +10,7 @@ from alba_security.postgresql import backfill_scan_metadata
 
 def load_metadata():
     for name in ('admin_auth','file_lookup','governance','intelligence','inventory','operations',
-                 'overrides','registration','report_job','website_access'):
+                 'overrides','registration','report_job','website_access','threat_blocks'):
         importlib.import_module('alba_security.'+name)
     return Base.metadata
 

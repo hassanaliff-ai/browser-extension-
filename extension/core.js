@@ -12,7 +12,7 @@ export function accessReviewBody(request, form) {
   if(!['24','168'].includes(form.duration))throw new Error('Choose 24 hours, 7 days or Forever.');
   return {...body,decision:'temporary',duration_hours:Number(form.duration)};
 }
-export const VERSION = '0.8.11';
+export const VERSION = '0.8.12';
 export const OPERATIONS_API_CONTRACT = 1;
 export const WORKER_CAPABILITIES = Object.freeze(['device-enrollment','chrome-inventory','device-access-choice','workflow-automation','control-effectiveness']);
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;
@@ -55,6 +55,8 @@ export function validDigest(value) {
   return value.trim().toLowerCase();
 }
 export function safeApiPath(path, method = 'GET') {
+  if(method==='GET'&&path==='/api/threat-blocks')return true;
+  if(method==='POST'&&/^\/api\/threat-blocks\/(?:host|file|ip|extension):[a-f0-9]{32,64}\/release$/.test(path))return true;
   if(method==='GET'&&path==='/api/operations/status')return true;
   if(method==='GET'&&/^\/api\/(workflow\/(rules|notifications)|controls\/(reviews|effectiveness(?:\?days=\d{1,3})?))$/.test(path))return true;
   if(method==='POST'&&/^\/api\/(workflow\/(rules(?:\/[a-f0-9-]{36}\/update)?|run|notifications\/[a-f0-9]{64}\/acknowledge)|controls\/(reviews|navigation))$/.test(path))return true;
@@ -71,7 +73,7 @@ export function safeApiPath(path, method = 'GET') {
 }
 export function apiError(status, body) {
   if (status === 401) return 'Sign-in or verification was not accepted. Check your credentials; expired sessions need a new sign-in.';
-  if (status === 403) return /device is blocked|Link this Chrome profile|Add this device|Pairing code|device is waiting|device connection was revoked/.test(body?.detail??'')?body.detail:'Your account does not have permission for this action.';
+  if (status === 403) return /High-risk threat is blocked|device is blocked|Link this Chrome profile|Add this device|Pairing code|device is waiting|device connection was revoked/.test(body?.detail??'')?body.detail:'Your account does not have permission for this action.';
   if (status === 429) return 'Too many requests. Wait one minute and try again.';
   if (status === 503 && /OPENAI|OLLAMA|LLM|report model|API key/i.test(body?.detail ?? '')) return 'AI reporting is unavailable. Check the configured local model or provider settings on the backend.';
   if (Array.isArray(body?.detail)) return body.detail.map(r => `${r.loc?.at(-1) ?? 'Input'}: ${r.msg}`).join(' · ');
