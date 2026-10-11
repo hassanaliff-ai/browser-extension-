@@ -527,3 +527,8 @@ Optional workflow automation, policy-change approval, control-effectiveness anal
 Incident investigation, persistent High/Critical containment, scanning, access approval, accounts and 2FA, reports, privacy, detection evaluation, usability testing and safe exports remain available. See [incident response and containment](docs/Incident%20Response%20and%20Threat%20Containment.md).
 
 Reload the unpacked Chrome extension after updating its files. Migration 0004 removes the six optional-feature tables. It preserves security evidence, incidents, threat blocks and the administrative audit trail.
+
+
+## Remove inventory records (0.8.19)
+
+Every extension row has **Remove from inventory**, including ExtSecure. Device rows have **Remove**, which revokes their connection and archives associated extensions. Administrators can review removed entries through the history filters; retained security evidence is preserved. See [inventory removal](docs/Inventory%20Removal.md).

@@ -61,7 +61,7 @@ def allowed(role, method, route):
     if role in ROLE_LABELS:
         if (method, route) in {('GET', '/api/inventory/self'), ('POST', '/api/inventory/pair'), ('POST', '/api/inventory/sync'), ('POST', '/api/inventory/connect'), ('GET','/api/inventory/extension-controls'), ('POST','/api/inventory/extensions/{extension_id}/receipt')}:
             return True
-        if method == 'POST' and route in {'/api/inventory/devices', '/api/inventory/devices/{device_id}/status', '/api/inventory/devices/{device_id}/pairing-code','/api/inventory/extensions/{extension_id}/control'}:
+        if method == 'POST' and route in {'/api/inventory/devices', '/api/inventory/devices/{device_id}/status', '/api/inventory/devices/{device_id}/pairing-code','/api/inventory/extensions/{extension_id}/control','/api/inventory/extensions/{extension_id}/remove','/api/inventory/extensions/{extension_id}/restore','/api/inventory/devices/{device_id}/remove'}:
             return role in {'head_administrator', 'administrator'}
     if (method, route) in {('GET', '/api/admin/accounts'), ('GET', '/api/admin/registrations'),
                           ('POST', '/api/admin/registrations/{username}/approve'),

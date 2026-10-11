@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 
 from alba_security.models import Base, Device, Extension, new_id, utc_now
 from alba_security.governance import audit
+from alba_security.inventory_removal import install_inventory_removal
 from alba_security.extension_controls import ExtensionControl,control_data,install_extension_controls
 
 
@@ -165,15 +166,17 @@ def is_pending(db, row):
 
 
 def device_metadata(db, device_id):
+    device=db.get(Device,device_id)
+    removal={'inventory_removed':bool(device and device.inventory_removed),'inventory_revision':device.inventory_revision if device else 1}
     row = db.get(DeviceRegistration, device_id)
     if not row:
-        return {'registered': False, 'status': 'Scan record', 'ip_address': None,
+        return {**removal,'registered': False, 'status': 'Removed' if removal['inventory_removed'] else 'Scan record', 'ip_address': None,
                 'operating_system': None, 'revision': None, 'last_sync': None}
     linked = bool(db.scalar(select(BrowserCredential).where(
         BrowserCredential.device_id == device_id, BrowserCredential.revoked.is_(False))))
     enrollment = db.get(DeviceEnrollment, device_id)
     pending = is_pending(db, row)
-    return {'registered': True, 'status': 'Pending approval' if pending else 'Blocked' if row.blocked else 'Active' if linked else 'Awaiting pairing',
+    return {**removal,'registered': True, 'status': 'Removed' if removal['inventory_removed'] else 'Pending approval' if pending else 'Blocked' if row.blocked else 'Active' if linked else 'Awaiting pairing',
             'trusted': linked and not row.blocked and not pending,
             'blocked': row.blocked and not pending, 'pending': pending, 'linked': linked,
             'requested_by': enrollment.requested_by if enrollment else row.added_by,
@@ -190,9 +193,12 @@ def browser_registration(db, request):
 
 
 def browser_state(db, request):
+    token=request.headers.get('x-extsecure-device','')
+    credential=db.get(BrowserCredential,digest(token)) if token and len(token)<=256 else None
+    device=db.get(Device,credential.device_id) if credential else None
     policy = db.get(InventoryPolicy, 1)
     row = browser_registration(db, request)
-    return {'enrollment_required': bool(policy and policy.enrollment_required),
+    return {'removed':bool(device and device.inventory_removed),'enrollment_required': bool(policy and policy.enrollment_required),
             'device_id': row.device_id if row else None,
             'device_name': db.get(Device, row.device_id).name if row else None,
             'blocked': bool(row and row.blocked and not is_pending(db, row)),
@@ -207,7 +213,7 @@ def enforce_device(db, request, *, role=None, route=None):
         return None
     if role in {'head_administrator', 'administrator'} and route in {
         '/api/database/status', '/api/devices', '/api/extensions', '/api/inventory/devices',
-        '/api/inventory/devices/{device_id}/status', '/api/inventory/devices/{device_id}/pairing-code', '/api/inventory/extensions/{extension_id}/control'}:
+        '/api/inventory/devices/{device_id}/status', '/api/inventory/devices/{device_id}/pairing-code', '/api/inventory/extensions/{extension_id}/control','/api/inventory/extensions/{extension_id}/remove','/api/inventory/extensions/{extension_id}/restore','/api/inventory/devices/{device_id}/remove'}:
         return None
     row = browser_registration(db, request)
     if is_pending(db, row):
@@ -223,6 +229,8 @@ def enforce_device(db, request, *, role=None, route=None):
 
 
 def scan_device_fields(db, device_id):
+    device=db.get(Device,device_id) if device_id else None
+    if device and device.inventory_removed:raise HTTPException(403,'This device was removed. Reconnect through approved device enrollment.')
     row = db.get(DeviceRegistration, device_id) if device_id else None
     if not row:
         return {}
@@ -237,7 +245,8 @@ def scan_device_fields(db, device_id):
 
 def extension_metadata(db, extension_id):
     item = db.get(ChromeObservation, extension_id)
-    return {'source': 'Chrome inventory' if item else 'Scan record',
+    extension_record=db.get(Extension,extension_id)
+    return {'inventory_removed':bool(extension_record and extension_record.inventory_removed),'inventory_revision':extension_record.inventory_revision if extension_record else 1,'source': 'Chrome inventory' if item else 'Scan record',
             'status': ('Enabled' if item.enabled else 'Disabled') if item and item.present else 'Not installed' if item else 'Unverified',
             'installed': bool(item and item.present), 'enabled': bool(item and item.present and item.enabled),
             'may_disable': bool(item and item.may_disable), 'may_enable': bool(item and item.may_enable),
@@ -272,6 +281,8 @@ def save_extensions(db, row, items, *, full_snapshot=False):
 
 def apply_device_decision(db, device_id, payload, actor):
     """Shared transactional device protection for inventory and incident actions."""
+    device=db.get(Device,device_id)
+    if device and device.inventory_removed:raise HTTPException(409,'This device was removed. Add a new approved connection.')
     result = db.execute(update(DeviceRegistration).where(DeviceRegistration.device_id == device_id,
         DeviceRegistration.revision == payload.expected_revision).values(blocked=payload.blocked,
         revision=DeviceRegistration.revision + 1))
@@ -287,6 +298,7 @@ def apply_device_decision(db, device_id, payload, actor):
 
 def install_inventory(app, session_scope, require_actor, directory):
     install_extension_controls(app,session_scope,require_actor)
+    install_inventory_removal(app,session_scope,require_actor)
     def pairing_code(row):
         code = secrets.token_urlsafe(24)
         row.pairing_hash = digest(code)
@@ -415,6 +427,8 @@ def install_inventory(app, session_scope, require_actor, directory):
 
     @app.post('/api/inventory/devices/{device_id}/pairing-code')
     def reissue_code(device_id: str, payload: PairCode, actor: str = Depends(require_actor), db: Session = Depends(session_scope)):
+        device=db.get(Device,device_id)
+        if device and device.inventory_removed:raise HTTPException(409,'This device was removed. Add a new approved connection.')
         code = secrets.token_urlsafe(24)
         expires = utc_now() + timedelta(minutes=30)
         result = db.execute(update(DeviceRegistration).where(DeviceRegistration.device_id == device_id,

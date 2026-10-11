@@ -5,7 +5,7 @@ from pydantic import BaseModel,ConfigDict,Field,model_validator
 from sqlalchemy import CheckConstraint,ForeignKey,Integer,String,select,update
 from sqlalchemy.orm import Mapped,Session,mapped_column
 from sqlalchemy.exc import IntegrityError
-from alba_security.models import Base,Extension
+from alba_security.models import Base,Extension,Device
 from alba_security.governance import audit
 
 class ExtensionControl(Base):
@@ -49,6 +49,7 @@ def install_extension_controls(app,session_scope,require_actor):
     def decide(extension_id:str,payload:Decision,actor:str=Depends(require_actor),db:Session=Depends(session_scope)):
         item=db.get(Extension,extension_id);observation=db.get(ChromeObservation,extension_id)
         if not item or not observation:raise HTTPException(404,'Sync Chrome inventory before managing this extension.')
+        if item.inventory_removed or db.get(Device,item.device_id).inventory_removed:raise HTTPException(409,'This inventory record was removed. Restore active inventory first.')
         registration=db.get(DeviceRegistration,item.device_id)
         if not registration or item.extension_key==registration.chrome_extension_id:raise HTTPException(409,'ExtSecure protects this connection and cannot be disabled, blocked or removed here.')
         if not observation.present:raise HTTPException(409,'This extension is no longer installed. Refresh inventory.')

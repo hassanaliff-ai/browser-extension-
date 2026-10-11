@@ -6,7 +6,7 @@ let store={},calls=[],responder=()=>({}),listener,access;
 let localStore={},sessionRules=[],dynamicRules=[],hooks={};
 const event=name=>({addListener:f=>{const previous=hooks[name];hooks[name]=(...args)=>{previous?.(...args);return f(...args);};}});
 globalThis.chrome={
- storage:{session:{setAccessLevel:async v=>{access=v;},get:async()=>structuredClone(store),set:async value=>{store={...store,...structuredClone(value)};},remove:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])delete store[key];}},local:{setAccessLevel:async v=>{localAccess=v;},get:async()=>structuredClone(localStore),remove:async key=>{delete localStore[key];},set:async v=>{localStore={...localStore,...v};}}},
+ storage:{session:{setAccessLevel:async v=>{access=v;},get:async()=>structuredClone(store),set:async value=>{store={...store,...structuredClone(value)};},remove:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])delete store[key];}},local:{setAccessLevel:async v=>{localAccess=v;},get:async()=>structuredClone(localStore),remove:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])delete localStore[key];},set:async v=>{localStore={...localStore,...v};}}},
  permissions:{contains:async()=>true},management:{onEnabled:event('inventory-enabled'),onDisabled:event('inventory-disabled'),onInstalled:event('inventory-installed'),onUninstalled:event('inventory-uninstalled'),getAll:async()=>[{id:'a'.repeat(32),name:'ExtSecure',version:'0.7.0',enabled:true,type:'extension'}]},
  runtime:{id:'test-extension',getManifest:()=>({name:'ExtSecure',version:'0.7.0'}),getPlatformInfo:async()=>({os:'win'}),getURL:path=>'chrome-extension://test-extension/'+path,onMessage:{addListener:f=>listener=f},onStartup:event('startup'),onInstalled:event('installed')},
  tabs:{query:async()=>[{url:'https://example.com/private?token=x'}],create:async v=>calls.push(v),update:async(id,v)=>calls.push({tabId:id,...v}),onRemoved:event('removed')},
@@ -435,3 +435,9 @@ test('Table size choices persist locally and reject unsupported sizes without AP
 });
 
 test('A lower rescan retains the active threat badge and browser block',async()=>{reset();store.session={token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()};responder=()=>({severity:'Low',target_kind:'url',containment:{id:'host:'+'a'.repeat(64),kind:'host',fingerprint:'a'.repeat(64),severity:'High',active:true}});const result=await handleMessage({type:'SCAN_URL',target:'https://example.com/'});assert.equal(result.severity,'Low');assert.equal(result.protection.blocked,true);assert.equal(calls.filter(c=>c.text!==undefined).at(-1).text,'!');assert.equal(dynamicRules.length,2);});
+
+ test('Removing this device clears its connection key and navigation grants while retaining account sign-in',async()=>{
+ reset();signed();localStore={deviceCredential:{token:'removed-device-token'},pendingDeviceConnection:'removed-pending-token',inventoryConnected:true};sessionRules=[{id:100007}];
+ responder=url=>url.endsWith('/admin/me')?{username:'test-head',role:'head_administrator',inventory:{removed:true,linked:false,enrollment_required:true}}:{};
+ const result=await handleMessage({type:'STATE'});assert(result.profile.inventory.removed);assert.equal(localStore.deviceCredential,undefined);assert.equal(localStore.pendingDeviceConnection,undefined);assert.equal(localStore.inventoryConnected,undefined);assert.equal(sessionRules.length,0);assert.equal(store.session.token,'test-token');
+ });

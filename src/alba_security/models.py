@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -22,6 +22,8 @@ class Base(DeclarativeBase):
 
 
 class Device(Base):
+    inventory_removed: Mapped[bool] = mapped_column(Boolean,default=False,nullable=False)
+    inventory_revision: Mapped[int] = mapped_column(Integer,default=1,nullable=False)
     __tablename__ = "devices"
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
@@ -31,6 +33,8 @@ class Device(Base):
 
 
 class Extension(Base):
+    inventory_removed: Mapped[bool] = mapped_column(Boolean,default=False,nullable=False)
+    inventory_revision: Mapped[int] = mapped_column(Integer,default=1,nullable=False)
     __tablename__ = "extensions"
     __table_args__ = (
         UniqueConstraint("device_id", "extension_key", name="uq_extension_device_key"),

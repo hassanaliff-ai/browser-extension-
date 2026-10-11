@@ -89,6 +89,8 @@ CREATE TABLE detection_evaluations (
 );
 
 CREATE TABLE devices (
+	inventory_removed BOOLEAN NOT NULL,
+	inventory_revision INTEGER NOT NULL,
 	id VARCHAR(100) NOT NULL,
 	name VARCHAR(120) NOT NULL,
 	first_seen TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -254,6 +256,8 @@ CREATE TABLE device_registrations (
 );
 
 CREATE TABLE extensions (
+	inventory_removed BOOLEAN NOT NULL,
+	inventory_revision INTEGER NOT NULL,
 	id VARCHAR(36) NOT NULL,
 	device_id VARCHAR(100) NOT NULL,
 	extension_key VARCHAR(100) NOT NULL,

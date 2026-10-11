@@ -234,3 +234,8 @@ download is for testing, not a replacement for your regular Chrome installation.
 ## Manage extensions by device
 
 In **Inventory → Extensions**, choose a device and expand **Manage extension** to turn an extension on/off, block it or request removal. Connect Chrome extensions first to grant management permission. Remote On/Remove requires **Apply pending extension controls** on the target profile; Chrome confirms uninstall. Off/Block runs when the signed-in target profile polls. Removed records remain available through the history checkbox. ExtSecure itself is protected.
+
+
+## Remove inventory records (0.8.19)
+
+Every extension row has **Remove from inventory**, including ExtSecure. Device rows have **Remove**, which revokes their connection and archives associated extensions. Administrators can review removed entries through the history filters; retained security evidence is preserved. See [inventory removal](../docs/Inventory%20Removal.md).

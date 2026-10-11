@@ -238,6 +238,7 @@ export async function handleMessage(message,sender={}) {
       const current = await loadSession();
       if (current.token !== session.token) throw failure('Your sign-in changed. Refresh the extension.',401);
       await store({...current,profile});
+      if(profile.inventory?.removed){await chrome.storage.local.remove(['deviceCredential','pendingDeviceConnection','inventoryConnected']);await gate.clear({preserveBlocked:true});}
       if(profile.inventory?.blocked)await gate.clear({preserveBlocked:true});
       if(session.profile?.inventory?.pending&&profile.inventory?.linked&&!profile.inventory?.blocked&&!profile.inventory?.pending)void autoSyncInventory().catch(()=>{});
     }
