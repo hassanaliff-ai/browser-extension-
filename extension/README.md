@@ -230,3 +230,7 @@ has no report. See [verified results](../docs/Extension%20Browser%20Verification
 The launcher follows [Playwright's extension-testing workflow](https://playwright.dev/docs/chrome-extensions)
 using its supported Chromium channel and a persistent test context. The browser
 download is for testing, not a replacement for your regular Chrome installation.
+
+## Manage extensions by device
+
+In **Inventory → Extensions**, choose a device and expand **Manage extension** to turn an extension on/off, block it or request removal. Connect Chrome extensions first to grant management permission. Remote On/Remove requires **Apply pending extension controls** on the target profile; Chrome confirms uninstall. Off/Block runs when the signed-in target profile polls. Removed records remain available through the history checkbox. ExtSecure itself is protected.

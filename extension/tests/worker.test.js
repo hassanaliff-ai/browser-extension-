@@ -15,7 +15,7 @@ globalThis.chrome={
  declarativeNetRequest:{getDynamicRules:async()=>structuredClone(dynamicRules),updateDynamicRules:async({removeRuleIds=[],addRules=[]})=>{dynamicRules=dynamicRules.filter(r=>!removeRuleIds.includes(r.id));dynamicRules.push(...structuredClone(addRules));},getSessionRules:async()=>structuredClone(sessionRules),isRegexSupported:async()=>({isSupported:true}),updateSessionRules:async({removeRuleIds=[],addRules=[]})=>{sessionRules=sessionRules.filter(r=>!removeRuleIds.includes(r.id));sessionRules.push(...structuredClone(addRules));}},
  action:{setBadgeText:async v=>calls.push(v),setBadgeBackgroundColor:async()=>{}}
 };
-globalThis.fetch=async(url,options)=>{calls.push({url,options});return new Response(JSON.stringify(responder(url,options)),{status:200,headers:{'Content-Type':'application/json'}});};
+globalThis.fetch=async(url,options)=>{calls.push({url,options});return new Response(JSON.stringify(url.endsWith('/inventory/extension-controls')?[]:responder(url,options)),{status:200,headers:{'Content-Type':'application/json'}});};
 const {handleMessage}=await import('../background.js');
 const {VERSION,WORKER_CAPABILITIES}=await import('../core.js');
 const reset=()=>{store={};calls=[];localStore={};sessionRules=[];dynamicRules=[];responder=()=>({});};
@@ -234,11 +234,11 @@ test('A paired browser without an account session cannot read or upload Chrome i
  try{await assert.rejects(handleMessage({type:'SYNC_INVENTORY'}),error=>error.status===401);assert.equal(reads,0);assert.equal(calls.some(c=>c.options),false);}
  finally{chrome.management.getAll=original;}
 });
-test('Chrome sync sends a minimal enabled snapshot and records the explicit opt-in',async()=>{
+test('Chrome sync sends a minimal installed snapshot and records the explicit opt-in',async()=>{
  reset();signed();localStore.deviceCredential={token:'test-device-token'};const original=chrome.management.getAll;
  chrome.management.getAll=async()=>[{id:'a'.repeat(32),name:'ExtSecure',version:'0.7.0',enabled:true,type:'extension',permissions:['tabs']},{id:'b'.repeat(32),name:'Disabled',version:'1',enabled:false,type:'extension'}];
  try{await handleMessage({type:'SYNC_INVENTORY'});const call=calls.find(c=>c.url?.endsWith('/inventory/sync'));
-  assert.deepEqual(JSON.parse(call.options.body),{extensions:[{id:'a'.repeat(32),name:'ExtSecure',version:'0.7.0'}]});
+  assert.deepEqual(JSON.parse(call.options.body),{extensions:[{id:'a'.repeat(32),name:'ExtSecure',version:'0.7.0',enabled:true,may_disable:true,may_enable:true},{id:'b'.repeat(32),name:'Disabled',version:'1',enabled:false,may_disable:true,may_enable:true}]});
   assert.equal(localStore.inventoryConnected,true);
  }finally{chrome.management.getAll=original;}
 });
@@ -298,7 +298,7 @@ test('Blocked device reconnection does not reset the existing key or sync invent
 test('One device button connects the current profile then syncs permitted enabled extensions',async()=>{
  reset();signed();responder=url=>url.endsWith('/inventory/connect')?{device_id:'device-simple',device_name:'Current device',pending:false,blocked:false}:{enabled_count:1};
  const result=await handleMessage({type:'CONNECT_DEVICE',initial_access:'trusted'});assert.equal(result.inventory_status,'ready');assert.equal(result.enabled_count,1);
- const callsWithBody=calls.filter(c=>c.options);assert.equal(callsWithBody[0].url.endsWith('/inventory/connect'),true);assert.equal(callsWithBody[1].url.endsWith('/inventory/sync'),true);
+ const callsWithBody=calls.filter(c=>c.options?.method==='POST');assert.equal(callsWithBody[0].url.endsWith('/inventory/connect'),true);assert.equal(callsWithBody[1].url.endsWith('/inventory/sync'),true);
  assert.equal(callsWithBody[1].options.headers['X-ExtSecure-Device'],localStore.deviceCredential.token);
 });
 test('Partial inventory failure retains the connected device and gives an explicit retry status',async()=>{

@@ -59,9 +59,9 @@ def allowed(role, method, route):
     if method == 'GET' and route == '/api/ai-jobs/{job_id}':
         return role in ROLE_LABELS
     if role in ROLE_LABELS:
-        if (method, route) in {('GET', '/api/inventory/self'), ('POST', '/api/inventory/pair'), ('POST', '/api/inventory/sync'), ('POST', '/api/inventory/connect')}:
+        if (method, route) in {('GET', '/api/inventory/self'), ('POST', '/api/inventory/pair'), ('POST', '/api/inventory/sync'), ('POST', '/api/inventory/connect'), ('GET','/api/inventory/extension-controls'), ('POST','/api/inventory/extensions/{extension_id}/receipt')}:
             return True
-        if method == 'POST' and route in {'/api/inventory/devices', '/api/inventory/devices/{device_id}/status', '/api/inventory/devices/{device_id}/pairing-code'}:
+        if method == 'POST' and route in {'/api/inventory/devices', '/api/inventory/devices/{device_id}/status', '/api/inventory/devices/{device_id}/pairing-code','/api/inventory/extensions/{extension_id}/control'}:
             return role in {'head_administrator', 'administrator'}
     if (method, route) in {('GET', '/api/admin/accounts'), ('GET', '/api/admin/registrations'),
                           ('POST', '/api/admin/registrations/{username}/approve'),

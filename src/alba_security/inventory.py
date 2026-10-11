@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 
 from alba_security.models import Base, Device, Extension, new_id, utc_now
 from alba_security.governance import audit
+from alba_security.extension_controls import ExtensionControl,control_data,install_extension_controls
 
 
 class InventoryPolicy(Base):
@@ -52,6 +53,9 @@ class BrowserCredential(Base):
 class ChromeObservation(Base):
     __tablename__ = 'chrome_extension_observations'
     extension_id: Mapped[str] = mapped_column(ForeignKey('extensions.id'), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean,default=True,nullable=False)
+    may_disable: Mapped[bool] = mapped_column(Boolean,default=True,nullable=False)
+    may_enable: Mapped[bool] = mapped_column(Boolean,default=True,nullable=False)
     present: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_sync: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
@@ -115,6 +119,9 @@ class PairCode(Input):
 
 
 class ChromeItem(Input):
+    enabled: bool = Field(default=True,strict=True)
+    may_disable: bool = Field(default=True,strict=True)
+    may_enable: bool = Field(default=True,strict=True)
     id: str = Field(pattern=r'^[a-p]{32}$')
     name: str = Field(min_length=1, max_length=160)
     version: str = Field(min_length=1, max_length=40)
@@ -200,7 +207,7 @@ def enforce_device(db, request, *, role=None, route=None):
         return None
     if role in {'head_administrator', 'administrator'} and route in {
         '/api/database/status', '/api/devices', '/api/extensions', '/api/inventory/devices',
-        '/api/inventory/devices/{device_id}/status', '/api/inventory/devices/{device_id}/pairing-code'}:
+        '/api/inventory/devices/{device_id}/status', '/api/inventory/devices/{device_id}/pairing-code', '/api/inventory/extensions/{extension_id}/control'}:
         return None
     row = browser_registration(db, request)
     if is_pending(db, row):
@@ -231,7 +238,11 @@ def scan_device_fields(db, device_id):
 def extension_metadata(db, extension_id):
     item = db.get(ChromeObservation, extension_id)
     return {'source': 'Chrome inventory' if item else 'Scan record',
-            'status': 'Enabled' if item and item.present else 'Not in latest snapshot' if item else 'Unverified',
+            'status': ('Enabled' if item.enabled else 'Disabled') if item and item.present else 'Not installed' if item else 'Unverified',
+            'installed': bool(item and item.present), 'enabled': bool(item and item.present and item.enabled),
+            'may_disable': bool(item and item.may_disable), 'may_enable': bool(item and item.may_enable),
+            'control': control_data(db.get(ExtensionControl,extension_id)),
+            'protected': bool((extension:=db.get(Extension,extension_id)) and (registration:=db.get(DeviceRegistration,extension.device_id)) and extension.extension_key==registration.chrome_extension_id),
             'last_sync': iso(item.last_sync) if item else None}
 
 
@@ -253,6 +264,7 @@ def save_extensions(db, row, items, *, full_snapshot=False):
             observation = ChromeObservation(extension_id=extension.id)
             db.add(observation)
         observation.present, observation.last_sync = True, now
+        observation.enabled,observation.may_disable,observation.may_enable=item.enabled,item.may_disable,item.may_enable
     db.get(Device, row.device_id).last_seen = now
     if full_snapshot:
         row.last_sync = now
@@ -274,6 +286,7 @@ def apply_device_decision(db, device_id, payload, actor):
 
 
 def install_inventory(app, session_scope, require_actor, directory):
+    install_extension_controls(app,session_scope,require_actor)
     def pairing_code(row):
         code = secrets.token_urlsafe(24)
         row.pairing_hash = digest(code)
@@ -443,9 +456,9 @@ def install_inventory(app, session_scope, require_actor, directory):
         if not row or row.blocked:
             raise HTTPException(403, 'Link an active device before syncing Chrome inventory.')
         # The inventory API describes a client snapshot, not independent endpoint attestation.
-        if row.chrome_extension_id not in {item.id for item in payload.extensions}:
+        if row.chrome_extension_id not in {item.id for item in payload.extensions if item.enabled}:
             raise HTTPException(422, 'The enabled ExtSecure extension must be included in the snapshot.')
         save_extensions(db, row, payload.extensions, full_snapshot=True)
-        audit(db, 'inventory', row.device_id, actor, 'chrome_inventory_synced', enabled_count=len(payload.extensions))
+        audit(db, 'inventory', row.device_id, actor, 'chrome_inventory_synced', enabled_count=sum(item.enabled for item in payload.extensions), installed_count=len(payload.extensions))
         db.commit()
-        return {'device_id': row.device_id, 'enabled_count': len(payload.extensions), 'last_sync': iso(row.last_sync)}
+        return {'device_id': row.device_id, 'enabled_count': sum(item.enabled for item in payload.extensions), 'installed_count':len(payload.extensions), 'last_sync': iso(row.last_sync)}

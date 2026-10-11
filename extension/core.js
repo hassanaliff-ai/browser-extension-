@@ -12,7 +12,7 @@ export function accessReviewBody(request, form) {
   if(!['24','168'].includes(form.duration))throw new Error('Choose 24 hours, 7 days or Forever.');
   return {...body,decision:'temporary',duration_hours:Number(form.duration)};
 }
-export const VERSION = '0.8.17';
+export const VERSION = '0.8.18';
 export const WORKER_CAPABILITIES = Object.freeze(['device-enrollment','chrome-inventory','device-access-choice']);
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;
 export const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Unknown'];
@@ -58,6 +58,8 @@ export function safeApiPath(path, method = 'GET') {
   if(method==='GET'&&path==='/api/threat-blocks')return true;
   if(method==='POST'&&/^\/api\/threat-blocks\/(?:host|file|ip|extension):[a-f0-9]{32,64}\/release$/.test(path))return true;
   if(method==='GET'&&/^\/api\/ai-jobs\/[a-f0-9-]{36}$/.test(path))return true;
+  if(method==='GET'&&path==='/api/inventory/extension-controls')return true;
+  if(method==='POST'&&/^\/api\/inventory\/extensions\/[a-f0-9-]{36}\/(control|receipt)$/.test(path))return true;
   if(method==='GET'&&path==='/api/inventory/self')return true;
   if(method==='POST'&&/^\/api\/inventory\/(connect|pair|sync|devices(?:\/device-[a-f0-9-]+\/(status|pairing-code))?)$/.test(path))return true;
   if(method==='GET'&&/^\/api\/intelligence\/(scans\/[a-zA-Z0-9-]+|report-schedule|reports(?:\?limit=\d{1,3})?)$/.test(path))return true;

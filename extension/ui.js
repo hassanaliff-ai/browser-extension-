@@ -32,6 +32,7 @@ const app=document.querySelector('#app');
 
 let state={},view='',authMode='login',qr='',manualSecret='',pageData={},selected='',period=completedMonth(),scanResult=null,requestSequence=0,busy=false,loading=false,queuedView='';
 
+let extensionDevice='all',extensionRemoved=false;
 let qrLink=null,filenameSignal=null;
 let devicePairing=null,deviceFilter='all',connectionStatus='unchecked',toastTimer,monthlyOpen=false;
 
@@ -113,7 +114,7 @@ const VIEWS=[
 
  ['devices','Devices','device','Inventory','Register devices, link Chrome profiles and manage blocked access.'],
 
- ['extensions','Extensions','extension','Inventory','Sync enabled Chrome extensions and inspect their device inventory.'],
+ ['extensions','Extensions','extension','Inventory','Choose a device, review its installed extensions and manage their access.'],
 
  ['events','Security events','clock','Investigate','Trace scans, threats, alert decisions and notification delivery.'],
 
@@ -167,9 +168,9 @@ function deviceConnection(){
 
  const connect=isExtension&&!i.blocked&&!i.pending?form('device-connect',initialAccess+optional,i.linked?'Refresh devices & extensions':'Add this device'):'';
 
- if(isExtension&&i.linked&&!i.blocked&&!i.pending)return `<section class="panel stack"><div class="row between"><div><h2>Device & Chrome connection</h2><p class="meta" data-no-translate>${esc(i.device_name??'')}</p></div>${tag('Connected')}</div><div>${btn('Connect enabled Chrome extensions','sync-inventory')}</div>${details('Connection details',`<div class="stack">${connect}<p class="meta">Only enabled extension IDs, names and versions are synced.</p>${details('Existing device connection (advanced)',devicePairForm())}</div>`)}</section>`;
+ if(isExtension&&i.linked&&!i.blocked&&!i.pending)return `<section class="panel stack"><div class="row between"><div><h2>Device & Chrome connection</h2><p class="meta" data-no-translate>${esc(i.device_name??'')}</p></div>${tag('Connected')}</div><div>${btn('Connect Chrome extensions','sync-inventory')}${btn('Apply pending extension controls','apply-extension-controls','small')}</div>${details('Connection details',`<div class="stack">${connect}<p class="meta">Only installed extension IDs, names, versions and control capabilities are synced.</p>${details('Existing device connection (advanced)',devicePairForm())}</div>`)}</section>`;
 
- return `<section class="panel stack"><h2>Device & Chrome connection</h2>${notice(message,i.blocked?'error':i.pending?'warning':i.linked?'success':'')}${i.linked?`<p class="meta" data-no-translate>${esc(i.device_name)}</p>`:''}${connect}${isExtension&&i.linked&&!i.blocked&&!i.pending?btn('Connect enabled Chrome extensions','sync-inventory','primary'):''}${i.pending?btn('Check approval status','refresh'):''}${i.blocked&&can('inventory')?btn('Manage device access','go-devices'):''}<p class="muted">Add this device registers this Chrome profile and ExtSecure first. Then click Connect enabled Chrome extensions and allow Chrome's permission prompt to include the other enabled extensions. The operating system is detected automatically.</p><p class="meta">IP is optional. Localhost is not saved as your computer's LAN address. Only enabled extension IDs, names and versions are synced.</p>${!isExtension?notice('Load ExtSecure in Chrome to add this device.','warning'):''}${isExtension?details('Existing device connection (advanced)',devicePairForm()):''}</section>`;
+ return `<section class="panel stack"><h2>Device & Chrome connection</h2>${notice(message,i.blocked?'error':i.pending?'warning':i.linked?'success':'')}${i.linked?`<p class="meta" data-no-translate>${esc(i.device_name)}</p>`:''}${connect}${isExtension&&i.linked&&!i.blocked&&!i.pending?btn('Connect Chrome extensions','sync-inventory','primary')+btn('Apply pending extension controls','apply-extension-controls','small'):''}${i.pending?btn('Check approval status','refresh'):''}${i.blocked&&can('inventory')?btn('Manage device access','go-devices'):''}<p class="muted">Add this device registers this Chrome profile and ExtSecure first. Then click Connect Chrome extensions and allow Chrome's permission prompt to include installed extensions. The operating system is detected automatically.</p><p class="meta">IP is optional. Localhost is not saved as your computer's LAN address. Only installed extension IDs, names, versions and control capabilities are synced.</p>${!isExtension?notice('Load ExtSecure in Chrome to add this device.','warning'):''}${isExtension?details('Existing device connection (advanced)',devicePairForm()):''}</section>`;
 
 }
 
@@ -183,7 +184,15 @@ async function devicesPage(){
 
 }
 
-async function extensionsPage(){const rows=await api('extensions');pageData={rows};return deviceConnection()+`<section class="panel stack"><h2>Chrome enabled extension inventory</h2>${notice('Snapshots update after extension changes, at sign-in and every 30 minutes while signed in, after permission is granted. Older scan records remain labelled Unverified. Inventory metadata is not a malware verdict.')} ${table(rows,[['Extension','name'],['Chrome extension ID','extension_key'],['Version','version'],['Device','device_name'],['Status',r=>tag(r.status)],['Source','source'],['Last sync',r=>esc(date(r.last_sync))],['Scans','scan_count'],['Highest risk',r=>tag(r.highest_severity)]])}</section>`;}
+function extensionControlError(code){return {chrome_restricted:'Chrome or organization policy prevented this action.',confirmation_cancelled:'Chrome confirmation was cancelled. Try again on the target profile.',not_installed:'The extension is no longer installed. Refresh inventory.',permission_required:'Allow Chrome management permission first.',browser_action_failed:'Chrome could not apply this action. Try Apply pending extension controls on the target profile.'}[code]??'The extension action could not be applied.';}
+async function extensionsPage(){
+ const [rows,devices]=await Promise.all([api('extensions'),api('devices')]);pageData={rows,devices};
+ if(extensionDevice!=='all'&&!devices.some(d=>d.id===extensionDevice))extensionDevice='all';
+ const shown=rows.filter(r=>(extensionDevice==='all'||r.device_id===extensionDevice)&&(extensionRemoved||r.status!=='Not installed'));
+ const current=state.profile?.inventory?.device_id;
+ const controls=r=>!can('inventory')?'Read only':r.protected?'ExtSecure protected':!r.installed?'Not installed':(!r.may_disable&&!r.may_enable)?'Chrome protected':details('Manage extension',form('extension-control',`<input type="hidden" name="extension_id" value="${esc(r.id)}">${select('Action','desired',[...(r.may_enable?[['enabled','Turn on']]:[]),...(r.may_disable?[['disabled','Turn off'],['blocked','Block'],['removed','Remove from Chrome']]:[])])}${reason()}${check('I confirm the extension and target device.','confirmed',false,true)}`,'Apply','small'));
+ return deviceConnection()+`<section class="panel stack"><h2>Chrome extension inventory</h2>${notice('Choose a device to see its installed extensions, including disabled extensions. Turn off changes the current state; Block also keeps the extension disabled while ExtSecure is connected. Remove opens Chrome confirmation on the target profile. ExtSecure itself and protected organization extensions cannot be removed here.')}${select('Device','extension_device',[['all','All added devices'],...devices.filter(d=>d.registered).map(d=>[d.id,d.name+' · '+(d.operating_system??'Unknown OS')])],extensionDevice)}<label class="check"><input type="checkbox" name="extension_removed" ${extensionRemoved?'checked':''}>Show extensions no longer installed</label>${table(shown,[['Extension','name'],['Chrome ID','extension_key'],['Version','version'],['Device','device_name'],['Chrome status',r=>tag(r.status)],['Control',r=>r.control?.desired?`${tag(r.control.desired)} ${tag(r.control.status)}${r.control.error?'<p class="meta">'+esc(extensionControlError(r.control.error))+'</p>':''}`:'—'],['Connection',r=>r.device_id===current?'This Chrome profile':'Other profile'],['Last sync',r=>esc(date(r.last_sync))],['Manage',controls]])}<p class="meta">Remote actions remain pending until the target profile connects. Turn on and Remove require clicking Apply pending extension controls on that profile. Browser restrictions and cancelled confirmations appear as failed actions. Removed extensions retain their security history.</p></section>`;
+}
 
 function toast(text,error=false){const el=document.querySelector('#toast');clearTimeout(toastTimer);el.textContent=text;el.className=error?'error':'';el.setAttribute?.('role',error?'alert':'status');el.hidden=false;toastTimer=setTimeout(()=>el.hidden=true,error?10000:6500);}
 
@@ -426,7 +435,7 @@ app.addEventListener('click',async event=>{
 
       if(typeof chrome.permissions?.request!=='function')throw new Error('Chrome inventory permission is unavailable. Reload ExtSecure and reopen its console.');
 
-      if(!await chrome.permissions.request({permissions:['management']}))throw new Error('Chrome inventory permission was not granted. Your device remains connected. Click Connect enabled Chrome extensions to try again.');
+      if(!await chrome.permissions.request({permissions:['management']}))throw new Error('Chrome inventory permission was not granted. Your device remains connected. Click Connect Chrome extensions to try again.');
 
       const result=await send({type:'SYNC_INVENTORY'});state=await send({type:'STATE'});await renderView();toast(result.enabled_count+' enabled Chrome extensions synced.');
 
@@ -452,6 +461,7 @@ app.addEventListener('click',async event=>{
 
     if(action==='open-console')await send({type:'OPEN_CONSOLE'});
 
+    if(action==='apply-extension-controls'){const result=await send({type:'APPLY_EXTENSION_CONTROLS'});await renderView();toast(result.control_results?.some(r=>r.status==='failed')?'Some actions could not be applied. Review extension control status.':'Pending extension controls checked.');}
     if(action==='toggle-qr')document.querySelector('#popup-qr').hidden=!document.querySelector('#popup-qr').hidden;
     if(action==='toggle-file')document.querySelector('#popup-file').hidden=!document.querySelector('#popup-file').hidden;
 
@@ -500,7 +510,7 @@ app.addEventListener('submit',async event=>{
 
       const result=await send(message);f.reset();state=await send({type:'STATE'});await renderView();
 
-      toast(result.pending?'Device added. Waiting for administrator approval.':result.blocked?'Device added as blocked. An administrator must allow it before scans or website access.':result.inventory_status==='ready'?result.enabled_count+' enabled Chrome extensions connected.':result.inventory_status==='retry_required'?'Device connected. Click Refresh devices & extensions to retry inventory sync.':'Device connected. Click Connect enabled Chrome extensions to include the other extensions.',result.inventory_status==='retry_required');
+      toast(result.pending?'Device added. Waiting for administrator approval.':result.blocked?'Device added as blocked. An administrator must allow it before scans or website access.':result.inventory_status==='ready'?result.enabled_count+' enabled Chrome extensions connected.':result.inventory_status==='retry_required'?'Device connected. Click Refresh devices & extensions to retry inventory sync.':'Device connected. Click Connect Chrome extensions to include the other extensions.',result.inventory_status==='retry_required');
 
     }
 
@@ -530,6 +540,7 @@ app.addEventListener('submit',async event=>{
 
     else if(action==='access-revoke')await commit('access/whitelist/'+data.entry_id+'/revoke',{reason:data.reason});
 
+    else if(action==='extension-control'){const row=pageData.rows.find(r=>r.id===data.extension_id);if(!row)throw new Error('Refresh extension inventory first.');await api('inventory/extensions/'+row.id+'/control','POST',{desired:data.desired,expected_revision:row.control?.revision??0,confirmed:data.confirmed==='on',reason:data.reason});if(row.device_id===state.profile.inventory?.device_id)await send({type:'APPLY_EXTENSION_CONTROLS'});await renderView();toast('Extension action saved. Check its control status.');}
     else if(action==='qr-decode'){qrLink=null;scanResult=null;qrLink=await decodeQrImage(f.querySelector('[name="qrImage"]').files[0]);await renderView();if(popup)document.querySelector('#popup-qr').hidden=false;}
     else if(action==='qr-scan'){if(!qrLink)throw new Error('Read and review a QR destination first.');scanResult=await send({type:'SCAN_URL',target:qrLink.target,includePath:!!data.includePath});await renderView();if(popup)document.querySelector('#popup-qr').hidden=false;}
     else if(action==='url-scan'){scanResult=await send({type:'SCAN_URL',target:data.target,includePath:!!data.includePath});await renderView();}
@@ -580,6 +591,7 @@ app.addEventListener('submit',async event=>{
 app.addEventListener('toggle',event=>{if(event.target.classList.contains('monthly-workspace'))monthlyOpen=event.target.open;},true);
 
 app.addEventListener('change',event=>{
+ if(event.target.name==='extension_device'||event.target.name==='extension_removed'){if(busy||loading)return;if(event.target.name==='extension_device')extensionDevice=event.target.value;else extensionRemoved=event.target.checked;void renderView();return;}
  if(event.target.name==='qrImage'){qrLink=null;scanResult=null;const review=app.querySelector('[data-form="qr-scan"]');if(review)review.closest('.stack').remove();}
  if(event.target.name==='file'){const signal=inspectFilename(event.target.files?.[0]?.name);const warning=event.target.form?.querySelector('[data-filename-warning]');if(warning){warning.hidden=!signal.warning;warning.innerHTML=filenameWarning(signal);}return;}
 

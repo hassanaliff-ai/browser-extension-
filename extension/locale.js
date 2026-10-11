@@ -18,6 +18,23 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+"Chrome extension inventory":"جرد إضافات Chrome",
+"Connect Chrome extensions":"ربط إضافات Chrome",
+"Apply pending extension controls":"تطبيق إجراءات الإضافات المعلقة",
+"All added devices":"جميع الأجهزة المضافة",
+"Show extensions no longer installed":"إظهار الإضافات التي لم تعد مثبتة",
+"Manage extension":"إدارة الإضافة",
+"Turn on":"تشغيل",
+"Turn off":"إيقاف",
+"Block":"حظر",
+"Remove from Chrome":"إزالة من Chrome",
+"Chrome status":"حالة Chrome",
+"This Chrome profile":"ملف Chrome الحالي",
+"Other profile":"ملف آخر",
+"ExtSecure protected":"ExtSecure محمي",
+"Chrome protected":"محمي بواسطة Chrome",
+"Read only":"للقراءة فقط",
+"I confirm the extension and target device.":"أؤكد الإضافة والجهاز المستهدف.",
 "Saved records":"السجلات المحفوظة",
 "Storage requires review":"التخزين يحتاج إلى مراجعة",
 "Verified PostgreSQL storage":"تم التحقق من تخزين PostgreSQL",

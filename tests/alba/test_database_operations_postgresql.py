@@ -57,12 +57,12 @@ def test_migrations_are_idempotent_readonly_to_runtime_and_test_rollback_works(o
     engine,url,_=operator_database
     role=make_url(os.environ['EXTSECURE_TEST_RUNTIME_URL']).username
     first=apply_migrations(engine,MIGRATIONS,runtime_role=role)
-    assert first['applied_now']==['0001','0002','0003','0004']
+    assert first['applied_now']==['0001','0002','0003','0004','0005']
     assert apply_migrations(engine,MIGRATIONS)['applied_now']==[]
     with engine.connect() as db:
         assert not db.scalar(text("SELECT has_table_privilege(:role,'extsecure_schema_migrations','UPDATE')"),{'role':role})
-    assert rollback_test_migration(engine,MIGRATIONS)=={'rolled_back':'0004'}
-    assert apply_migrations(engine,MIGRATIONS)['applied_now']==['0004']
+    assert rollback_test_migration(engine,MIGRATIONS)=={'rolled_back':'0005'}
+    assert apply_migrations(engine,MIGRATIONS)['applied_now']==['0005']
     production=create_engine(url.set(database='extsecure'))
     try:
         with pytest.raises(ValueError):rollback_test_migration(production,MIGRATIONS)

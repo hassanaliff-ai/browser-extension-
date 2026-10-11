@@ -1,9 +1,10 @@
+import {applyExtensionControls} from './extension-controls.js';
 import {validateLogo,logoKey} from './account-logo.js';
 import {API_ORIGIN, VERSION, WORKER_CAPABILITIES, privateTarget, safeApiPath, apiError} from './core.js';
 import {registerNavigationGate} from './access.js';
 import {containThreat,reconcileThreatHost,restoreThreatRules} from './threat-containment.js';
 import {normalizePreferences} from './locale.js';
-import {enabledExtensions,platformName} from './inventory.js';
+import {installedExtensions,platformName} from './inventory.js';
 import {safeActiveTab} from './workspace-kit.js';
 
 const storageReady = Promise.all([
@@ -103,7 +104,7 @@ function registerInventoryEvents() {
     } catch { /* Optional permission may not yet be granted in this Chrome profile. */ }
   }
 }
-async function syncInventory() {
+async function syncInventory(interactive=false,controlsOnly=false) {
   // Serialise snapshots so a slow older update cannot overwrite a newer one.
   const operation=syncQueue.catch(()=>{}).then(async()=>{
     if(!(await loadSession()).token)throw failure('Sign in with your approved account first.',401);
@@ -111,20 +112,25 @@ async function syncInventory() {
     registerInventoryEvents();
     const {deviceCredential}=await chrome.storage.local.get('deviceCredential');
     if(!deviceCredential?.token)throw new Error('Link this Chrome profile to a device in My account first.');
-    const items=enabledExtensions(await chrome.management.getAll());
-    return request('/api/inventory/sync','POST',{extensions:items});
+    await chrome.alarms.create('extension-controls',{periodInMinutes:1});
+    const controls=await request('/api/inventory/extension-controls');
+    const results=await applyExtensionControls(controls,{management:chrome.management,selfId:chrome.runtime.id,interactive,receipt:(id,body)=>request('/api/inventory/extensions/'+id+'/receipt','POST',body)});
+    if(controlsOnly&&!results.length)return {control_results:results};
+    const items=installedExtensions(await chrome.management.getAll());
+    const snapshot=await request('/api/inventory/sync','POST',{extensions:items});
+    return {...snapshot,control_results:results};
   });
   syncQueue=operation;
   return operation;
 }
-async function autoSyncInventory() {
+async function autoSyncInventory(controlsOnly=false) {
   await storageReady;
   const {inventoryConnected}=await chrome.storage.local.get('inventoryConnected');
   const session=await loadSession();
-  if(inventoryConnected&&session.token&&!session.profile?.inventory?.pending&&!session.profile?.inventory?.blocked)await syncInventory();
+  if(inventoryConnected&&session.token&&!session.profile?.inventory?.pending&&!session.profile?.inventory?.blocked)await syncInventory(false,controlsOnly);
 }
 registerInventoryEvents();
-chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='inventory-sync')void autoSyncInventory().catch(()=>{});});
+chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='inventory-sync')void autoSyncInventory().catch(()=>{});if(alarm.name==='extension-controls')void autoSyncInventory(true).catch(()=>{});});
 export async function handleMessage(message,sender={}) {
   await storageReady;
   if (!message || typeof message.type !== 'string') throw new Error('Invalid extension request.');
@@ -195,6 +201,7 @@ export async function handleMessage(message,sender={}) {
     await gate.clear({preserveBlocked:true});
     return {device_id:data.device_id,device_name:data.device_name};
   }
+  if(message.type==='APPLY_EXTENSION_CONTROLS'){return syncInventory(true);}
   if(message.type==='SYNC_INVENTORY') {
     const result=await syncInventory();
     await chrome.storage.local.set({inventoryConnected:true});
@@ -285,6 +292,7 @@ export async function handleMessage(message,sender={}) {
     return {revoked};
   }
   if (message.type === 'API') {
+    if(/\/inventory\/extensions\/[^/]+\/receipt$/.test(message.path))throw new Error('Use the dedicated extension control action.');
     if (AUTH_PUBLIC.has(message.path) || message.path === '/api/admin/logout') throw new Error('Use the dedicated sign-in action.');
     if(['/api/inventory/connect','/api/inventory/pair','/api/inventory/sync'].includes(message.path))throw new Error('Use the dedicated Chrome inventory action.');
     const data = await request(message.path,message.method ?? 'GET',message.body);

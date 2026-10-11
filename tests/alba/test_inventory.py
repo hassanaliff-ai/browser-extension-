@@ -119,7 +119,7 @@ def test_snapshots_store_enabled_metadata_and_preserve_removed_history(system):
     assert client.post('/api/inventory/sync', headers=browser, json={'extensions':[SELF]}).status_code == 200
     rows = client.get('/api/extensions', headers=browser).json()
     assert len(rows) == 2
-    assert next(r for r in rows if r['extension_key']==OTHER['id'])['status']=='Not in latest snapshot'
+    assert next(r for r in rows if r['extension_key']==OTHER['id'])['status']=='Not installed'
     assert client.get('/api/devices', headers=browser).json()[0]['last_sync']
     with app.state.session_factory() as db:
         assert db.get(Device, device['id']).last_seen

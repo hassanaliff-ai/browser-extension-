@@ -17,6 +17,12 @@ def ensure_schema(engine: Engine) -> None:
     """
     Base.metadata.create_all(engine)
     inspector = inspect(engine)
+    if 'chrome_extension_observations' in inspector.get_table_names():
+        columns={item['name'] for item in inspector.get_columns('chrome_extension_observations')}
+        with engine.begin() as connection:
+            for name in ('enabled','may_disable','may_enable'):
+                if name not in columns:
+                    connection.exec_driver_sql(f'ALTER TABLE chrome_extension_observations ADD COLUMN {name} BOOLEAN NOT NULL DEFAULT TRUE')
     # Sessions and challenges issued before multiple administrators belonged to
     # the original primary account. Nullable names preserve that identity.
     for table in ("admin_login_challenges", "admin_sessions"):

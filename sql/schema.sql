@@ -286,9 +286,25 @@ CREATE TABLE inventory_device_enrollments (
 
 CREATE TABLE chrome_extension_observations (
 	extension_id VARCHAR(36) NOT NULL,
+	enabled BOOLEAN NOT NULL,
+	may_disable BOOLEAN NOT NULL,
+	may_enable BOOLEAN NOT NULL,
 	present BOOLEAN NOT NULL,
 	last_sync TIMESTAMP WITH TIME ZONE NOT NULL,
 	PRIMARY KEY (extension_id),
+	FOREIGN KEY(extension_id) REFERENCES extensions (id)
+);
+
+CREATE TABLE inventory_extension_controls (
+	extension_id VARCHAR(36) NOT NULL,
+	desired VARCHAR(16) NOT NULL,
+	status VARCHAR(16) NOT NULL,
+	revision INTEGER NOT NULL,
+	error VARCHAR(300),
+	PRIMARY KEY (extension_id),
+	CONSTRAINT ck_extension_control_desired CHECK (desired IN ('enabled','disabled','blocked','removed')),
+	CONSTRAINT ck_extension_control_status CHECK (status IN ('pending','applied','failed')),
+	CONSTRAINT ck_extension_control_revision CHECK (revision >= 1),
 	FOREIGN KEY(extension_id) REFERENCES extensions (id)
 );
 
