@@ -124,19 +124,16 @@ class ExtensionScanRequest(BaseModel):
 
 
 def _extension_record(monitor, target, verdict, actor, device_id=None):
-    from alba_security.models import PersonalScan
     payload = _monitoring_payload(ScanRequest(target=target), verdict)
     payload = payload.model_copy(update={
         'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
         'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
-        'extension_name': 'ExtSecure', 'extension_version': '0.7.4',
+        'extension_name': 'ExtSecure', 'extension_version': '0.8.15',
     })
     with monitor.state.session_factory() as db:
         from alba_security.inventory import scan_device_fields
         payload = payload.model_copy(update=scan_device_fields(db, device_id))
         result = monitor.state.record_scan(payload, db, notify=True, actor=actor)
-        db.add(PersonalScan(scan_id=result['id'], username=actor))
-        db.commit()
         return result
 
 
@@ -260,10 +257,7 @@ def _record_monitoring_scan(monitoring_app: FastAPI, body: ScanRequest, verdict:
         # The public endpoint has no verified device identity. Persist the scan
         # for administrators, but do not send email or webhooks for public calls.
         result = monitoring_app.state.record_scan(payload, db, notify=False, actor=owner)
-        if owner:
-            from alba_security.models import PersonalScan
-            db.add(PersonalScan(scan_id=result['id'], username=owner))
-            db.commit()
+
 
 
 async def scan(body: ScanRequest, request: Request) -> ScanResponse:

@@ -20,6 +20,7 @@ ACCESS_WRITES = {'/api/access/requests', '/api/access/check', '/api/access/consu
 ACCESS_REVIEWS = {'/api/access/requests/{request_id}/review', '/api/access/whitelist/{entry_id}/revoke'}
 
 READ_ROUTES = {
+    '/api/database/status',
     '/api/overview', '/api/risk-policy', '/api/devices', '/api/extensions',
     '/api/findings', '/api/scans', '/api/scans/{scan_id}', '/api/overrides',
     '/api/overrides/audit', '/api/reports/monthly/stats', '/api/reports/monthly/ml',
@@ -44,6 +45,7 @@ MANAGER_WRITES = {
     '/api/alerts/{alert_id}/status',
 }
 MANAGER_READS = READ_ROUTES - {
+    '/api/database/status',
     '/api/overrides', '/api/overrides/audit', '/api/privacy',
     '/api/privacy/retention-preview', '/api/evaluations', '/api/usability',
     '/api/governance/audit',

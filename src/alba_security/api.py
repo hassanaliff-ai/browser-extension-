@@ -23,6 +23,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import case, create_engine, event, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import StaticPool
 
 from alba_security.admin_auth import AdminAuth, AdminLoginChallenge, AuthenticationError, AuthenticationLocked, _digest
@@ -37,7 +38,7 @@ from alba_security.governance import active_policy, audit, initialize_governance
 from alba_security.overrides import (
     Override, OverrideAudit, create_override, deactivate_override, list_overrides, match_override,
 )
-from alba_security.models import Alert, Base, Device, Extension, Finding, Scan, SecurityEvent, utc_now
+from alba_security.models import Alert, Base, Device, Extension, Finding, PersonalScan, Scan, SecurityEvent, utc_now
 from alba_security.file_lookup import lookup_file_hash
 from alba_security.notifications import send_high_severity_alert
 from alba_security.notifications import EmailSender, NotificationSettings
@@ -375,6 +376,19 @@ def create_app(
 
     Admin = Depends(require_admin)
     Ingest = Depends(require_ingest)
+    @app.get('/api/database/status', dependencies=[Admin])
+    def persistence_status():
+        from alba_security.database_health import database_status
+        if engine.dialect.name != 'postgresql':
+            return {'healthy':False, 'connection':{'engine':engine.dialect.name},
+                    'reason':'This deployment is not using PostgreSQL.'}
+        try:
+            result=database_status(engine)
+        except SQLAlchemyError:
+            raise HTTPException(503, 'Database verification failed. No connection credentials are returned.') from None
+        result['checked_at']=utc_now().isoformat()
+        return result
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -574,7 +588,15 @@ def create_app(
             existing_block = active_block(db, payload.target_kind, payload.target)
             if existing_block:
                 containment = block_record(existing_block, db) | {"host": block_identity(payload.target_kind, payload.target)[2]}
-        db.commit()
+        # Ownership is evidence too: save it in the same transaction as the
+        # scan, findings, events, alert and containment. No partial histories.
+        if actor:
+            db.add(PersonalScan(scan_id=scan.id, username=actor))
+        try:
+            db.commit()
+        except SQLAlchemyError:
+            db.rollback()
+            raise HTTPException(503, 'Scan evidence could not be saved. Retry when the database is available.') from None
         if notify and result.severity in {"High", "Critical"} and not applied_override:
             try:
                 outcomes = alert_notifier(
@@ -652,10 +674,6 @@ def create_app(
         )
         result = record_scan(scan_input, db, actor=owner)
         result["file_lookup"] = verdict.public()
-        if owner:
-            from alba_security.models import PersonalScan
-            db.add(PersonalScan(scan_id=result['id'], username=owner))
-            db.commit()
         return result
 
     @app.post("/api/admin/downloads/scan", status_code=201, dependencies=[Admin])

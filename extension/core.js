@@ -12,7 +12,7 @@ export function accessReviewBody(request, form) {
   if(!['24','168'].includes(form.duration))throw new Error('Choose 24 hours, 7 days or Forever.');
   return {...body,decision:'temporary',duration_hours:Number(form.duration)};
 }
-export const VERSION = '0.8.14';
+export const VERSION = '0.8.15';
 export const WORKER_CAPABILITIES = Object.freeze(['device-enrollment','chrome-inventory','device-access-choice']);
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;
 export const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Unknown'];
@@ -64,7 +64,7 @@ export function safeApiPath(path, method = 'GET') {
   if(method==='POST'&&/^\/api\/intelligence\/(scans\/[a-zA-Z0-9-]+\/explain|reports\/generate)$/.test(path))return true;
   if (method === 'GET' && /^\/api\/access\/(requests|whitelist)$/.test(path)) return true;
   if (method === 'POST' && /^\/api\/access\/(requests(?:\/[a-zA-Z0-9-]+\/review)?|whitelist\/[a-zA-Z0-9-]+\/revoke|check|consume)$/.test(path)) return true;
-  if (method === 'GET') return /^\/api\/(admin\/(me|accounts|registrations)|overview|risk-policy|devices|extensions|findings|scans(?:\/[a-zA-Z0-9-]+)?|my\/scans(?:\/[a-zA-Z0-9-]+)?|overrides(?:\/audit)?|reports\/monthly(?:\/(stats|ml))?|alerts|events|cases(?:\/[a-zA-Z0-9-]+)?|case-assignees|privacy(?:\/retention-preview)?|evaluations|usability|governance\/audit)(?:\?[a-zA-Z0-9=&-]+)?$/.test(path);
+  if (method === 'GET') return /^\/api\/(admin\/(me|accounts|registrations)|database\/status|overview|risk-policy|devices|extensions|findings|scans(?:\/[a-zA-Z0-9-]+)?|my\/scans(?:\/[a-zA-Z0-9-]+)?|overrides(?:\/audit)?|reports\/monthly(?:\/(stats|ml))?|alerts|events|cases(?:\/[a-zA-Z0-9-]+)?|case-assignees|privacy(?:\/retention-preview)?|evaluations|usability|governance\/audit)(?:\?[a-zA-Z0-9=&-]+)?$/.test(path);
   if (method !== 'POST') return false;
   return /^\/api\/(admin\/(login|verify|logout|register(?:\/(verify|cancel|qr))?|downloads\/scan|registrations\/[a-z0-9._-]+\/(approve|reject)|accounts\/[a-z0-9._-]+\/(role|disable))|overrides(?:\/[a-zA-Z0-9-]+\/deactivate)?|reports\/monthly\/(generate|20\d{2}-(0[1-9]|1[0-2])\/send)|alerts\/[a-zA-Z0-9-]+\/status|cases(?:\/[a-zA-Z0-9-]+\/(notes|status|safety|block-device|remove))?|privacy(?:\/retention-apply)?|evaluations|usability(?:\/[a-zA-Z0-9-]+\/status)?)$/.test(path);
 }

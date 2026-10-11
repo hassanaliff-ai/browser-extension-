@@ -199,7 +199,7 @@ def enforce_device(db, request, *, role=None, route=None):
     if route in {'/api/admin/me', '/api/admin/logout', '/api/inventory/self', '/api/inventory/pair', '/api/inventory/connect'}:
         return None
     if role in {'head_administrator', 'administrator'} and route in {
-        '/api/devices', '/api/extensions', '/api/inventory/devices',
+        '/api/database/status', '/api/devices', '/api/extensions', '/api/inventory/devices',
         '/api/inventory/devices/{device_id}/status', '/api/inventory/devices/{device_id}/pairing-code'}:
         return None
     row = browser_registration(db, request)

@@ -2,6 +2,8 @@
 
 ## PostgreSQL database
 
+Administrators can verify the live database in **Settings → Database connection**. Chrome writes through TestAPI into PostgreSQL; scans and personal history commit together. See [connection and live verification](docs/Database%20Connection%20and%20Verification.md) for the database location, inspection queries and actual test evidence.
+
 The local database now uses PostgreSQL with verified migration of the existing
 records. See [database setup, schema, queries and verification](docs/PostgreSQL%20Database.md).
 The API uses a restricted application role; private credentials and backups stay
@@ -12,8 +14,7 @@ PostgreSQL deployments should run `scripts/upgrade_postgresql.py` with the confi
 local owner credentials before starting the updated API.
 
 Database operator tools now provide private scheduled backups and isolated restore
-tests, synthetic performance benchmarks, checksum-tracked SQL migrations, aggregate
-basic migrations, and allowlisted JSON/CSV export. See
+tests, synthetic performance benchmarks, ordered SQL migrations, and allowlisted JSON/CSV export. See
 [database operations](docs/Database%20Operations.md) for commands and scheduling.
 
 One FastAPI process serves the original ExtSecure VirusTotal lookup API and
@@ -25,7 +26,7 @@ administrator console. FastAPI remains a separate security backend. The earlier
 Streamlit dashboard is retained for compatibility and is not required to use the
 extension.
 
-## Chrome extension 0.8.11
+## Chrome extension 0.8.15
 
 The extension console uses teal navigation and option bars, with Light, Dark and
 Use device setting appearance choices. Settings saves appearance alongside

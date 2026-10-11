@@ -18,6 +18,12 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+"Saved records":"السجلات المحفوظة",
+"Storage requires review":"التخزين يحتاج إلى مراجعة",
+"Verified PostgreSQL storage":"تم التحقق من تخزين PostgreSQL",
+"Saved records by table":"السجلات المحفوظة حسب الجدول",
+"Database connection":"اتصال قاعدة البيانات",
+"Table":"الجدول",
 "User safety actions":"إجراءات حماية المستخدم",
 "Save safety review":"حفظ مراجعة الحماية",
 "Block affected device":"حظر الجهاز المتأثر",

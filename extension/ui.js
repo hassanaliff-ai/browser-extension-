@@ -1,3 +1,4 @@
+import {databasePanel} from './database-panel.js';
 import {incidentSafetyPanel,incidentActionBody} from './incident-safety.js';
 import {scanEvidenceExport} from './evidence-export.js';
 import {loadTableSize,saveTableSize,observeTableSize} from './table-settings.js';
@@ -323,7 +324,7 @@ async function account(){return deviceConnection()+`<div class="grid-even"><sect
 
 function preferencesForm(){const prefs=getPreferences();return form('preferences',`<div class="fields appearance-fields">${select('Appearance','theme',THEMES,prefs.theme)}${select('Table size','tableSize',TABLE_SIZES,prefs.tableSize)}${select('Language','language',LANGUAGES,prefs.language)}${select('Time zone','timeZone',TIME_ZONES,prefs.timeZone)}</div>`,'Save preferences','small');}
 
-async function settings(){return `<section class="panel stack"><h2>Appearance, language and time</h2><p class="muted">Arabic and English are supported. Times follow your selected zone; monthly report boundaries stay in UTC.</p>${preferencesForm()}${notice('These settings apply to the popup, console and blocked-page screen.')}${notice('Recorded evidence and administrator notes keep their original language.')}</section>`+connectionPanel(connectionStatus);}
+async function settings(){const storage=['head_administrator','administrator'].includes(state.profile?.role)?databasePanel(await api('database/status')):'';return `<section class="panel stack"><h2>Appearance, language and time</h2><p class="muted">Arabic and English are supported. Times follow your selected zone; monthly report boundaries stay in UTC.</p>${preferencesForm()}${notice('These settings apply to the popup, console and blocked-page screen.')}${notice('Recorded evidence and administrator notes keep their original language.')}</section>`+connectionPanel(connectionStatus)+storage;}
 
 async function access(){
 

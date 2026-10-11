@@ -28,7 +28,8 @@ def database_status(engine):
         missing_indexes.extend(i.name for i in metadata.tables[name].indexes if i.name not in known_indexes)
     counts={};context_errors={}
     with engine.connect() as connection:
-        connection.exec_driver_sql('SET TRANSACTION READ ONLY')
+        connection.exec_driver_sql('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
+        identity=dict(connection.execute(text('SELECT current_database() AS database, current_schema() AS schema, current_user AS role')).mappings().one())
         # Counts are an operational snapshot, not a substitute for a backup.
         for name in sorted(set(metadata.tables)&tables):
             quoted=engine.dialect.identifier_preparer.quote(name)
@@ -47,7 +48,8 @@ def database_status(engine):
             has_table_privilege(current_user,'governance_audit','DELETE') AS can_delete_audit,
             has_schema_privilege(current_user,current_schema(),'CREATE') AS can_create_tables''')).mappings().one()) if 'governance_audit' in tables else {}
         migrations=[row[0] for row in connection.execute(text('SELECT version FROM extsecure_schema_migrations ORDER BY version'))] if 'extsecure_schema_migrations' in tables else []
-    return {'schema_revision':SCHEMA_REVISION,
+    return {'connection':{'engine':'PostgreSQL','host':engine.url.host,'port':engine.url.port or 5432,**identity},
+        'schema_revision':SCHEMA_REVISION,
         'healthy':not (missing_tables or missing_views or missing_constraints or missing_indexes or any(context_errors.values())),
         'table_count':len(tables),'view_count':len(inspector.get_view_names()),
         'table_rows':counts,'total_rows':sum(counts.values()),'context_errors':context_errors,
