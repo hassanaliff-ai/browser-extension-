@@ -1,0 +1,1 @@
+jsQR 1.4.0, Apache-2.0. Bundled from the published npm tarball https://registry.npmjs.org/jsqr/-/jsqr-1.4.0.tgz. Source: https://github.com/cozmo/jsQR. Unmodified dist/jsQR.js. SHA-256: bc40c8a15196236b2314db0856f72ca0b49980cd5413b8c852a7349f5fee0859.

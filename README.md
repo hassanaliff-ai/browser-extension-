@@ -1,5 +1,7 @@
 # ExtSecure browser extension and backend
 
+Version 0.8.17 adds local QR-image decoding with explicit destination reputation checks and immediate misleading-filename warnings. Both work in the toolbar popup and console. See [QR and filename safety](docs/QR%20and%20Filename%20Safety.md).
+
 Critical results create open alerts, persistent threat blocks and linked incident cases, including when a whitelist exception matches. Automatic local LLM report generation runs Sunday and day 1 of each month at 09:00 KSA. See [Critical containment and automatic report setup](docs/Critical%20Containment%20and%20Automatic%20Reports.md).
 
 ## PostgreSQL database

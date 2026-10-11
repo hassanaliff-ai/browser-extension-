@@ -14,6 +14,12 @@ The ZIP contains the extension, without server secrets, accounts or the database
 Extract it before using Load unpacked. The installed backend keeps its existing
 `.env`, protected account setup and database outside this folder.
 
+## QR and filename checks
+
+Choose **QR check** in the toolbar popup, or open **Scan a page → QR link safety check** in the console. Upload a QR image, review the decoded URL and explicitly run its reputation check. Images remain local and destinations are never opened automatically.
+
+**File checks** now warns immediately about misleading names such as `invoice.pdf.exe`. The warning stays visible beside a submitted hash result, even when that result is Low. This local filename warning does not change backend scoring. See [QR and Filename Safety](../docs/QR%20and%20Filename%20Safety.md) for limits and test details.
+
 ## Website approval
 
 HTTP and HTTPS top-level website navigation redirects to the local blocked screen
