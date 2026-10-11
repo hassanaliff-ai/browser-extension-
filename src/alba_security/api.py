@@ -551,7 +551,7 @@ def create_app(
                 scan_id=scan.id,
                 severity=result.severity,
                 message=message,
-                status="suppressed" if applied_override else "open",
+                status="suppressed" if applied_override and result.severity != "Critical" else "open",
                 created_at=now,
             )
             db.add(alert)
@@ -572,7 +572,7 @@ def create_app(
                 },
                 created_at=now,
             ))
-            if applied_override:
+            if applied_override and result.severity != "Critical":
                 db.add(SecurityEvent(
                     event_type="notification_suppressed",
                     severity=result.severity,
@@ -597,7 +597,7 @@ def create_app(
         except SQLAlchemyError:
             db.rollback()
             raise HTTPException(503, 'Scan evidence could not be saved. Retry when the database is available.') from None
-        if notify and result.severity in {"High", "Critical"} and not applied_override:
+        if notify and result.severity in {"High", "Critical"} and (not applied_override or result.severity == "Critical"):
             try:
                 outcomes = alert_notifier(
                     alert_id=alert.id,

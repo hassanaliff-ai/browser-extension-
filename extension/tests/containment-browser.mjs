@@ -19,15 +19,15 @@ try{
   const profile={username:'synthetic-reviewer',role:'head_administrator',views:['Threat blocklist','Incident cases','Website access','My account'],inventory:{linked:true,blocked:false,pending:false}};
 
   globalThis.testThreatActive=false;globalThis.testIncidentDeleted=false;globalThis.testSafetyRecorded=false;globalThis.testDeviceBlocked=false;globalThis.testIncidentRequests=[];
-  globalThis.testBlock={id:'host:'+'a'.repeat(64),kind:'host',fingerprint:'a'.repeat(64),active:true,severity:'High',scan_id:'12345678-1234-4234-8234-123456789abc',case_id:'22345678-1234-4234-8234-123456789abc',case_status:'open',revision:1,target_display:'danger.example',updated_at:new Date().toISOString()};
+  globalThis.testBlock={id:'host:'+'a'.repeat(64),kind:'host',fingerprint:'a'.repeat(64),active:true,severity:'Critical',scan_id:'12345678-1234-4234-8234-123456789abc',case_id:'22345678-1234-4234-8234-123456789abc',case_status:'open',revision:1,target_display:'danger.example',updated_at:new Date().toISOString()};
   globalThis.fetch=async(url,options={})=>{
    if(options.method==='POST'&&/\/api\/cases\//.test(url)){testIncidentRequests.push({url,body:JSON.parse(options.body)});if(url.endsWith('/remove'))testIncidentDeleted=true;if(url.endsWith('/safety'))testSafetyRecorded=true;if(url.endsWith('/block-device'))testDeviceBlocked=true;}
    let data={};if(url.endsWith('/api/admin/me'))data=profile;
-   else if(url.endsWith('/extension/scan')){globalThis.testThreatActive=true;data={id:testBlock.scan_id,severity:'High',target_kind:'url',containment:{...testBlock,host:'danger.example'}};}
+   else if(url.endsWith('/extension/scan')){globalThis.testThreatActive=true;data={id:testBlock.scan_id,severity:'Critical',target_kind:'url',containment:{...testBlock,host:'danger.example'}};}
    else if(url.endsWith('/api/threat-blocks'))data=[{...testBlock,case_id:testIncidentDeleted?null:testBlock.case_id}];
-   else if(url.endsWith('/api/cases'))data=testIncidentDeleted?[]:[{id:testBlock.case_id,scan_id:testBlock.scan_id,title:'Synthetic containment investigation',assignee:profile.username,status:'open',severity:'High',revision:1}];
-   else if(url.endsWith('/api/cases/'+testBlock.case_id))data={id:testBlock.case_id,scan_id:testBlock.scan_id,title:'Synthetic containment investigation',assignee:profile.username,status:'open',severity:'High',revision:1,device_name:'Synthetic Chrome test device',containment:testBlock,device_protection:{registered:true,blocked:testDeviceBlocked,revision:1},safety_plan:{recorded_by:testSafetyRecorded?'synthetic-reviewer':null,actions:[{code:'user_notified',description:'Notify the affected user through an approved channel.',completed:testSafetyRecorded}]},notes:[],timeline:[{action:'created',actor:'system'}]};
-   else if(url.endsWith('/api/scans'))data=[{id:testBlock.scan_id,severity:'High',target_display:'danger.example'}];
+   else if(url.endsWith('/api/cases'))data=testIncidentDeleted?[]:[{id:testBlock.case_id,scan_id:testBlock.scan_id,title:'Synthetic containment investigation',assignee:profile.username,status:'open',severity:'Critical',revision:1}];
+   else if(url.endsWith('/api/cases/'+testBlock.case_id))data={id:testBlock.case_id,scan_id:testBlock.scan_id,title:'Synthetic containment investigation',assignee:profile.username,status:'open',severity:'Critical',revision:1,device_name:'Synthetic Chrome test device',containment:testBlock,device_protection:{registered:true,blocked:testDeviceBlocked,revision:1},safety_plan:{recorded_by:testSafetyRecorded?'synthetic-reviewer':null,actions:[{code:'user_notified',description:'Notify the affected user through an approved channel.',completed:testSafetyRecorded}]},notes:[],timeline:[{action:'created',actor:'system'}]};
+   else if(url.endsWith('/api/scans'))data=[{id:testBlock.scan_id,severity:'Critical',target_display:'danger.example'}];
    else if(url.endsWith('/api/case-assignees'))data=[{username:profile.username}];
    else if(url.endsWith('/api/access/check'))data={containment_checked:true,allowed:!testThreatActive,threat_blocked:testThreatActive,kind:testThreatActive?'threat_block':'temporary'};
    else if(url.endsWith('/api/access/consume'))data={allowed:!testThreatActive,kind:'temporary'};
@@ -36,7 +36,7 @@ try{
   await chrome.storage.session.set({session:{token:'synthetic-browser-test-only',expires_at:new Date(Date.now()+3600000).toISOString(),profile}});
  });
  const sent=await page.evaluate(()=>chrome.runtime.sendMessage({type:'SCAN_URL',target:'https://danger.example/private?token=secret'}));
- assert(sent.ok&&sent.data.protection.blocked);record('Real worker contains synthetic High evidence');
+ assert(sent.ok&&sent.data.protection.blocked);record('Real worker contains synthetic Critical evidence');
  const rules=await worker.evaluate(()=>chrome.declarativeNetRequest.getDynamicRules());assert.equal(rules.length,2);assert(rules.every(r=>r.priority===10000));record('Chrome installs persistent rules above visit approvals');
  assert(rules.some(r=>r.action.type==='block'&&r.condition.resourceTypes.includes('script')));record('Threat resources are blocked as well as navigation');
  const destination=await context.newPage();await destination.goto('https://danger.example/another-path').catch(()=>{});await destination.waitForURL(u=>u.pathname==='/blocked.html');await destination.getByText('High-risk threat contained',{exact:true}).waitFor();record('Real navigation redirects to the high-risk blocked screen');

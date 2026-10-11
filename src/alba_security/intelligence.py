@@ -121,12 +121,24 @@ def aggregate_period(db, start, end):
     return totals,archive
 
 
-def prepare_period_report(db, payload, *, client=None, model=None, now=None):
-    start,end=period_bounds(payload.kind,payload.period,now=now)
+def prepare_period_report(db, payload, *, client=None, model=None, now=None, scheduled_bounds=None):
+    if scheduled_bounds is None:
+        start,end=period_bounds(payload.kind,payload.period,now=now)
+    else:
+        start,end=scheduled_bounds
+        current=now or utc_now()
+        if (payload.kind != 'weekly' or start.tzinfo is None or end.tzinfo is None
+            or start.utcoffset() != timedelta(0) or end.utcoffset() != timedelta(0)
+            or start.weekday() != 6 or start.time() != datetime.min.time()
+            or end-start != timedelta(days=7) or end > current
+            or payload.period != start.date().isoformat()):
+            raise ValueError('Scheduled reports require a completed Sunday–Saturday UTC week')
     existing=db.scalar(select(IntelligenceReport).where(IntelligenceReport.kind==payload.kind,IntelligenceReport.period==payload.period,IntelligenceReport.language==payload.language))
     if existing:
         return existing
     totals,archive=aggregate_period(db,start,end)
+    if scheduled_bounds is not None:
+        totals['schedule']='Sunday 09:00 Asia/Riyadh; Sunday–Saturday UTC coverage'
     narrative=write_narrative(totals,language=payload.language,purpose=payload.kind+' alert and explanation report',client=client,model=model,evidence_codes=tuple(sorted(set(totals['evidence_counts']) | set(totals['finding_counts']))))
     subject=f'ExtSecure {payload.kind} security report — {payload.period}'
     # The downloadable snapshot contains all rows; the model receives aggregate evidence only.
@@ -235,6 +247,15 @@ def install_intelligence(app, session_scope, require_actor, directory):
             if not record:
                 raise
         return explanation_data(record)
+
+    @app.get('/api/intelligence/report-schedule')
+    def report_schedule(actor: str=Depends(require_actor)):
+        import os
+        return {'enabled':os.getenv('REPORT_AUTOMATION_ENABLED') == '1',
+                'time_zone':'Asia/Riyadh', 'time':'09:00', 'weekly_day':'Sunday',
+                'monthly_day':1, 'weekly_coverage':'Previous Sunday–Saturday UTC',
+                'monthly_coverage':'Previous completed UTC month',
+                'review_required':True}
 
     @app.get('/api/intelligence/reports')
     def reports(actor: str=Depends(require_actor), db: Session=Depends(session_scope), limit: int=Query(30,ge=1,le=100)):

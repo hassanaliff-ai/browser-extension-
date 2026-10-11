@@ -54,7 +54,7 @@ def _scan(client, url):
     return response.json()
 
 
-def test_domain_exception_suppresses_delivery_but_keeps_critical_evidence(tmp_path):
+def test_domain_exception_cannot_suppress_critical_delivery_or_evidence(tmp_path):
     client, admin, notifications, _ = _signed_in_client(tmp_path)
     with client:
         created = client.post("/api/overrides", json={
@@ -67,21 +67,21 @@ def test_domain_exception_suppresses_delivery_but_keeps_critical_evidence(tmp_pa
         assert scan["score"] == 80
         assert scan["override_id"] == override_id
         assert scan["findings"][0]["code"] == "malicious_url"
-        assert notifications == []
+        assert len(notifications) == 1
         alerts = client.get("/api/alerts", headers=admin).json()
-        assert alerts[0]["status"] == "suppressed"
+        assert alerts[0]["status"] == "open"
         events = client.get("/api/events", headers=admin).json()
         assert "threat_detected" in {item["event_type"] for item in events}
-        assert "notification_suppressed" in {item["event_type"] for item in events}
+        assert "notification_suppressed" not in {item["event_type"] for item in events}
         assert client.get("/api/overview", headers=admin).json()["high_risk"] == 1
-        assert client.get("/api/overview", headers=admin).json()["open_alerts"] == 0
+        assert client.get("/api/overview", headers=admin).json()["open_alerts"] == 1
 
         disabled = client.post(f"/api/overrides/{override_id}/deactivate", headers=admin)
         assert disabled.status_code == 200, disabled.text
         second = _scan(client, "https://example.org/unsafe/path?token=private")
         assert second["override_id"] is None
-        assert len(notifications) == 1
-        assert client.get("/api/overview", headers=admin).json()["open_alerts"] == 1
+        assert len(notifications) == 2
+        assert client.get("/api/overview", headers=admin).json()["open_alerts"] == 2
         audit = client.get("/api/overrides/audit", headers=admin).json()
         assert {item["action"] for item in audit} == {"created", "deactivated"}
 
@@ -96,7 +96,7 @@ def test_exact_url_exception_does_not_cover_other_paths_or_store_private_url(tmp
         assert created.status_code == 201, created.text
         assert _scan(client, private_url)["override_id"] == created.json()["id"]
         assert _scan(client, "https://example.org/other/path")["override_id"] is None
-        assert len(notifications) == 1
+        assert len(notifications) == 2
         visible = json.dumps([
             client.get("/api/overrides", headers=admin).json(),
             client.get("/api/overrides/audit", headers=admin).json(),

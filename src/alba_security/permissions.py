@@ -69,7 +69,7 @@ def allowed(role, method, route):
         return role in {'head_administrator', 'administrator', 'manager'}
     if role in ROLE_LABELS and route in {'/api/intelligence/scans/{scan_id}', '/api/intelligence/scans/{scan_id}/explain'}:
         return (method == 'GET' and route.endswith('{scan_id}')) or (method == 'POST' and route.endswith('/explain'))
-    if route == '/api/intelligence/reports':
+    if route in {'/api/intelligence/reports','/api/intelligence/report-schedule'}:
         return method == 'GET' and role in {'head_administrator','administrator','manager'}
     if route == '/api/intelligence/reports/generate':
         return method == 'POST' and role in {'head_administrator','administrator'}

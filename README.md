@@ -1,5 +1,7 @@
 # ExtSecure browser extension and backend
 
+Critical results create open alerts, persistent threat blocks and linked incident cases, including when a whitelist exception matches. Automatic local LLM report generation runs Sunday and day 1 of each month at 09:00 KSA. See [Critical containment and automatic report setup](docs/Critical%20Containment%20and%20Automatic%20Reports.md).
+
 ## PostgreSQL database
 
 Administrators can verify the live database in **Settings → Database connection**. Chrome writes through TestAPI into PostgreSQL; scans and personal history commit together. See [connection and live verification](docs/Database%20Connection%20and%20Verification.md) for the database location, inspection queries and actual test evidence.

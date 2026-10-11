@@ -164,17 +164,17 @@ def test_concurrent_triage_rejects_stale_change(console):
     assert len(changes) == 1
 
 
-def test_suppressed_alert_cannot_be_reopened(console):
+def test_critical_alert_stays_open_with_exception_and_can_be_reviewed(console):
     client, headers, _, notifications, _ = console
     assert client.post("/api/overrides", headers=headers,
                        json={"kind": "domain", "target": "example.invalid", "reason": "Approved testing domain"}).status_code == 201
     create_threat(client)
     alert = client.get("/api/alerts", headers=headers).json()[0]
-    assert alert["status"] == "suppressed"
+    assert alert["status"] == "open"
     response = client.post(f"/api/alerts/{alert['id']}/status", headers=headers,
-                           json={"status": "open", "reason": "Attempt to reopen suppressed"})
-    assert response.status_code == 409
-    assert notifications == []
+                           json={"status": "acknowledged", "reason": "Critical evidence reviewed despite exception"})
+    assert response.status_code == 200
+    assert len(notifications) == 1
 
 
 def test_triage_validation_and_missing_records(console):

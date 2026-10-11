@@ -81,8 +81,8 @@ def contain_scan(db, scan, target, directory):
     db.flush()
     row = db.get(ThreatBlock, key, populate_existing=True)
     people = directory.operators(db)
-    if people and not db.scalar(select(IncidentCase.id).where(IncidentCase.scan_id == scan.id)):
-        owner = directory.username if directory.username in people else sorted(people)[0]
+    if not db.scalar(select(IncidentCase.id).where(IncidentCase.scan_id == scan.id)):
+        owner = directory.username if directory.username in people or not people else sorted(people)[0]
         case = IncidentCase(scan_id=scan.id, title=f'{scan.severity} threat containment investigation', assignee=owner)
         db.add(case)
         db.flush()
