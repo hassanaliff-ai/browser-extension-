@@ -11,3 +11,8 @@ The **Removed devices** filter preserves visibility of archived devices. Scans, 
 Changes require the current record revision, preventing stale or repeated submissions. Migration `0006_inventory_removal.sql` adds inventory state and revision columns without deleting existing records.
 
 Validation: 57 backend tests and 230 extension tests passed. The isolated database run passed 13 tests, including five checks against PostgreSQL and eight role checks against SQLite. Sixteen real Chromium extension checks passed, covering device selection, management controls, removal, history and ExtSecure remaining installed after inventory removal. Real-browser removal checks use a disposable fixture; no actual user device was removed during verification.
+
+
+### Device-first selection (0.8.20)
+
+Inventory → Extensions starts with **Choose a device first**. No extension table is shown until a specific registered device is selected. The dropdown includes the device name, OS and recorded status; selecting another device replaces the list with that device’s extensions only. The history checkbox follows the same device selection. Recorded status does not prove that a browser is currently online. Validation: 230 extension tests and 18 real Chromium checks passed.

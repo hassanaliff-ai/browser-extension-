@@ -41,6 +41,8 @@ try{
   await chrome.storage.session.set({session:{token:'synthetic-inventory-qa-only',expires_at:new Date(Date.now()+3600000).toISOString(),profile}});
  },{target,self:id});
  await page.goto('chrome-extension://'+id+'/console.html#extensions');await page.reload();await page.getByRole('heading',{name:'Chrome extension inventory',exact:true}).waitFor();
+ await page.locator('[name="extension_device"]').waitFor();assert.equal(await page.locator('[name="extension_device"]').inputValue(),'');assert.equal(await page.locator('table').count(),0);record('Initial inventory shows no extensions until a specific device is selected');
+ await page.locator('[name="extension_removed"]').check();await page.locator('[name="extension_device"]').waitFor();assert.equal(await page.locator('table').count(),0);record('History filter does not reveal extensions before device selection');await page.locator('[name="extension_removed"]').uncheck();await page.locator('[name="extension_device"]').waitFor();
  await page.locator('[name="extension_device"]').selectOption('device-qa');await page.waitForFunction(()=>!document.querySelector('#app [aria-busy="true"]'));
  assert.equal(await page.getByText('Second-device extension',{exact:true}).count(),0);record('Selecting an added device filters its extensions');
  assert.match(await page.locator('body').innerText(),/ExtSecure protected/);record('ExtSecure has no destructive controls');
