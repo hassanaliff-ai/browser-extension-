@@ -241,6 +241,6 @@ In **Inventory → Extensions**, choose a device and expand **Manage extension**
 Every extension row has **Remove from inventory**, including ExtSecure. Device rows have **Remove**, which revokes their connection and archives associated extensions. Administrators can review removed entries through the history filters; retained security evidence is preserved. See [inventory removal](../docs/Inventory%20Removal.md).
 
 
-### Device-first selection (0.8.20)
+### Device table and extension details (0.8.21)
 
-Inventory → Extensions starts with **Choose a device first**. No extension table is shown until a specific registered device is selected. The dropdown includes the device name, OS and recorded status; selecting another device replaces the list with that device’s extensions only. The history checkbox follows the same device selection. Recorded status does not prove that a browser is currently online. Validation: 230 extension tests and 18 real Chromium checks passed.
+Inventory → Extensions first displays a table of registered devices with clickable device names, OS, recorded access status, profile connection and last synchronization. Click a device name to open only that device's extension inventory. **Back to devices** returns to the table. No extension records are displayed before a device is chosen, including when the history checkbox is enabled. Recorded registration or access status does not prove that a remote browser is currently online. Validation: 230 extension tests and 18 real Chromium checks passed.
