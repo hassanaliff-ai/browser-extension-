@@ -12,7 +12,7 @@ export function accessReviewBody(request, form) {
   if(!['24','168'].includes(form.duration))throw new Error('Choose 24 hours, 7 days or Forever.');
   return {...body,decision:'temporary',duration_hours:Number(form.duration)};
 }
-export const VERSION = '0.8.26';
+export const VERSION = '0.8.27';
 export const WORKER_CAPABILITIES = Object.freeze(['device-enrollment','chrome-inventory','device-access-choice']);
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;
 export const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Unknown'];
@@ -29,6 +29,7 @@ export function roleCanWrite(profile, area) {
   if (['workflow','controls','policies'].includes(area)) return false;
   const role = profile?.role;
   if (area === 'accounts') return role === 'head_administrator';
+  if (area === 'extension-controls') return ['head_administrator','administrator','manager'].includes(role);
   if (area === 'scan') return ['head_administrator','administrator','normal_user'].includes(role);
   if (['alerts','cases','access'].includes(area)) return ['head_administrator','administrator','manager'].includes(role);
   return ['head_administrator','administrator'].includes(role);

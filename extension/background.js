@@ -1,3 +1,4 @@
+import {deviceControlRequest,executeDeviceCommands} from './device-controls.js';
 import {applyExtensionControls} from './extension-controls.js';
 import {validateLogo,logoKey} from './account-logo.js';
 import {API_ORIGIN, VERSION, WORKER_CAPABILITIES, privateTarget, safeApiPath, apiError} from './core.js';
@@ -99,7 +100,7 @@ function registerInventoryEvents() {
   for(const name of ['onInstalled','onUninstalled','onEnabled','onDisabled']) {
     if(inventoryEventsRegistered.has(name)||!chrome.management?.[name])continue;
     try {
-      chrome.management[name].addListener(()=>void autoSyncInventory().catch(()=>{}));
+      chrome.management[name].addListener(()=>{void autoSyncInventory().catch(()=>{});void refreshDeviceControls();void startDeviceControlWatch();});
       inventoryEventsRegistered.add(name);
     } catch { /* Optional permission may not yet be granted in this Chrome profile. */ }
   }
@@ -129,8 +130,47 @@ async function autoSyncInventory(controlsOnly=false) {
   const session=await loadSession();
   if(inventoryConnected&&session.token&&!session.profile?.inventory?.pending&&!session.profile?.inventory?.blocked)await syncInventory(false,controlsOnly);
 }
+let deviceControlWatching=false;
+async function deliverDeviceControls(batch,token){
+ if(!batch.commands?.length)return [];
+ const operation=syncQueue.catch(()=>{}).then(async()=>{
+  // A queued batch may precede a newer operator decision; fetch again before acting.
+  const fresh=await deviceControlRequest(API_ORIGIN,token,'/api/device/extension-controls?cursor=-1');
+  return executeDeviceCommands(fresh,{origin:API_ORIGIN,token,management:chrome.management,selfId:chrome.runtime.id});
+ });
+ syncQueue=operation;return operation;
+}
+async function refreshDeviceControls(){
+ try{
+  await storageReady;
+  const current=await chrome.storage.local.get(['deviceCredential','inventoryConnected']);
+  if(!current.inventoryConnected||!current.deviceCredential?.token||!await chrome.permissions.contains({permissions:['management']}))return;
+  const batch=await deviceControlRequest(API_ORIGIN,current.deviceCredential.token,'/api/device/extension-controls?cursor=-1');
+  await deliverDeviceControls(batch,current.deviceCredential.token);
+ }catch{/* Offline or revoked device: retain the server directive for a later retry. */}
+}
+async function startDeviceControlWatch(){
+ if(deviceControlWatching)return;
+ deviceControlWatching=true;
+ try{
+  await storageReady;
+  const initial=await chrome.storage.local.get(['deviceCredential','inventoryConnected']);
+  if(!initial.inventoryConnected||!initial.deviceCredential?.token||!await chrome.permissions.contains({permissions:['management']}))return;
+  let cursor=-1;
+  await chrome.alarms.create('device-control-watch',{periodInMinutes:.5});
+  while(true){
+   const current=await chrome.storage.local.get(['deviceCredential','inventoryConnected']);
+   if(!current.inventoryConnected||current.deviceCredential?.token!==initial.deviceCredential.token)break;
+   const batch=await deviceControlRequest(API_ORIGIN,initial.deviceCredential.token,'/api/device/extension-controls?cursor='+cursor);
+   await deliverDeviceControls(batch,initial.deviceCredential.token);
+   cursor=batch.cursor;
+  }
+ }catch{/* Device-only delivery retries via Chrome's alarm; account sign-in is not required. */}
+ finally{deviceControlWatching=false;}
+}
+void startDeviceControlWatch();
 registerInventoryEvents();
-chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='inventory-sync')void autoSyncInventory().catch(()=>{});if(alarm.name==='extension-controls')void autoSyncInventory(true).catch(()=>{});});
+chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='device-control-watch')void startDeviceControlWatch();if(alarm.name==='inventory-sync')void autoSyncInventory().catch(()=>{});if(alarm.name==='extension-controls')void autoSyncInventory(true).catch(()=>{});});
 export async function handleMessage(message,sender={}) {
   await storageReady;
   if (!message || typeof message.type !== 'string') throw new Error('Invalid extension request.');
@@ -179,7 +219,7 @@ export async function handleMessage(message,sender={}) {
       try { permission=await chrome.permissions.contains({permissions:['management']}); }
       catch { /* Other extensions remain unavailable until explicitly connected. */ }
       if(permission){
-        await chrome.storage.local.set({inventoryConnected:true});
+        await chrome.storage.local.set({inventoryConnected:true});void startDeviceControlWatch();
         await chrome.alarms.create('inventory-sync',{periodInMinutes:30});
       }
       let inventory_status=device.pending?'pending':device.blocked?'blocked':permission?'ready':'permission_required',enabled_count;
@@ -204,7 +244,7 @@ export async function handleMessage(message,sender={}) {
   if(message.type==='APPLY_EXTENSION_CONTROLS'){return syncInventory(true);}
   if(message.type==='SYNC_INVENTORY') {
     const result=await syncInventory();
-    await chrome.storage.local.set({inventoryConnected:true});
+    await chrome.storage.local.set({inventoryConnected:true});void startDeviceControlWatch();
     await chrome.alarms.create('inventory-sync',{periodInMinutes:30});
     return result;
   }

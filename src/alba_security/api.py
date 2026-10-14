@@ -34,6 +34,7 @@ from alba_security.website_access import install_website_access
 from alba_security.threat_blocks import contain_scan, active_block, block_record, block_identity, install_threat_blocks
 from alba_security.inventory import (install_inventory, enforce_device, browser_state,
     inventory_context, device_metadata, extension_metadata, scan_device_fields, DeviceRegistration)
+from alba_security.extension_controls import can_control_device
 from alba_security.governance import active_policy, audit, initialize_governance, install_governance, privacy_settings
 from alba_security.overrides import (
     Override, OverrideAudit, create_override, deactivate_override, list_overrides, match_override,
@@ -793,7 +794,7 @@ def create_app(
         ]
 
     @app.get("/api/extensions", dependencies=[Admin])
-    def extensions(db: Session = Depends(session_scope)) -> list[dict]:
+    def extensions(actor:str=Depends(require_actor),db: Session = Depends(session_scope)) -> list[dict]:
         risk_rank = case(*((Scan.severity == label, rank) for label, rank in SEVERITY_RANK.items()), else_=0)
         totals = select(Scan.extension_id.label("extension_id"), func.count().label("scans"),
                         func.max(risk_rank).label("risk_rank")).where(Scan.extension_id.is_not(None)).group_by(Scan.extension_id).subquery()
@@ -807,6 +808,7 @@ def create_app(
                 "name": item.name,
                 "version": item.version,
                 "extension_key": item.extension_key,
+                "can_control": can_control_device(db,admin_auth,actor,item.device_id,context),
                 "device_name": device.name,
                 **extension_metadata(db, item.id,context),
                 "device_id": item.device_id,

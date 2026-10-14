@@ -31,6 +31,10 @@ try{
    else if(url.endsWith('/api/devices'))data=[{id:deviceId,name:'QA workstation',registered:true,operating_system:'Windows'},{id:'device-remote',name:'Second QA device',registered:true,operating_system:'Linux'}];
    else if(url.endsWith('/api/extensions'))data=[{id:rowId,name:'Harmless Inventory QA Fixture',extension_key:target,version:'1.0',device_id:deviceId,device_name:'QA workstation',installed:inventoryQa.present,enabled:inventoryQa.enabled,may_enable:true,may_disable:true,protected:false,status:inventoryQa.present?(inventoryQa.enabled?'Enabled':'Disabled'):'Not installed',control:inventoryQa.control??{revision:0}},{id:'22222222-2222-4222-8222-222222222222',name:'Second-device extension',extension_key:'b'.repeat(32),device_id:'device-remote',device_name:'Second QA device',installed:true,status:'Enabled',may_disable:true,may_enable:true,control:{revision:0}},{id:'33333333-3333-4333-8333-333333333333',name:'ExtSecure',extension_key:self,device_id:deviceId,device_name:'QA workstation',installed:true,status:'Enabled',protected:true}];
    else if(url.endsWith('/control')){inventoryQa.control={...body,revision:(inventoryQa.control?.revision??0)+1,status:'pending',error:null};inventoryQa.requests.push(body);data=inventoryQa.control;}
+   else if(url.includes('/api/device/extension-controls?cursor=')){
+    if(!url.endsWith('cursor=-1'))await new Promise(resolve=>setTimeout(resolve,100));
+    data={cursor:inventoryQa.control?.revision??0,commands:inventoryQa.control&&(inventoryQa.control.status==='pending'||inventoryQa.control.desired==='blocked')?[{...inventoryQa.control,chrome_id:target,extension_id:rowId}]:[]};
+   }
    else if(url.endsWith('/api/inventory/extension-controls'))data=inventoryQa.control&&(inventoryQa.control.status!=='applied'||inventoryQa.control.desired==='blocked')?[{...inventoryQa.control,chrome_id:target,extension_id:rowId}]:[];
    else if(url.endsWith('/receipt')){if(body.revision!==inventoryQa.control.revision)return new Response(JSON.stringify({detail:'A newer extension action is pending.'}),{status:409,headers:{'Content-Type':'application/json'}});inventoryQa.control={...inventoryQa.control,...body};data=inventoryQa.control;}
    else if(url.endsWith('/api/inventory/sync')){inventoryQa.snapshots.push(body);const item=body.extensions.find(e=>e.id===target);inventoryQa.present=!!item;inventoryQa.enabled=item?.enabled??false;data={device_id:deviceId,enabled_count:body.extensions.filter(e=>e.enabled).length,installed_count:body.extensions.length};}
@@ -70,6 +74,25 @@ try{
  await page.goto('chrome-extension://'+id+'/console.html#devices');await page.reload();await page.getByRole('heading',{name:'Device inventory',exact:true}).waitFor();const remoteRow=page.locator('tr').filter({has:page.getByText('Second QA device',{exact:true})});await remoteRow.getByText('Remove',{exact:true}).first().click();const removeDevice=remoteRow.locator('[data-form="inventory-remove"]');await removeDevice.locator('[name="reason"]').fill('Remove retired QA device from inventory');await removeDevice.locator('[name="confirmed"]').check();await removeDevice.getByRole('button',{name:'Remove',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#app [aria-busy="true"]'));assert.equal(await page.locator('tr').filter({has:page.getByText('Second QA device',{exact:true})}).count(),0);record('Device Remove hides the selected device from active inventory');
  await page.locator('[name="device_filter"]').selectOption('removed');await page.getByText('Second QA device',{exact:true}).waitFor();record('Removed device remains available in the history filter');
  await page.screenshot({path:path.join(output,'inventory-removal.png'),fullPage:true});
+ // Exercise native Chrome control delivery after removing the recipient account session.
+ await worker.evaluate(async()=>{
+  await chrome.storage.session.remove('session');
+  inventoryQa.control={...inventoryQa.control,desired:'enabled',status:'pending',revision:inventoryQa.control.revision+1};
+  await chrome.alarms.create('device-control-watch',{when:Date.now()+100});
+ });
+ await page.waitForFunction(async id=>(await chrome.management.get(id)).enabled,target);
+ record('Turn on applies in real Chrome while the recipient is signed out');
+ await worker.evaluate(()=>{inventoryQa.control={...inventoryQa.control,desired:'disabled',status:'pending',revision:inventoryQa.control.revision+1};});
+ await page.waitForFunction(async id=>!(await chrome.management.get(id)).enabled,target);
+ record('Turn off applies in real Chrome without recipient approval');
+ await worker.evaluate(()=>{inventoryQa.control={...inventoryQa.control,desired:'blocked',status:'pending',revision:inventoryQa.control.revision+1};});
+ await page.waitForFunction(()=>chrome.runtime.sendMessage({type:'PREFERENCES'}).then(()=>true));
+ await page.waitForFunction(async()=>!(await chrome.storage.session.get('session')).session);
+ await page.waitForTimeout(400);
+ await page.evaluate(async id=>chrome.management.setEnabled(id,true),target);
+ await page.waitForFunction(async id=>!(await chrome.management.get(id)).enabled,target);
+ record('Persistent block re-disables a manual enable while the recipient remains signed out');
+ assert.equal(await worker.evaluate(async()=>!!(await chrome.storage.session.get('session')).session),false);
  assert.deepEqual(errors,[]);record('No uncaught console JavaScript errors');
  await fs.writeFile(path.join(output,'results.json'),JSON.stringify({passed:true,checks,note:'QA-only management pregrant; synthetic backend; real Chrome enable/disable/block operations. Uninstall confirmation tested with unit doubles.'},null,2));console.log(JSON.stringify({passed:true,checks:checks.length}));
 }finally{await context?.close();}

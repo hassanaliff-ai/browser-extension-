@@ -38,6 +38,19 @@ class Receipt(BaseModel):
 def control_data(row):
     return {'desired':row.desired,'status':row.status,'revision':row.revision,'error':row.error} if row else {'desired':None,'status':None,'revision':0,'error':None}
 
+def can_control_device(db,directory,actor,device_id,context=None):
+    from alba_security.inventory import DeviceRegistration,DeviceEnrollment
+    from alba_security.permissions import ROLE_LEVELS
+    role=directory.role(db,actor)
+    if role=='head_administrator':return True
+    if role not in {'administrator','manager'}:return False
+    registration=context['registrations'].get(device_id) if context is not None else db.get(DeviceRegistration,device_id)
+    enrollment=context['enrollments'].get(device_id) if context is not None else db.get(DeviceEnrollment,device_id)
+    owner=enrollment.requested_by if enrollment else registration.added_by if registration else None
+    if actor==owner:return True
+    owner_role=directory.role(db,owner)
+    return owner_role in ROLE_LEVELS and ROLE_LEVELS[role]>ROLE_LEVELS[owner_role]
+
 def install_extension_controls(app,session_scope,require_actor):
     from alba_security.inventory import ChromeObservation,DeviceRegistration,browser_registration,is_pending
     def own(db,request):
@@ -49,6 +62,8 @@ def install_extension_controls(app,session_scope,require_actor):
     def decide(extension_id:str,payload:Decision,actor:str=Depends(require_actor),db:Session=Depends(session_scope)):
         item=db.get(Extension,extension_id);observation=db.get(ChromeObservation,extension_id)
         if not item or not observation:raise HTTPException(404,'Sync Chrome inventory before managing this extension.')
+        if not can_control_device(db,app.state.admin_directory,actor,item.device_id):raise HTTPException(403,'A higher approver is required to manage this device.')
+        if app.state.admin_directory.role(db,actor)=='manager' and payload.desired=='removed':raise HTTPException(403,'Managers may turn on, turn off or block; uninstall requires an administrator.')
         if item.inventory_removed or db.get(Device,item.device_id).inventory_removed:raise HTTPException(409,'This inventory record was removed. Restore active inventory first.')
         registration=db.get(DeviceRegistration,item.device_id)
         if not registration or item.extension_key==registration.chrome_extension_id:raise HTTPException(409,'ExtSecure protects this connection and cannot be disabled, blocked or removed here.')
@@ -68,7 +83,8 @@ def install_extension_controls(app,session_scope,require_actor):
             except IntegrityError:
                 db.rollback();raise HTTPException(409,'Extension controls changed. Refresh before trying again.') from None
         audit(db,'extension',extension_id,actor,'extension_control_requested',device_id=item.device_id,desired=payload.desired,revision=row.revision,reason=payload.reason)
-        db.commit();return {'extension_id':extension_id,'device_id':item.device_id,**control_data(row)}
+        db.commit();app.state.extension_control_wakeups.changed(item.device_id)
+        return {'extension_id':extension_id,'device_id':item.device_id,**control_data(row)}
 
     @app.get('/api/inventory/extension-controls')
     def commands(request:Request,actor:str=Depends(require_actor),db:Session=Depends(session_scope)):

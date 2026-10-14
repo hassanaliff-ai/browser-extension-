@@ -16,8 +16,12 @@ test('Installed snapshots include disabled extensions without permissions or des
 test('Turn off and block apply real management state and acknowledge only after verification',async()=>{
  for(const desired of ['disabled','blocked']){const env=environment();await applyExtensionControls([command(desired)],env.options);assert.deepEqual(env.calls,[false]);assert.equal(env.receipts[0].status,'applied');}
 });
-test('Turn on and removal wait for a deliberate user action',async()=>{
- for(const desired of ['enabled','removed']){const env=environment(false);await applyExtensionControls([command(desired)],env.options);assert.equal(env.calls.length,0);await applyExtensionControls([command(desired)],{...env.options,interactive:true});assert.equal(env.receipts[0].status,'applied');}
+test('Turn on applies automatically; uninstall retains the native confirmation',async()=>{
+ const on=environment(false);await applyExtensionControls([command('enabled')],on.options);assert.deepEqual(on.calls,[true]);assert.equal(on.receipts[0].status,'applied');
+ const env=environment(false);await applyExtensionControls([command('removed')],env.options);assert.equal(env.calls.length,0);await applyExtensionControls([command('removed')],{...env.options,interactive:true});assert.equal(env.receipts[0].status,'applied');
+});
+test('Native turn-on gesture restrictions are reported rather than falsely acknowledged',async()=>{
+ const env=environment(false);env.options.management.setEnabled=async()=>{throw new Error('Requires a user gesture');};await applyExtensionControls([command('enabled')],env.options);assert.equal(env.receipts[0].status,'failed');assert.equal(env.receipts[0].error,'chrome_restricted');
 });
 test('Persistent blocks re-disable a manually re-enabled extension without duplicate work when already disabled',async()=>{
  const env=environment(false);await applyExtensionControls([command('blocked','applied')],env.options);assert.equal(env.receipts.length,0);env.state.enabled=true;await applyExtensionControls([command('blocked','applied')],env.options);assert.equal(env.state.enabled,false);

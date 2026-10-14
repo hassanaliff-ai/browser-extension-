@@ -263,10 +263,11 @@ for(const detail of ['This device was removed. Reconnect through approved device
  try{await assert.rejects(handleMessage({type:'API',path:'/api/overview'}));assert.equal(sessionRules.length,0);assert.equal(store.session.token,'test-token');}
  finally{globalThis.fetch=previous;}
 });
-test('Enabled-extension changes refresh opted-in inventory only while signed in',async()=>{
+test('Inventory snapshots require sign-in; device control delivery continues while signed out',async()=>{
  reset();signed();localStore={deviceCredential:{token:'test-device-token'},inventoryConnected:true};
  hooks['inventory-enabled']();await flush();await flush();assert.equal(calls.filter(c=>c.url?.endsWith('/inventory/sync')).length,1);
- calls=[];delete store.session;hooks['inventory-disabled']();await flush();assert.equal(calls.some(c=>c.options),false);
+ calls=[];delete store.session;hooks['inventory-disabled']();await flush();await flush();assert.equal(calls.some(c=>c.url?.endsWith('/inventory/sync')),false);
+ assert(calls.some(c=>c.url?.includes('/api/device/extension-controls?cursor=-1')&&c.options.headers['X-ExtSecure-Device']==='test-device-token'&&!c.options.headers.Authorization));
 });
 
 

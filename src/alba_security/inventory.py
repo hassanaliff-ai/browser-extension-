@@ -322,6 +322,8 @@ def apply_device_decision(db, device_id, payload, actor):
 
 
 def install_inventory(app, session_scope, require_actor, directory):
+    from alba_security.device_controls import install_device_controls
+    install_device_controls(app,session_scope)
     install_extension_controls(app,session_scope,require_actor)
     install_inventory_removal(app,session_scope,require_actor)
     def pairing_code(row):

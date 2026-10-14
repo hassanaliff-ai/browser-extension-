@@ -36,7 +36,7 @@ def test_device_scoped_commands_and_receipts(system):
 @pytest.mark.parametrize('role',['head_administrator','administrator','manager','normal_user'])
 def test_only_administrators_issue_extension_actions(roles,role):
     client,_,headers,_=roles;_,browser,row=setup(client,headers['head_administrator'])
-    assert decide(client,headers[role],row).status_code==(200 if role in {'head_administrator','administrator'} else 403)
+    assert decide(client,headers[role],row).status_code==(200 if role=='head_administrator' else 403)
 
 def test_self_protection_confirmation_and_stale_revision(system):
     client,_,headers,_=system;_,browser,row=setup(client,headers['hasan'])
