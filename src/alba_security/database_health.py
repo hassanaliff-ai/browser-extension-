@@ -3,7 +3,7 @@ from sqlalchemy import inspect,text
 from alba_security.database_migration import load_metadata
 from alba_security.postgresql import VIEW_SQL
 
-SCHEMA_REVISION = '2026-10-14.1'
+SCHEMA_REVISION = '2026-10-14.2'
 
 
 def database_status(engine):
@@ -17,7 +17,7 @@ def database_status(engine):
     missing_constraints=[]
     missing_indexes=[]
     from sqlalchemy import CheckConstraint,UniqueConstraint,ForeignKeyConstraint
-    for name in ('devices','device_registrations','inventory_device_enrollments','extensions','scans','domains','findings','alerts','security_events'):
+    for name in ('devices','device_registrations','inventory_device_enrollments','inventory_browser_credentials','extensions','scans','domains','findings','alerts','security_events'):
         if name not in tables:continue
         known=set()
         for method in ('get_check_constraints','get_unique_constraints','get_foreign_keys'):

@@ -33,7 +33,7 @@ from alba_security.intelligence import install_intelligence
 from alba_security.website_access import install_website_access
 from alba_security.threat_blocks import contain_scan, active_block, block_record, block_identity, install_threat_blocks
 from alba_security.inventory import (install_inventory, enforce_device, browser_state,
-    device_metadata, extension_metadata, scan_device_fields, DeviceRegistration)
+    inventory_context, device_metadata, extension_metadata, scan_device_fields, DeviceRegistration)
 from alba_security.governance import active_policy, audit, initialize_governance, install_governance, privacy_settings
 from alba_security.overrides import (
     Override, OverrideAudit, create_override, deactivate_override, list_overrides, match_override,
@@ -779,6 +779,7 @@ def create_app(
         ranks = {rank: label for label, rank in SEVERITY_RANK.items()}
         rows = db.execute(select(Device, totals.c.scans, totals.c.risk_rank)
                           .outerjoin(totals, Device.id == totals.c.device_id).order_by(Device.last_seen.desc())).all()
+        context=inventory_context(db,[row[0] for row in rows])
         return [
             {
                 "id": item.id,
@@ -786,7 +787,7 @@ def create_app(
                 "last_seen": _iso(item.last_seen),
                 "scan_count": scan_count or 0,
                 "highest_severity": ranks.get(rank, "Unknown"),
-                **device_metadata(db, item.id),
+                **device_metadata(db, item.id,context),
             }
             for item, scan_count, rank in rows
         ]
@@ -797,22 +798,23 @@ def create_app(
         totals = select(Scan.extension_id.label("extension_id"), func.count().label("scans"),
                         func.max(risk_rank).label("risk_rank")).where(Scan.extension_id.is_not(None)).group_by(Scan.extension_id).subquery()
         ranks = {rank: label for label, rank in SEVERITY_RANK.items()}
-        rows = db.execute(select(Extension, totals.c.scans, totals.c.risk_rank)
+        rows = db.execute(select(Extension, Device, totals.c.scans, totals.c.risk_rank).join(Device,Device.id==Extension.device_id)
                           .outerjoin(totals, Extension.id == totals.c.extension_id).order_by(Extension.last_seen.desc())).all()
+        context=inventory_context(db,[row[1] for row in rows],[row[0] for row in rows])
         return [
             {
                 "id": item.id,
                 "name": item.name,
                 "version": item.version,
                 "extension_key": item.extension_key,
-                "device_name": db.get(Device, item.device_id).name,
-                **extension_metadata(db, item.id),
+                "device_name": device.name,
+                **extension_metadata(db, item.id,context),
                 "device_id": item.device_id,
                 "last_seen": _iso(item.last_seen),
                 "scan_count": scan_count or 0,
                 "highest_severity": ranks.get(rank, "Unknown"),
             }
-            for item, scan_count, rank in rows
+            for item, device, scan_count, rank in rows
         ]
 
     @app.get("/api/findings", dependencies=[Admin])

@@ -52,10 +52,14 @@ def start():
     gateway=hidden([sys.executable,'-m','uvicorn','scripts.lan_gateway:app','--host','127.0.0.1','--port','8768','--no-proxy-headers','--no-access-log'],directory/'gateway.log',environment)
     time.sleep(1)
     if gateway.poll() is not None:raise RuntimeError('Public gateway failed to start.')
-    tunnel=hidden([str(binary),'tunnel','--no-autoupdate','--protocol','http2','--url','http://127.0.0.1:8768'],directory/'tunnel.log')
+    tunnel_log=directory/'tunnel.log'
+    log_offset=tunnel_log.stat().st_size if tunnel_log.exists() else 0
+    tunnel=hidden([str(binary),'tunnel','--no-autoupdate','--protocol','http2','--url','http://127.0.0.1:8768'],tunnel_log)
     origin=None
     for _ in range(90):
-        content=(directory/'tunnel.log').read_text(errors='replace');match=re.search(r'https://[a-z0-9-]+\.trycloudflare\.com',content)
+        with tunnel_log.open('rb') as log:
+            log.seek(log_offset);content=log.read().decode(errors='replace')
+        match=re.search(r'https://[a-z0-9-]+\.trycloudflare\.com',content)
         if match:origin=match.group();break
         if tunnel.poll() is not None:break
         time.sleep(.5)

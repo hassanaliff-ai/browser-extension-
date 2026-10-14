@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import CheckConstraint, Boolean, DateTime, ForeignKey, Integer, String, select, update
+from sqlalchemy import CheckConstraint, Boolean, DateTime, ForeignKey, Index, Integer, String, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from sqlalchemy.exc import IntegrityError
 
@@ -50,6 +50,7 @@ class BrowserCredential(Base):
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     device_id: Mapped[str] = mapped_column(ForeignKey('devices.id'), nullable=False, index=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    __table_args__=(Index('ix_inventory_active_device','device_id',postgresql_where=revoked.is_(False),sqlite_where=revoked.is_(False)),)
 
 
 class ChromeObservation(Base):
@@ -167,17 +168,28 @@ def is_pending(db, row):
     return bool(enrollment and enrollment.status == 'pending')
 
 
-def device_metadata(db, device_id):
-    device=db.get(Device,device_id)
+def inventory_context(db, devices, extensions=()):
+    """Read related inventory in bounded batches instead of queries per row."""
+    devices={row.id:row for row in devices};extensions={row.id:row for row in extensions}
+    ids=list(devices);extids=list(extensions)
+    return {'devices':devices,'extensions':extensions,
+        'registrations':{row.device_id:row for row in db.scalars(select(DeviceRegistration).where(DeviceRegistration.device_id.in_(ids)))} if ids else {},
+        'enrollments':{row.device_id:row for row in db.scalars(select(DeviceEnrollment).where(DeviceEnrollment.device_id.in_(ids)))} if ids else {},
+        'linked':set(db.scalars(select(BrowserCredential.device_id).where(BrowserCredential.device_id.in_(ids),BrowserCredential.revoked.is_(False)).distinct())) if ids else set(),
+        'observations':{row.extension_id:row for row in db.scalars(select(ChromeObservation).where(ChromeObservation.extension_id.in_(extids)))} if extids else {},
+        'controls':{row.extension_id:row for row in db.scalars(select(ExtensionControl).where(ExtensionControl.extension_id.in_(extids)))} if extids else {}}
+
+
+def device_metadata(db, device_id, context=None):
+    device=context['devices'].get(device_id) if context is not None else db.get(Device,device_id)
     removal={'inventory_removed':bool(device and device.inventory_removed),'inventory_revision':device.inventory_revision if device else 1}
-    row = db.get(DeviceRegistration, device_id)
+    row = context['registrations'].get(device_id) if context is not None else db.get(DeviceRegistration, device_id)
     if not row:
         return {**removal,'registered': False, 'status': 'Removed' if removal['inventory_removed'] else 'Scan record', 'ip_address': None,
                 'operating_system': None, 'revision': None, 'last_sync': None}
-    linked = bool(db.scalar(select(BrowserCredential).where(
-        BrowserCredential.device_id == device_id, BrowserCredential.revoked.is_(False))))
-    enrollment = db.get(DeviceEnrollment, device_id)
-    pending = is_pending(db, row)
+    linked = device_id in context['linked'] if context is not None else bool(db.scalar(select(BrowserCredential).where(BrowserCredential.device_id == device_id, BrowserCredential.revoked.is_(False))))
+    enrollment = context['enrollments'].get(device_id) if context is not None else db.get(DeviceEnrollment, device_id)
+    pending = bool(row.blocked and enrollment and enrollment.status == 'pending')
     return {**removal,'registered': True, 'status': 'Removed' if removal['inventory_removed'] else 'Pending approval' if pending else 'Blocked' if row.blocked else 'Active' if linked else 'Awaiting pairing',
             'trusted': linked and not row.blocked and not pending,
             'blocked': row.blocked and not pending, 'pending': pending, 'linked': linked,
@@ -245,15 +257,17 @@ def scan_device_fields(db, device_id):
             'extension_version': extension.version if extension else None}
 
 
-def extension_metadata(db, extension_id):
-    item = db.get(ChromeObservation, extension_id)
-    extension_record=db.get(Extension,extension_id)
+def extension_metadata(db, extension_id, context=None):
+    item = context['observations'].get(extension_id) if context is not None else db.get(ChromeObservation, extension_id)
+    extension_record=context['extensions'].get(extension_id) if context is not None else db.get(Extension,extension_id)
+    registration=(context['registrations'].get(extension_record.device_id) if context is not None else db.get(DeviceRegistration,extension_record.device_id)) if extension_record else None
+    control=context['controls'].get(extension_id) if context is not None else db.get(ExtensionControl,extension_id)
     return {'inventory_removed':bool(extension_record and extension_record.inventory_removed),'inventory_revision':extension_record.inventory_revision if extension_record else 1,'source': 'Chrome inventory' if item else 'Scan record',
             'status': ('Enabled' if item.enabled else 'Disabled') if item and item.present else 'Not installed' if item else 'Unverified',
             'installed': bool(item and item.present), 'enabled': bool(item and item.present and item.enabled),
             'may_disable': bool(item and item.may_disable), 'may_enable': bool(item and item.may_enable),
-            'control': control_data(db.get(ExtensionControl,extension_id)),
-            'protected': bool((extension:=db.get(Extension,extension_id)) and (registration:=db.get(DeviceRegistration,extension.device_id)) and extension.extension_key==registration.chrome_extension_id),
+            'control': control_data(control),
+            'protected': bool(extension_record and registration and extension_record.extension_key==registration.chrome_extension_id),
             'last_sync': iso(item.last_sync) if item else None}
 
 

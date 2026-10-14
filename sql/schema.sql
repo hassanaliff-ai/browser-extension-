@@ -482,6 +482,8 @@ CREATE INDEX ix_admin_override_audit_override_id ON admin_override_audit (overri
 
 CREATE INDEX ix_extensions_device_id ON extensions (device_id);
 
+CREATE INDEX ix_inventory_active_device ON inventory_browser_credentials (device_id) WHERE revoked IS false;
+
 CREATE INDEX ix_inventory_browser_credentials_device_id ON inventory_browser_credentials (device_id);
 
 CREATE INDEX ix_scans_created_at ON scans (created_at);
