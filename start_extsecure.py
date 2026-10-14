@@ -63,8 +63,13 @@ def main():
             return 1
     from scripts.start_lan_gateway import start as start_lan
     try:
-        origin=start_lan(ROOT)
-        if origin:print('ExtSecure HTTPS device registration is running at '+origin)
+        public_state=ROOT/'.private/public-api/state.json'
+        if public_state.exists():
+            from scripts.start_public_api import start as start_public
+            print('Temporary public HTTPS API: '+start_public())
+        else:
+            origin=start_lan(ROOT)
+            if origin:print('ExtSecure HTTPS device registration is running at '+origin)
     except RuntimeError as error:
         print(str(error))
         return 1
