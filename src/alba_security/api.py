@@ -440,10 +440,10 @@ def create_app(
         return {"signed_out": True}
 
     def record_scan(payload: ScanCreate, db: Session, *, notify: bool = True, actor: str | None = None) -> dict:
-        existing_device=db.get(Device,payload.device_id)
+        existing_device=db.scalar(select(Device).where(Device.id==payload.device_id).with_for_update().execution_options(populate_existing=True))
         if existing_device and existing_device.inventory_removed:
             raise HTTPException(403,'This device was removed. Reconnect through approved device enrollment.')
-        registration = db.get(DeviceRegistration, payload.device_id)
+        registration = db.get(DeviceRegistration, payload.device_id,populate_existing=True)
         if registration and registration.blocked:
             raise HTTPException(403, 'This device is blocked. Contact an administrator.')
         fingerprint, display = _target_identity(payload.target_kind, payload.target)

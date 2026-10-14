@@ -22,6 +22,7 @@ class Base(DeclarativeBase):
 
 
 class Device(Base):
+    __table_args__ = (CheckConstraint("inventory_revision >= 1",name="ck_devices_inventory_revision"),)
     inventory_removed: Mapped[bool] = mapped_column(Boolean,default=False,nullable=False)
     inventory_revision: Mapped[int] = mapped_column(Integer,default=1,nullable=False)
     __tablename__ = "devices"
@@ -37,6 +38,7 @@ class Extension(Base):
     inventory_revision: Mapped[int] = mapped_column(Integer,default=1,nullable=False)
     __tablename__ = "extensions"
     __table_args__ = (
+        CheckConstraint("inventory_revision >= 1",name="ck_extensions_inventory_revision"),
         UniqueConstraint("device_id", "extension_key", name="uq_extension_device_key"),
         UniqueConstraint('id', 'device_id', name='uq_extensions_id_device'),
     )

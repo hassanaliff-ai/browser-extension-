@@ -95,7 +95,8 @@ CREATE TABLE devices (
 	name VARCHAR(120) NOT NULL,
 	first_seen TIMESTAMP WITH TIME ZONE NOT NULL,
 	last_seen TIMESTAMP WITH TIME ZONE NOT NULL,
-	PRIMARY KEY (id)
+	PRIMARY KEY (id),
+	CONSTRAINT ck_devices_inventory_revision CHECK (inventory_revision >= 1)
 );
 
 CREATE TABLE domains (
@@ -251,6 +252,7 @@ CREATE TABLE device_registrations (
 	detected_os VARCHAR(32),
 	last_sync TIMESTAMP WITH TIME ZONE,
 	PRIMARY KEY (device_id),
+	CONSTRAINT ck_device_registrations_revision CHECK (revision >= 1),
 	FOREIGN KEY(device_id) REFERENCES devices (id),
 	UNIQUE (pairing_hash)
 );
@@ -266,6 +268,7 @@ CREATE TABLE extensions (
 	first_seen TIMESTAMP WITH TIME ZONE NOT NULL,
 	last_seen TIMESTAMP WITH TIME ZONE NOT NULL,
 	PRIMARY KEY (id),
+	CONSTRAINT ck_extensions_inventory_revision CHECK (inventory_revision >= 1),
 	CONSTRAINT uq_extension_device_key UNIQUE (device_id, extension_key),
 	CONSTRAINT uq_extensions_id_device UNIQUE (id, device_id),
 	FOREIGN KEY(device_id) REFERENCES devices (id)
@@ -285,6 +288,7 @@ CREATE TABLE inventory_device_enrollments (
 	requested_by VARCHAR(120) NOT NULL,
 	ip_source VARCHAR(24) NOT NULL,
 	PRIMARY KEY (device_id),
+	CONSTRAINT ck_device_enrollment_status CHECK (status IN ('pending','approved','blocked','rejected')),
 	FOREIGN KEY(device_id) REFERENCES devices (id)
 );
 

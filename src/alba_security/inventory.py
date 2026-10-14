@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, select, update
+from sqlalchemy import CheckConstraint, Boolean, DateTime, ForeignKey, Integer, String, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from sqlalchemy.exc import IntegrityError
 
@@ -30,6 +30,7 @@ class InventoryPolicy(Base):
 
 
 class DeviceRegistration(Base):
+    __table_args__=(CheckConstraint('revision >= 1',name='ck_device_registrations_revision'),)
     __tablename__ = 'device_registrations'
     device_id: Mapped[str] = mapped_column(ForeignKey('devices.id'), primary_key=True)
     ip_address: Mapped[str] = mapped_column(String(45), nullable=False)
@@ -62,6 +63,7 @@ class ChromeObservation(Base):
 
 
 class DeviceEnrollment(Base):
+    __table_args__=(CheckConstraint("status IN ('pending','approved','blocked','rejected')",name='ck_device_enrollment_status'),)
     __tablename__ = 'inventory_device_enrollments'
     device_id: Mapped[str] = mapped_column(ForeignKey('devices.id'), primary_key=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -188,7 +190,7 @@ def device_metadata(db, device_id):
 
 def browser_registration(db, request):
     token = request.headers.get('x-extsecure-device', '')
-    credential = db.get(BrowserCredential, digest(token)) if token and len(token) <= 256 else None
+    credential = db.get(BrowserCredential, digest(token),populate_existing=True) if token and len(token) <= 256 else None
     return db.get(DeviceRegistration, credential.device_id) if credential and not credential.revoked else None
 
 
@@ -255,7 +257,16 @@ def extension_metadata(db, extension_id):
             'last_sync': iso(item.last_sync) if item else None}
 
 
+def lock_inventory_device(db, device_id):
+    """Serialize writes with removal; refresh identity-map state after waiting."""
+    device=db.scalar(select(Device).where(Device.id==device_id).with_for_update().execution_options(populate_existing=True))
+    if not device or device.inventory_removed:
+        raise HTTPException(403,'This device was removed. Reconnect through approved device enrollment.')
+    return device
+
+
 def save_extensions(db, row, items, *, full_snapshot=False):
+    lock_inventory_device(db,row.device_id)
     now = utc_now()
     if full_snapshot:
         ids = select(Extension.id).where(Extension.device_id == row.device_id)
@@ -281,7 +292,7 @@ def save_extensions(db, row, items, *, full_snapshot=False):
 
 def apply_device_decision(db, device_id, payload, actor):
     """Shared transactional device protection for inventory and incident actions."""
-    device=db.get(Device,device_id)
+    device=db.scalar(select(Device).where(Device.id==device_id).with_for_update().execution_options(populate_existing=True))
     if device and device.inventory_removed:raise HTTPException(409,'This device was removed. Add a new approved connection.')
     result = db.execute(update(DeviceRegistration).where(DeviceRegistration.device_id == device_id,
         DeviceRegistration.revision == payload.expected_revision).values(blocked=payload.blocked,
@@ -322,6 +333,8 @@ def install_inventory(app, session_scope, require_actor, directory):
 
         credential = db.get(BrowserCredential, token_hash)
         if credential:
+            lock_inventory_device(db,credential.device_id)
+            db.refresh(credential)
             if credential.revoked:
                 raise HTTPException(403, 'This device connection was revoked. Contact an administrator to reconnect.')
             row = db.get(DeviceRegistration, credential.device_id)
@@ -427,7 +440,7 @@ def install_inventory(app, session_scope, require_actor, directory):
 
     @app.post('/api/inventory/devices/{device_id}/pairing-code')
     def reissue_code(device_id: str, payload: PairCode, actor: str = Depends(require_actor), db: Session = Depends(session_scope)):
-        device=db.get(Device,device_id)
+        device=db.scalar(select(Device).where(Device.id==device_id).with_for_update().execution_options(populate_existing=True))
         if device and device.inventory_removed:raise HTTPException(409,'This device was removed. Add a new approved connection.')
         code = secrets.token_urlsafe(24)
         expires = utc_now() + timedelta(minutes=30)
@@ -444,6 +457,9 @@ def install_inventory(app, session_scope, require_actor, directory):
     @app.post('/api/inventory/pair')
     def pair_browser(payload: PairBrowser, request: Request, actor: str = Depends(require_actor), db: Session = Depends(session_scope)):
         row = db.scalar(select(DeviceRegistration).where(DeviceRegistration.pairing_hash == digest(payload.code)))
+        if row:
+            lock_inventory_device(db,row.device_id)
+            db.refresh(row)
         if not row or not row.pairing_expires or row.blocked:
             raise HTTPException(403, 'Pairing code is invalid, expired, or belongs to a blocked device.')
         result = db.execute(update(DeviceRegistration).where(DeviceRegistration.device_id == row.device_id,
@@ -467,6 +483,10 @@ def install_inventory(app, session_scope, require_actor, directory):
     @app.post('/api/inventory/sync')
     def sync_browser(payload: ChromeSnapshot, request: Request, actor: str = Depends(require_actor), db: Session = Depends(session_scope)):
         row = browser_registration(db, request)
+        if row:
+            lock_inventory_device(db,row.device_id)
+            db.refresh(row)
+            row=browser_registration(db,request)
         if not row or row.blocked:
             raise HTTPException(403, 'Link an active device before syncing Chrome inventory.')
         # The inventory API describes a client snapshot, not independent endpoint attestation.

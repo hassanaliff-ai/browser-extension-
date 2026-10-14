@@ -60,7 +60,7 @@ def extend_database_schema(engine):
         # rewrite or discard conflicting security evidence.
         connection.exec_driver_sql('SELECT pg_advisory_xact_lock(867431902)')
         connection.exec_driver_sql("SET LOCAL lock_timeout = '5s'")
-        core=('extensions','scans','domains','findings','alerts','security_events')
+        core=('devices','device_registrations','inventory_device_enrollments','extensions','scans','domains','findings','alerts','security_events')
         for kind,inspect_method in [(UniqueConstraint,'get_unique_constraints'),
                                      (ForeignKeyConstraint,'get_foreign_keys'),
                                      (CheckConstraint,'get_check_constraints')]:

@@ -256,6 +256,13 @@ test('Signing out preserves the device link but removes account access',async()=
  reset();signed();localStore.deviceCredential={token:'test-device-token'};await handleMessage({type:'LOGOUT'});
  assert.equal(store.session,undefined);assert.equal(localStore.deviceCredential.token,'test-device-token');
 });
+
+for(const detail of ['This device was removed. Reconnect through approved device enrollment.','Link an active device before syncing Chrome inventory.'])test('Rejected device connection clears temporary grants: '+detail,async()=>{
+ reset();signed();sessionRules=[{id:100007}];const previous=fetch;
+ globalThis.fetch=async()=>new Response(JSON.stringify({detail}),{status:403});
+ try{await assert.rejects(handleMessage({type:'API',path:'/api/overview'}));assert.equal(sessionRules.length,0);assert.equal(store.session.token,'test-token');}
+ finally{globalThis.fetch=previous;}
+});
 test('Enabled-extension changes refresh opted-in inventory only while signed in',async()=>{
  reset();signed();localStore={deviceCredential:{token:'test-device-token'},inventoryConnected:true};
  hooks['inventory-enabled']();await flush();await flush();assert.equal(calls.filter(c=>c.url?.endsWith('/inventory/sync')).length,1);

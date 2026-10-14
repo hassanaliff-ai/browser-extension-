@@ -61,7 +61,7 @@ async function request(path, method = 'GET', body, direct = false) {
   try {data=await response.json();}
   catch {if(response.ok)throw new Error('The backend returned an invalid response. Refresh and try again; no safe verdict was assigned.');data={};}
   if (!response.ok) {
-    if(response.status===403&&/device is blocked|Link this Chrome profile|Add this device|device is waiting|device connection was revoked/.test(data.detail??''))
+    if(response.status===403&&/device is blocked|Link this Chrome profile|Add this device|device is waiting|device connection was revoked|device was removed|Link an active device/.test(data.detail??''))
       await gate.clear({preserveBlocked:true});
     if (response.status === 401 && !AUTH_PUBLIC.has(path)) {
       // A delayed response from a previous account must not revoke a newer login.
