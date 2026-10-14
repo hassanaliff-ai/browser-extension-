@@ -16,3 +16,8 @@ Validation: 57 backend tests and 230 extension tests passed. The isolated databa
 ### Device table and extension details (0.8.21)
 
 Inventory → Extensions first displays a table of registered devices with clickable device names, OS, recorded access status, profile connection and last synchronization. Click a device name to open only that device's extension inventory. **Back to devices** returns to the table. No extension records are displayed before a device is chosen, including when the history checkbox is enabled. Recorded registration or access status does not prove that a remote browser is currently online. Validation: 230 extension tests and 18 real Chromium checks passed.
+
+
+### Inventory layout 0.8.22
+
+Extensions opens with a device table. Click a device name to view only its extensions and the existing On, Off, Block, Chrome uninstall, inventory removal and restore controls. Device removal is also available in the device table. Device connection setup is collapsed below the table. Reopening Extensions from another view resets the selection. Recorded status and last sync do not establish that a remote browser is currently online. Validation: 230 extension tests and 19 real Chromium checks passed using disposable test profiles.
