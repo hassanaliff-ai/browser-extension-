@@ -61,6 +61,13 @@ def main():
         if not wait_until_ready('http://127.0.0.1:8765/health'):
             print('API did not start. Check .private/api.log.')
             return 1
+    from scripts.start_lan_gateway import start as start_lan
+    try:
+        origin=start_lan(ROOT)
+        if origin:print('ExtSecure HTTPS device registration is running at '+origin)
+    except RuntimeError as error:
+        print(str(error))
+        return 1
     print('ExtSecure API is running. Open your installed Chrome extension and select Reports.')
     return 0
 
