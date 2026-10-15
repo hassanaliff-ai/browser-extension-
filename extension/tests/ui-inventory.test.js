@@ -178,3 +178,21 @@ test('Unrelated decision controls do not change the website duration',()=>{
  handlers.change({target:{name:'decision',form,hasAttribute:()=>false,matches:()=>false}});
  assert.equal(queried,false);
 });
+
+test('Inventory displays live connection status separately from blocking policy',async()=>{
+ const original=chrome.runtime.sendMessage;
+ chrome.runtime.sendMessage=async message=>message.type==='API'&&message.path==='/api/devices'?{ok:true,data:[
+  {id:'online-device',name:'Online but blocked',registered:true,online:true,status:'Active',access_status:'Blocked',blocked:true,last_heartbeat:new Date().toISOString()},
+  {id:'offline-device',name:'Offline trusted device',registered:true,online:false,status:'Offline',access_status:'Trusted'}
+ ]}:original(message);
+ const button={dataset:{action:'refresh'},innerHTML:'Refresh',isConnected:true,setAttribute(){},removeAttribute(){},closest:()=>null};
+ try{
+  await handlers.click({target:{closest:()=>button}});
+  assert.match(app.innerHTML,/Last contact/);assert.match(app.innerHTML,/Offline trusted device/);assert.match(app.innerHTML,/Online but blocked/);assert.match(app.innerHTML,/Device access/);
+  handlers.change({target:{name:'device_filter',value:'offline',hasAttribute:()=>false}});
+  await new Promise(resolve=>setImmediate(resolve));
+  // Management selectors may still list all devices; compare the actual device table.
+  const table=app.innerHTML.slice(app.innerHTML.indexOf('<table'),app.innerHTML.indexOf('</table>'));
+  assert.match(table,/Offline trusted device/);assert.doesNotMatch(table,/Online but blocked/);
+ }finally{chrome.runtime.sendMessage=original;}
+});

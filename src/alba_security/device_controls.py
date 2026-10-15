@@ -20,6 +20,17 @@ class ControlWakeups:
 def install_device_controls(app,session_scope):
     from alba_security.inventory import browser_registration,is_pending,DeviceEnrollment,ChromeObservation
     wakeups=ControlWakeups();app.state.extension_control_wakeups=wakeups
+    @app.post('/api/device/heartbeat')
+    def heartbeat(request:Request,db=Depends(session_scope)):
+        from alba_security.inventory import lock_inventory_device
+        row=browser_registration(db,request)
+        if not row:raise HTTPException(403,'Device connection required.')
+        # Presence never grants account, scan or management permissions.
+        device=lock_inventory_device(db,row.device_id)
+        if not browser_registration(db,request):raise HTTPException(403,'Device connection required.')
+        row.last_heartbeat=utc_now();device.last_seen=row.last_heartbeat
+        db.commit()
+        return {'status':'Active','last_heartbeat':row.last_heartbeat.isoformat(),'heartbeat_timeout_seconds':90}
     def own(db,request):
         row=browser_registration(db,request)
         if not row or is_pending(db,row):raise HTTPException(403,'Approved device connection required.')
@@ -34,9 +45,11 @@ def install_device_controls(app,session_scope):
     @app.get('/api/device/extension-controls')
     async def wait(request:Request,cursor:int=Query(default=-1,ge=-1),db=Depends(session_scope)):
         row=own(db,request);device_id=row.device_id
+        # A verified control poll also proves presence for existing installations.
+        row.last_heartbeat=utc_now();db.get(Device,device_id).last_seen=row.last_heartbeat
         current=wakeups.cursor(device_id)
         # Release the connection before waiting; no idle transaction or per-tick SQL.
-        db.rollback()
+        db.commit()
         deadline=time.monotonic()+20
         while cursor==current and time.monotonic()<deadline:
             if await request.is_disconnected():return {'cursor':current,'commands':[]}

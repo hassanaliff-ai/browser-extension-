@@ -131,6 +131,21 @@ async function autoSyncInventory(controlsOnly=false) {
   if(inventoryConnected&&session.token&&!session.profile?.inventory?.pending&&!session.profile?.inventory?.blocked)await syncInventory(false,controlsOnly);
 }
 let deviceControlWatching=false;
+let heartbeatSending=false;
+async function sendDeviceHeartbeat(){
+ if(heartbeatSending)return;
+ heartbeatSending=true;
+ try{
+  await storageReady;
+  const {deviceCredential}=await chrome.storage.local.get('deviceCredential');
+  if(!deviceCredential?.token)return;
+  await chrome.alarms.create('device-heartbeat',{periodInMinutes:.5});
+  await deviceControlRequest(API_ORIGIN,deviceCredential.token,'/api/device/heartbeat','POST');
+ }catch{/* Loss of contact expires the server-side presence; never fabricate Active. */}
+ finally{heartbeatSending=false;}
+}
+void sendDeviceHeartbeat();
+chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='device-heartbeat')void sendDeviceHeartbeat();});
 async function deliverDeviceControls(batch,token){
  if(!batch.commands?.length)return [];
  const operation=syncQueue.catch(()=>{}).then(async()=>{
@@ -211,6 +226,7 @@ export async function handleMessage(message,sender={}) {
       const device=await request('/api/inventory/connect','POST',body);
       if((await loadSession()).token!==session.token)throw failure('Your sign-in changed. Click Add this device again.',401);
       await chrome.storage.local.set({deviceCredential:{token,device_id:device.device_id}});
+      await sendDeviceHeartbeat();
       await chrome.storage.local.remove('pendingDeviceConnection');
       await gate.clear({preserveBlocked:true});
       // Registration already succeeded. A permission API failure must not turn
@@ -238,6 +254,7 @@ export async function handleMessage(message,sender={}) {
     const data=await request('/api/inventory/pair','POST',{code:message.code.trim(),
       extension:{id:chrome.runtime.id,name:manifest.name,version:manifest.version},operating_system:platformName(platform.os)});
     await chrome.storage.local.set({deviceCredential:{token:data.device_token,device_id:data.device_id}});
+    await sendDeviceHeartbeat();
     await gate.clear({preserveBlocked:true});
     return {device_id:data.device_id,device_name:data.device_name};
   }

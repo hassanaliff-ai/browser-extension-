@@ -251,6 +251,7 @@ CREATE TABLE device_registrations (
 	chrome_extension_id VARCHAR(100),
 	detected_os VARCHAR(32),
 	last_sync TIMESTAMP WITH TIME ZONE,
+	last_heartbeat TIMESTAMP WITH TIME ZONE,
 	PRIMARY KEY (device_id),
 	CONSTRAINT ck_device_registrations_revision CHECK (revision >= 1),
 	FOREIGN KEY(device_id) REFERENCES devices (id),

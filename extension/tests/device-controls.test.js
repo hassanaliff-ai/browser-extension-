@@ -10,6 +10,12 @@ test('Device credential cannot be sent to unrelated routes',async()=>{
  for(const path of ['/api/admin/me','/api/device/extension-controls?cursor=bad','https://evil.example'])await assert.rejects(deviceControlRequest('https://api.example','token',path));
  await assert.rejects(deviceControlRequest('https://api.example','','/api/device/extension-controls?cursor=-1'));
 });
+test('Presence uses a fixed device-only POST without account cookies or browser history',async()=>{
+ let sent;
+ await deviceControlRequest('https://api.example','paired-device','/api/device/heartbeat','POST',undefined,async(url,options)=>{sent={url,options};return {ok:true,json:async()=>({status:'Active'})};});
+ assert(sent.url.endsWith('/monitor/api/device/heartbeat'));assert.equal(sent.options.method,'POST');assert.equal(sent.options.headers.Authorization,undefined);assert.equal(sent.options.body,undefined);assert.equal(sent.options.credentials,'omit');
+ await assert.rejects(deviceControlRequest('https://api.example','paired-device','/api/device/heartbeat','GET'));
+});
 test('Signed-out device executes and verifies a block before its device-scoped receipt',async()=>{
  let enabled=true,receipt;const id='11111111-1111-4111-8111-111111111111';
  await executeDeviceCommands({cursor:1,commands:[{extension_id:id,chrome_id:'b'.repeat(32),revision:1,desired:'blocked',status:'pending'}]}, {

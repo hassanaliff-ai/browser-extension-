@@ -18,6 +18,8 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'Offline':'غير متصل','Device access':'صلاحية الجهاز','Last contact':'آخر اتصال','Offline devices':'الأجهزة غير المتصلة',
+ 'Status is based on extension check-ins. Offline means Chrome is closed, disconnected, asleep or the device is off.':'تعتمد الحالة على اتصال الإضافة. تعني غير متصل أن المتصفح مغلق أو الاتصال منقطع أو الجهاز في وضع السكون أو متوقف.',
  'Higher approver required':'يتطلب مسؤولاً أعلى صلاحية',
 'Remove':'إزالة','Restore':'استعادة','Restore to inventory':'استعادة إلى الجرد','Removed devices':'الأجهزة المحذوفة','Show removed or uninstalled extensions':'إظهار الإضافات المحذوفة من الجرد أو غير المثبتة','I confirm the selected record.':'أؤكد السجل المحدد.',
 "Chrome extension inventory":"جرد إضافات Chrome",

@@ -17,6 +17,10 @@ def ensure_schema(engine: Engine) -> None:
     """
     Base.metadata.create_all(engine)
     inspector = inspect(engine)
+    if 'device_registrations' in inspector.get_table_names() and 'last_heartbeat' not in {c['name'] for c in inspector.get_columns('device_registrations')}:
+        with engine.begin() as connection:
+            column_type='TIMESTAMP WITH TIME ZONE' if engine.dialect.name=='postgresql' else 'TIMESTAMP'
+            connection.exec_driver_sql('ALTER TABLE device_registrations ADD COLUMN last_heartbeat '+column_type)
     if 'chrome_extension_observations' in inspector.get_table_names():
         columns={item['name'] for item in inspector.get_columns('chrome_extension_observations')}
         with engine.begin() as connection:

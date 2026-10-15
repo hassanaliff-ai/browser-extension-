@@ -43,6 +43,7 @@ class DeviceRegistration(Base):
     chrome_extension_id: Mapped[str | None] = mapped_column(String(100))
     detected_os: Mapped[str | None] = mapped_column(String(32))
     last_sync: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class BrowserCredential(Base):
@@ -190,7 +191,12 @@ def device_metadata(db, device_id, context=None):
     linked = device_id in context['linked'] if context is not None else bool(db.scalar(select(BrowserCredential).where(BrowserCredential.device_id == device_id, BrowserCredential.revoked.is_(False))))
     enrollment = context['enrollments'].get(device_id) if context is not None else db.get(DeviceEnrollment, device_id)
     pending = bool(row.blocked and enrollment and enrollment.status == 'pending')
-    return {**removal,'registered': True, 'status': 'Removed' if removal['inventory_removed'] else 'Pending approval' if pending else 'Blocked' if row.blocked else 'Active' if linked else 'Awaiting pairing',
+    heartbeat=row.last_heartbeat
+    age=(utc_now()-(heartbeat.replace(tzinfo=timezone.utc) if heartbeat and heartbeat.tzinfo is None else heartbeat)).total_seconds() if heartbeat else None
+    online=bool(linked and not removal['inventory_removed'] and age is not None and 0<=age<90)
+    access='Removed' if removal['inventory_removed'] else 'Pending approval' if pending else 'Blocked' if row.blocked else 'Trusted' if linked else 'Awaiting pairing'
+    return {**removal,'registered': True, 'status': 'Removed' if removal['inventory_removed'] else ('Active' if online else 'Offline') if linked else 'Awaiting pairing',
+            'online':online,'access_status':access,'last_heartbeat':iso(heartbeat),'heartbeat_timeout_seconds':90,
             'trusted': linked and not row.blocked and not pending,
             'blocked': row.blocked and not pending, 'pending': pending, 'linked': linked,
             'requested_by': enrollment.requested_by if enrollment else row.added_by,

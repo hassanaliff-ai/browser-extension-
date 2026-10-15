@@ -256,6 +256,13 @@ test('Signing out preserves the device link but removes account access',async()=
  reset();signed();localStore.deviceCredential={token:'test-device-token'};await handleMessage({type:'LOGOUT'});
  assert.equal(store.session,undefined);assert.equal(localStore.deviceCredential.token,'test-device-token');
 });
+test('Presence alarm sends a device heartbeat while signed out without management permission',async()=>{
+ reset();localStore.deviceCredential={token:'presence-device-token'};
+ const contains=chrome.permissions.contains;chrome.permissions.contains=async()=>false;
+ try{hooks.alarm({name:'device-heartbeat'});await flush();await flush();
+  const request=calls.find(c=>c.url?.endsWith('/api/device/heartbeat'));assert(request);assert.equal(request.options.headers['X-ExtSecure-Device'],'presence-device-token');assert.equal(request.options.headers.Authorization,undefined);
+ }finally{chrome.permissions.contains=contains;}
+});
 
 for(const detail of ['This device was removed. Reconnect through approved device enrollment.','Link an active device before syncing Chrome inventory.'])test('Rejected device connection clears temporary grants: '+detail,async()=>{
  reset();signed();sessionRules=[{id:100007}];const previous=fetch;
@@ -306,7 +313,7 @@ test('Blocked device reconnection does not reset the existing key or sync invent
 test('One device button connects the current profile then syncs permitted enabled extensions',async()=>{
  reset();signed();responder=url=>url.endsWith('/inventory/connect')?{device_id:'device-simple',device_name:'Current device',pending:false,blocked:false}:{enabled_count:1};
  const result=await handleMessage({type:'CONNECT_DEVICE',initial_access:'trusted'});assert.equal(result.inventory_status,'ready');assert.equal(result.enabled_count,1);
- const callsWithBody=calls.filter(c=>c.options?.method==='POST');assert.equal(callsWithBody[0].url.endsWith('/inventory/connect'),true);assert.equal(callsWithBody[1].url.endsWith('/inventory/sync'),true);
+ const callsWithBody=calls.filter(c=>c.options?.method==='POST'&&!c.url.endsWith('/api/device/heartbeat'));assert.equal(callsWithBody[0].url.endsWith('/inventory/connect'),true);assert.equal(callsWithBody[1].url.endsWith('/inventory/sync'),true);
  assert.equal(callsWithBody[1].options.headers['X-ExtSecure-Device'],localStore.deviceCredential.token);
 });
 test('Partial inventory failure retains the connected device and gives an explicit retry status',async()=>{
