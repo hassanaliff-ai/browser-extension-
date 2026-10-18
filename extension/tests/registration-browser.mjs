@@ -19,9 +19,9 @@ try{
  let login=page.locator('[data-form="login"]');await login.locator('[name="username"]').fill('signup-example');
  await login.locator('[name="password"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await login.locator('[type="submit"]').click();
  await page.getByText(/New users must create an account/).waitFor();record('Unknown login explains registration and approval without creating an account');
- await page.getByRole('button',{name:'Create a new account',exact:true}).click();
+ await page.getByRole('button',{name:'Register account',exact:true}).click();
  const register=page.locator('[data-form="register"]');assert.equal(await register.locator('[name="username"]').inputValue(),'signup-example');
- assert.equal(await register.locator('[name="password"]').inputValue(),'');record('Registration is directly accessible and preserves only the username');
+ assert.equal(await register.locator('[name="password"]').inputValue(),'');record('Existing Register account option preserves only the username');
  await register.locator('[name="password"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await register.locator('[name="confirm"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await register.locator('[type="submit"]').click();
  await page.locator('[data-form="register-verify"]').waitFor();
  await page.getByText('Enter the setup key manually',{exact:true}).click();const secret=await page.getByLabel('Authenticator setup key').inputValue();

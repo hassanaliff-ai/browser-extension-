@@ -18,7 +18,6 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
- 'Create a new account':'إنشاء حساب جديد', 'New here?':'مستخدم جديد؟',
  'Registration submitted':'تم إرسال طلب التسجيل', 'Submitted to API':'أُرسل إلى API',
  'Continue to log in':'المتابعة إلى تسجيل الدخول',
  'Authenticator verification is complete. The request was sent for approval. Sign in after a reviewer approves it.':'اكتمل التحقق بتطبيق المصادقة وأُرسل الطلب للموافقة. سجّل الدخول بعد اعتماد الطلب من المسؤول.',

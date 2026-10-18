@@ -1,8 +1,8 @@
 # Registration and approval flow — 18 October 2026
 
-Extension **0.8.33** makes the distinction between creating an account and
-signing in explicit. The login page has a prominent **Create a new account**
-button. Switching preserves the username only; it does not carry a password
+Extension **0.8.34** makes the distinction between creating an account and
+signing in explicit. The login page uses the existing **Register account** option, with no duplicate
+account-creation button. Switching preserves the username only; it does not carry a password
 into a new account or create an account automatically after a failed login.
 
 Failed sign-in guidance explains that a new user must register, finish
@@ -27,7 +27,7 @@ identity review, backend approval and two-factor login enforcement are retained.
 - 250 JavaScript tests passed, including receipt validation, omission of secrets,
   escaped display and authenticated-state separation.
 - Real Chromium MV3 verification passed nine checks: unknown-login guidance,
-  direct registration with username-only preservation, real registration and
+  the existing Register account option with username-only preservation, real registration and
   authenticator verification, confirmation after page reload, denial before
   approval, appearance in the head administrator's queue, approval through the
   real form, password/authenticator login after approval, and no page errors.
