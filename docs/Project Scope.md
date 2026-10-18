@@ -8,4 +8,6 @@ Incident cases retain investigators, notes, timeline, status and resolution. Hig
 
 User security feedback allows scan-linked concerns and warning challenges. Administrators record review outcomes; users follow their own submissions. Feedback does not modify scores or release containment and does not restore the removed assignment/escalation automation.
 
+User suggestions provide a separate channel for product improvement ideas. Each user follows their own proposals; administrators review, respond and update progress without changing security controls.
+
 Migration 0004 deletes six optional-feature tables, retaining scans, incidents, notes, threat blocks, active scoring configuration and historical administrative audit evidence. Historical migrations stay in sequence for upgrade compatibility. Their old SQL definitions are historical schema instructions, not enabled features. Migration execution tracks versions only; the obsolete checksum column is removed.
