@@ -15,6 +15,7 @@ import {updateAccessDecision} from './review-controls.js';
 import {lookupFeedback} from './scan-feedback.js';
 import {feedbackSubmission,feedbackCreateBody,feedbackReviewBody,FEEDBACK_OUTCOMES} from './user-feedback.js';
 import {suggestionsPanel,suggestionCreateBody,suggestionReviewBody} from './user-suggestions.js';
+import {LOGIN_HELP,registrationPendingPanel} from './registration-flow.js';
 
 import {consoleNavigation,filterConsoleNavigation,toggleConsoleNavigation} from './console-navigation.js';
 
@@ -40,6 +41,7 @@ let feedbackOffset=0,feedbackStatus='';
 let suggestionOffset=0,suggestionStatus='';
 let devicePairing=null,deviceFilter='all',connectionStatus='unchecked',toastTimer,monthlyOpen=false;
 let connectionResult={};
+let authUsername='';
 
 async function checkConnection(silent=false){
 
@@ -229,7 +231,9 @@ async function renderAuth(){
 
   let content;
 
-  if(enrolling){
+  if(state.registration_receipt&&!verifying&&!enrolling){
+    content=registrationPendingPanel(state.registration_receipt,{notice,btn});
+  }else if(enrolling){
 
     if(!qr)try{qr=(await send({type:'ENROLLMENT_QR'})).image;}catch(error){toast(error.message,true);}
 
@@ -243,7 +247,7 @@ async function renderAuth(){
 
     const register=authMode==='register';
 
-    content=`<h1>${register?'Create your account':'Welcome to ExtSecure'}</h1><p class="muted">${register?'Set up an account and authenticator, then request administrator approval.':'Sign in to your approved account to review browser security.'}</p><div class="tabs" role="group" aria-label="Account access">${['login','register'].map(mode=>`<button data-auth-mode="${mode}" class="${mode===authMode?'selected':''}" aria-pressed="${mode===authMode}">${mode==='login'?'Log in':'Register account'}</button>`).join('')}</div><div class="step"><span>01</span>${register?'Account details':'Your credentials'}</div>${form(register?'register':'login',field('Username','username','text','','required autocomplete="username" maxlength="80"'+(register?' pattern="[a-z0-9][a-z0-9._-]{2,79}"':''))+field('Password','password','password','','required autocomplete="'+(register?'new-password':'current-password')+'"'+(register?' minlength="12" maxlength="128"':''))+(register?field('Confirm password','confirm','password','','required autocomplete="new-password" minlength="12" maxlength="128"')+notice('Choose at least 12 characters. Select your requested role at the authenticator step. A higher role must approve it.') : ''),register?'Set up authenticator':'Continue securely','primary full')}<p class="auth-aside">${register?'No invitation code required.':'New accounts need approval. Every role uses password and authenticator verification.'}</p>`;
+    content=`<h1>${register?'Create your account':'Welcome to ExtSecure'}</h1><p class="muted">${register?'Set up an account and authenticator, then request administrator approval.':'Sign in to your approved account to review browser security.'}</p><div class="tabs" role="group" aria-label="Account access">${['login','register'].map(mode=>`<button data-auth-mode="${mode}" class="${mode===authMode?'selected':''}" aria-pressed="${mode===authMode}">${mode==='login'?'Log in':'Register account'}</button>`).join('')}</div><div class="step"><span>01</span>${register?'Account details':'Your credentials'}</div>${!register?'<p>New here? <button type="button" data-auth-mode="register" class="btn small">Create a new account</button></p>':''}${form(register?'register':'login',field('Username','username','text',authUsername,'required autocomplete="username" maxlength="80"'+(register?' pattern="[a-z0-9][a-z0-9._-]{2,79}"':''))+field('Password','password','password','','required autocomplete="'+(register?'new-password':'current-password')+'"'+(register?' minlength="12" maxlength="128"':''))+(register?field('Confirm password','confirm','password','','required autocomplete="new-password" minlength="12" maxlength="128"')+notice('Choose at least 12 characters. Select your requested role at the authenticator step. A higher role must approve it.') : ''),register?'Set up authenticator':'Continue securely','primary full')}<p class="auth-aside">${register?'No invitation code required.':'New accounts need approval. Every role uses password and authenticator verification.'}</p>`;
 
   }
 
@@ -331,7 +335,7 @@ async function overrides(){const [rows,audit,whitelist]=await Promise.all([api('
 
 async function reports(){const p=reportPeriod(period);const [stats,rows]=await Promise.all([api(`reports/monthly/stats?year=${p.year}&month=${p.month}`),api('reports/monthly')]);const report=rows.find(r=>r.period===period);pageData={stats,rows,report};return `${await intelligenceReports(can('reports'))}<details class="monthly-workspace" ${monthlyOpen?'open':''}><summary>Monthly analysis and delivery</summary><div class="report-workspace"><section class="panel"><div class="section-head"><div><h2>Monthly evidence</h2><p class="meta">Choose a completed calendar month in UTC.</p></div><label class="field"><span>Report month</span><input type="month" name="period" id="report-period" value="${period}" min="2000-01" max="${completedMonth()}"></label></div>${metrics([['Scans',stats.total_scans,'Monthly total','shield'],['High / Critical',stats.high_risk_scans,'Recorded high-severity results','alert'],['Unknown',stats.severity_counts?.Unknown,'Unassessable checks','search'],['Alerts',stats.alerts_total,'Monthly alert records','case']])}</section><div class="grid-even"><section class="panel stack"><div class="section-head"><div><h2>Machine-learning review</h2><p class="meta">Isolation Forest · Daily activity</p></div>${tag('Evidence')}</div><p class="muted">Learns from 90 days before the selected month. Unusual activity supports investigation; it does not establish a threat or change scan risk.</p>${btn('Run monthly ML analysis','run-ml','primary')}<div id="ml-result">${empty('Run an activity review','At least 30 active historical days and three distinct observations are needed.')}</div></section><section class="panel stack"><h2>AI-written monthly summary</h2><p class="muted">The backend combines aggregate statistics with the ML evidence. Review the saved draft before delivering it to administrators.</p>${report?`<div class="row between">${tag(report.status)}<span class="meta">${esc(date(report.generated_at))}</span></div><h3 data-no-translate>${esc(report.subject)}</h3><label class="field"><span>Saved report body · Read only</span><textarea readonly rows="10" data-no-translate>${esc(report.body)}</textarea></label>${can('reports')&&report.status!=='sent'?btn('Send reviewed report','send-report','primary'):''}${table(report.delivery_outcomes??[],[['Channel','channel'],['Status','status'],['Reason',r=>esc(r.reason??r.error_type??'—')]])}`:can('reports')?btn('Generate LLM draft','generate-report','primary'):notice('Managers can review saved reports and ML results. Administrators prepare and deliver reports.')}</section></div><section class="panel"><h2>Saved report history</h2>${table(rows,[['Month','period'],['Status',r=>tag(r.status)],['Device access',r=>tag(r.access_status??(r.blocked?'Blocked':r.pending?'Pending approval':'Trusted'))],['Last contact',r=>esc(date(r.last_heartbeat))],['Scans',r=>number(r.stats?.total_scans)],['Generated',r=>esc(date(r.generated_at))],['Sent',r=>esc(date(r.sent_at))]])}</section></div></details>`;}
 
-async function accounts(){const [requests,rows]=await Promise.all([api('admin/registrations'),api('admin/accounts')]);pageData={requests,rows};return `<section class="panel stack">${notice('Approval pyramid: normal users → managers → administrators → head administrator. Higher roles may approve lower roles. Only the head changes existing account privileges. Every account requires 2FA.')}<h2>Pending registrations</h2>${table(requests,[['Username','username'],['Requested role','role'],['Status',r=>tag(r.status)],['Requested',r=>esc(date(r.created_at))]])}${requests.length?details('Review an access request',form('account-review',select('Registration','username',requests.map(r=>[r.username,r.username+' · '+r.role]),'', 'data-account-request')+select('Assign role','role',(state.profile.approvable_roles??[]).map(r=>[r,{normal_user:'Normal user',manager:'Manager',administrator:'Administrator'}[r]]),requestedRole(state.profile,requests[0]))+select('Decision','decision',['approve','reject'])+check('I verified this person’s identity and authorized their access.','confirmed')+reason(),'Record access decision')):''}</section><section class="panel stack"><h2>Approved accounts</h2>${table(rows,[['Username','username'],['Role','role_label'],['Source','source']])}${state.profile.can_manage_accounts&&rows.some(r=>r.role!=='head_administrator')?details('Change account access',form('account-role',select('Account','username',rows.filter(r=>r.role!=='head_administrator').map(r=>r.username))+select('Role','role',[['normal_user','Normal user'],['manager','Manager'],['administrator','Administrator']])+select('Action','operation',['role','disable'])+check('Revoke this account’s current sessions when applying the change.','confirmed')+reason(),'Apply access change')):''}</section><section class="panel"><h2>Privilege guide</h2>${table([{role:'Normal user',access:'Check files and destinations; request website access; own history and guidance.'},{role:'Manager',access:'Review monitoring and reports; manage alerts, cases and normal-user approvals.'},{role:'Administrator',access:'Security operations, exceptions, privacy, manager approvals and report delivery.'},{role:'Head of Administrator',access:'All workflows, approval of administrators, account access control and own website requests.'}],[['Role','role'],['Access','access']])}</section>`;}
+async function accounts(){const [requests,rows]=await Promise.all([api('admin/registrations'),api('admin/accounts')]);pageData={requests,rows};return `<section class="panel stack">${notice('Approval pyramid: normal users → managers → administrators → head administrator. Higher roles may approve lower roles. Only the head changes existing account privileges. Every account requires 2FA.')}<h2>Pending registrations</h2><p class="meta">Only accounts that completed authenticator verification appear here. This list refreshes automatically while you are not editing a review.</p>${table(requests,[['Username','username'],['Requested role','role'],['Status',r=>tag(r.status)],['Requested',r=>esc(date(r.created_at))]])}${requests.length?details('Review an access request',form('account-review',select('Registration','username',requests.map(r=>[r.username,r.username+' · '+r.role]),'', 'data-account-request')+select('Assign role','role',(state.profile.approvable_roles??[]).map(r=>[r,{normal_user:'Normal user',manager:'Manager',administrator:'Administrator'}[r]]),requestedRole(state.profile,requests[0]))+select('Decision','decision',['approve','reject'])+check('I verified this person’s identity and authorized their access.','confirmed')+reason(),'Record access decision')):''}</section><section class="panel stack"><h2>Approved accounts</h2>${table(rows,[['Username','username'],['Role','role_label'],['Source','source']])}${state.profile.can_manage_accounts&&rows.some(r=>r.role!=='head_administrator')?details('Change account access',form('account-role',select('Account','username',rows.filter(r=>r.role!=='head_administrator').map(r=>r.username))+select('Role','role',[['normal_user','Normal user'],['manager','Manager'],['administrator','Administrator']])+select('Action','operation',['role','disable'])+check('Revoke this account’s current sessions when applying the change.','confirmed')+reason(),'Apply access change')):''}</section><section class="panel"><h2>Privilege guide</h2>${table([{role:'Normal user',access:'Check files and destinations; request website access; own history and guidance.'},{role:'Manager',access:'Review monitoring and reports; manage alerts, cases and normal-user approvals.'},{role:'Administrator',access:'Security operations, exceptions, privacy, manager approvals and report delivery.'},{role:'Head of Administrator',access:'All workflows, approval of administrators, account access control and own website requests.'}],[['Role','role'],['Access','access']])}</section>`;}
 
 async function blocks(){
  const rows=await api('threat-blocks');pageData={rows};
@@ -439,7 +443,7 @@ app.addEventListener('click',async event=>{
 
   if(button.dataset.view)return navigate(button.dataset.view);
 
-  if(button.dataset.authMode){if(busy||loading)return;authMode=button.dataset.authMode;return renderAuth();}
+  if(button.dataset.authMode){if(busy||loading)return;authUsername=app.querySelector('[name="username"]')?.value?.trim()??authUsername;authMode=button.dataset.authMode;return renderAuth();}
 
   const action=button.dataset.action;if(!action)return;
 
@@ -453,6 +457,7 @@ app.addEventListener('click',async event=>{
 
   await mutation(async()=>{
 
+    if(action==='registration-continue'){authUsername=state.registration_receipt?.username??'';await send({type:'REGISTRATION_CONTINUE'});state=await send({type:'STATE'});authMode='login';await renderAuth();return;}
     if(action==='remove-account-logo'){await send({type:'SAVE_ACCOUNT_LOGO',logo:null});state=await send({type:'STATE'});await renderView();toast('Profile logo removed.');return;}
 
     if(action==='toggle-theme'){const prefs=getPreferences();setPreferences(await savePreferences({...prefs,theme:resolvedTheme()==='dark'?'light':'dark'}));await renderView();return;}
@@ -560,13 +565,13 @@ app.addEventListener('submit',async event=>{
 
     else if(action==='ai-report')await runPeriodReport(f);
 
-    else if(action==='login'){await send({type:'LOGIN',username:data.username,password:data.password});f.reset();state=await send({type:'STATE'});await renderAuth();}
+    else if(action==='login'){authUsername=data.username.trim();try{await send({type:'LOGIN',username:data.username,password:data.password});}catch(error){if(error.status===401)error.message=LOGIN_HELP;throw error;}f.reset();state=await send({type:'STATE'});await renderAuth();}
 
     else if(action==='verify'){await send({type:'VERIFY',code:data.code});f.reset();state=await send({type:'STATE'});view=location.hash.slice(1)||'';await renderView();}
 
     else if(action==='register'){if(data.password!==data.confirm)throw new Error('Passwords must match.');const r=await send({type:'REGISTER',username:data.username,password:data.password});f.reset();manualSecret=r.secret;qr=r.image;state=await send({type:'STATE'});await renderAuth();}
 
-    else if(action==='register-verify'){await send({type:'REGISTER_VERIFY',code:data.code,role:data.role});manualSecret='';qr='';state={};authMode='login';await renderAuth();toast('Account verified. A higher role must approve access before you can sign in.');}
+    else if(action==='register-verify'){await send({type:'REGISTER_VERIFY',code:data.code,role:data.role});f.reset();manualSecret='';qr='';state=await send({type:'STATE'});await renderAuth();}
 
     else if(action==='preferences'){setPreferences(await savePreferences({...getPreferences(),language:data.language,timeZone:data.timeZone,theme:data.theme,tableSize:data.tableSize??getPreferences().tableSize}));await renderView();toast(translate('Preferences saved.'));}
 
@@ -664,7 +669,7 @@ function workflowActions(){const actions=[...(can('scan')?[['File check','go-fil
 // Refresh connection states without discarding an operator's in-progress form.
 app.addEventListener('input',event=>{if(event.target.closest?.('form'))event.target.closest('form').dataset.dirty='true';});
 const presenceRefresh=setInterval(()=>{
- if(document.hidden||busy||loading||!state?.profile||!['devices','extensions'].includes(view)||app.querySelector('form[data-dirty="true"]')||document.activeElement?.closest('form'))return;
+ if(document.hidden||busy||loading||!state?.profile||!['devices','extensions','accounts'].includes(view)||app.querySelector('form[data-dirty="true"]')||document.activeElement?.closest('form'))return;
  void renderView();
 },15000);
 presenceRefresh.unref?.();

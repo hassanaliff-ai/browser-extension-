@@ -2,6 +2,7 @@ import {deviceControlRequest,executeDeviceCommands} from './device-controls.js';
 import {applyExtensionControls} from './extension-controls.js';
 import {validateLogo,logoKey} from './account-logo.js';
 import {API_ORIGIN, VERSION, WORKER_CAPABILITIES, privateTarget, safeApiPath, apiError} from './core.js';
+import {registrationReceipt} from './registration-flow.js';
 import {registerNavigationGate} from './access.js';
 import {containThreat,reconcileThreatHost,restoreThreatRules} from './threat-containment.js';
 import {normalizePreferences} from './locale.js';
@@ -292,6 +293,7 @@ export async function handleMessage(message,sender={}) {
   }
   if (message.type === 'STATE') {
     const session = await loadSession();
+    const {registrationReceipt:receipt}=await chrome.storage.session.get('registrationReceipt');
     let profile = session.token ? session.profile : undefined;
     if (session.token) {
       profile = await request('/api/admin/me');
@@ -302,11 +304,12 @@ export async function handleMessage(message,sender={}) {
       if(profile.inventory?.blocked)await gate.clear({preserveBlocked:true});
       if(session.profile?.inventory?.pending&&profile.inventory?.linked&&!profile.inventory?.blocked&&!profile.inventory?.pending)void autoSyncInventory().catch(()=>{});
     }
-    return {profile:profile?await accountLogo(profile):undefined, expires_at:session.expires_at, challenge:!!session.challenge_token, enrollment:!!session.enrollment_token,version:VERSION,capabilities:[...WORKER_CAPABILITIES]};
+    return {profile:profile?await accountLogo(profile):undefined,registration_receipt:!profile&&receipt?.api_origin===API_ORIGIN?receipt:undefined, expires_at:session.expires_at, challenge:!!session.challenge_token, enrollment:!!session.enrollment_token,version:VERSION,capabilities:[...WORKER_CAPABILITIES]};
   }
   if (message.type === 'LOGIN') {
     if (typeof message.username !== 'string' || typeof message.password !== 'string') throw new Error('Enter your username and password.');
     const data = await request('/api/admin/login','POST',{username:message.username.trim(),password:message.password});
+    await chrome.storage.session.remove('registrationReceipt');
     await invalidateSession(!(await loadSession()).token);
     await store({challenge_token:data.challenge_token,challenge_expires_at:data.expires_at});
     return {step:'verify'};
@@ -326,6 +329,7 @@ export async function handleMessage(message,sender={}) {
   }
   if (message.type === 'REGISTER') {
     const data = await request('/api/admin/register','POST',{username:message.username,password:message.password});
+    await chrome.storage.session.remove('registrationReceipt');
     await invalidateSession(!(await loadSession()).token);
     await store({enrollment_token:data.enrollment_token,enrollment_expires_at:data.expires_at});
     return {secret:data.totp_secret,expires_at:data.expires_at,...await request('/api/admin/register/qr','POST',{enrollment_token:data.enrollment_token})};
@@ -338,7 +342,12 @@ export async function handleMessage(message,sender={}) {
   if (message.type === 'REGISTER_VERIFY') {
     const session = await loadSession();
     const data = await request('/api/admin/register/verify','POST',{enrollment_token:session.enrollment_token,totp_code:message.code,role:message.role??'normal_user'});
+    const receipt=registrationReceipt(data,message.role??'normal_user',API_ORIGIN);
+    await chrome.storage.session.set({registrationReceipt:receipt});
     await chrome.storage.session.remove('session'); return data;
+  }
+  if(message.type==='REGISTRATION_CONTINUE'){
+    await chrome.storage.session.remove('registrationReceipt');return {};
   }
   if (message.type === 'RESET_AUTH') {
     const session = await loadSession();

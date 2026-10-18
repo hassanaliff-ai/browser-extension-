@@ -1,9 +1,11 @@
 import {normalizePreferences} from './locale.js';
 import {API_ORIGIN, VERSION, apiError, safeApiPath, privateTarget} from './core.js';
+import {registrationReceipt} from './registration-flow.js';
 export const isExtension = location.protocol === 'chrome-extension:' && !!globalThis.chrome?.runtime?.id;
 // The ordinary-browser adapter exists only for an explicitly labelled local UI
 // review. Chrome uses the service worker and chrome.storage.session instead.
 let previewSession = {};
+let previewReceipt;
 const previewAllowed = !isExtension && ['127.0.0.1','localhost'].includes(location.hostname) && location.port === '8911';
 const previewOrigin = 'http://127.0.0.1:8767';
 async function previewRequest(path,method='GET',body,direct=false) {
@@ -44,12 +46,13 @@ export async function send(message) {
     case 'SAVE_PREFERENCES':{const prefs=normalizePreferences(message.preferences,true);localStorage.setItem('extsecure-preview-preferences',JSON.stringify(prefs));return prefs;}
     case 'BLOCKED_STATE':return {target:'https://example.com/',signed_in:!!previewSession.token,allowed:false};
     case 'OPEN_APPROVED':throw new Error('Chrome navigation enforcement requires loading the extension.');
-    case 'STATE':return {profile:previewSession.profile,challenge:!!previewSession.challenge_token,enrollment:!!previewSession.enrollment_token,expires_at:previewSession.expires_at};
+    case 'STATE':return {registration_receipt:previewReceipt,profile:previewSession.profile,challenge:!!previewSession.challenge_token,enrollment:!!previewSession.enrollment_token,expires_at:previewSession.expires_at};
     case 'LOGIN':{const data=await previewRequest('/api/admin/login','POST',{username:message.username,password:message.password});previewSession={...data};return {step:'verify'};}
     case 'VERIFY':{const data=await previewRequest('/api/admin/verify','POST',{challenge_token:previewSession.challenge_token,totp_code:message.code});previewSession={token:data.access_token,expires_at:data.expires_at};previewSession.profile=await previewRequest('/api/admin/me');return {profile:previewSession.profile};}
     case 'REGISTER':{const data=await previewRequest('/api/admin/register','POST',{username:message.username,password:message.password});previewSession={enrollment_token:data.enrollment_token};return {secret:data.totp_secret,...await previewRequest('/api/admin/register/qr','POST',previewSession)};}
     case 'ENROLLMENT_QR':return previewRequest('/api/admin/register/qr','POST',{enrollment_token:previewSession.enrollment_token});
-    case 'REGISTER_VERIFY':{const data=await previewRequest('/api/admin/register/verify','POST',{enrollment_token:previewSession.enrollment_token,totp_code:message.code,role:message.role??'normal_user'});previewSession={};return data;}
+    case 'REGISTER_VERIFY':{const data=await previewRequest('/api/admin/register/verify','POST',{enrollment_token:previewSession.enrollment_token,totp_code:message.code,role:message.role??'normal_user'});previewReceipt=registrationReceipt(data,message.role??'normal_user',previewOrigin);previewSession={};return data;}
+    case 'REGISTRATION_CONTINUE':previewReceipt=undefined;return {};
     case 'RESET_AUTH':if(previewSession.enrollment_token)await previewRequest('/api/admin/register/cancel','POST',{enrollment_token:previewSession.enrollment_token});previewSession={};return {};
     case 'LOGOUT':try{return await previewRequest('/api/admin/logout','POST');}finally{previewSession={};}
     case 'API':return previewRequest(message.path,message.method??'GET',message.body);

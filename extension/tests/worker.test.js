@@ -105,10 +105,16 @@ test('An expired session during AI polling clears authentication',async()=>{
 });
 test('Registration submits requested role without granting a session',async()=>{
  reset();store.session={enrollment_token:'synthetic-enrollment'};
+ responder=()=>({registered:true,username:'new-user',status:'pending_review'});
  await handleMessage({type:'REGISTER_VERIFY',code:'123456',role:'manager'});
  const payload=JSON.parse(calls.find(c=>c.url?.endsWith('/register/verify')).options.body);
  assert.equal(payload.role,'manager');assert.equal(payload.totp_code,'123456');
  assert.equal(store.session,undefined);
+ assert.equal(store.registrationReceipt.username,'new-user');
+ assert.equal(store.registrationReceipt.role,'manager');
+ assert(!JSON.stringify(store.registrationReceipt).includes('123456'));
+ assert.equal((await handleMessage({type:'STATE'})).registration_receipt.username,'new-user');
+ await handleMessage({type:'REGISTRATION_CONTINUE'});assert.equal(store.registrationReceipt,undefined);
 });
 test('A delayed profile refresh cannot restore a signed-out session',async()=>{
  reset();store.session={token:'old-token',expires_at:new Date(Date.now()+60000).toISOString()};

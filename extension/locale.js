@@ -18,6 +18,14 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'Create a new account':'إنشاء حساب جديد', 'New here?':'مستخدم جديد؟',
+ 'Registration submitted':'تم إرسال طلب التسجيل', 'Submitted to API':'أُرسل إلى API',
+ 'Continue to log in':'المتابعة إلى تسجيل الدخول',
+ 'Authenticator verification is complete. The request was sent for approval. Sign in after a reviewer approves it.':'اكتمل التحقق بتطبيق المصادقة وأُرسل الطلب للموافقة. سجّل الدخول بعد اعتماد الطلب من المسؤول.',
+ 'Ask a higher-role reviewer to open Accounts → Pending registrations. The head administrator can review all lower roles.':'اطلب من مسؤول أعلى صلاحية فتح الحسابات ← طلبات التسجيل المعلقة. يستطيع رئيس المسؤولين مراجعة جميع الأدوار الأدنى.',
+ 'Continue after approval. This confirmation records submission, not approval.':'تابع بعد الحصول على الموافقة. يؤكد هذا الإشعار إرسال الطلب فقط ولا يعني الموافقة عليه.',
+ 'Only accounts that completed authenticator verification appear here. This list refreshes automatically while you are not editing a review.':'تظهر هنا الحسابات التي أكملت التحقق بتطبيق المصادقة فقط. تتحدث القائمة تلقائياً عندما لا تكون بصدد تعديل مراجعة.',
+ 'Sign-in was not accepted. New users must create an account, finish authenticator verification and receive approval before logging in. Approved users should check their username and password.':'لم يُقبل تسجيل الدخول. يجب على المستخدم الجديد إنشاء حساب وإكمال التحقق بتطبيق المصادقة والحصول على الموافقة أولاً. على المستخدم المعتمد التأكد من اسم المستخدم وكلمة المرور.',
  'Configured API address':'عنوان API المستخدم',
  'On another device, install the public HTTPS ZIP. Localhost connects only to the device running Chrome.':'على جهاز آخر، ثبّت حزمة HTTPS العامة. يتصل localhost بالجهاز الذي يعمل عليه Chrome فقط.',
  'Open the configured address with /health in Chrome. The host API and temporary public tunnel must be running.':'افتح العنوان المستخدم مع إضافة /health في Chrome. يجب تشغيل API والاتصال العام المؤقت على الجهاز المضيف.',

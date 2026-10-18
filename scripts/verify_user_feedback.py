@@ -59,7 +59,8 @@ def verify():
             EXTSECURE_TEST_HEAD_SECRET=head_secret,EXTSECURE_TEST_SCAN=scan['id'])
         node=env.get('EXTSECURE_NODE') or shutil.which('node')
         if not node:raise RuntimeError('Set EXTSECURE_NODE to the Node executable')
-        result=subprocess.run([node,str(ROOT/'extension/tests/user-feedback-browser.mjs')],env=env,cwd=ROOT,
+        scenario='registration-browser.mjs' if os.environ.get('EXTSECURE_TEST_SCENARIO')=='registration' else 'user-feedback-browser.mjs'
+        result=subprocess.run([node,str(ROOT/'extension/tests'/scenario)],env=env,cwd=ROOT,
             capture_output=True,text=True,encoding='utf-8',timeout=180,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
         print(result.stdout,flush=True)
