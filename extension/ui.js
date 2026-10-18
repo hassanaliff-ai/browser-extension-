@@ -13,6 +13,7 @@ import {connectionBadge,connectionPanel,filterRecords,requestedRole,updateAccoun
 import {updateAccessDecision} from './review-controls.js';
 
 import {lookupFeedback} from './scan-feedback.js';
+import {feedbackSubmission,feedbackCreateBody,feedbackReviewBody,FEEDBACK_OUTCOMES} from './user-feedback.js';
 
 import {consoleNavigation,filterConsoleNavigation,toggleConsoleNavigation} from './console-navigation.js';
 
@@ -34,6 +35,7 @@ let state={},view='',authMode='login',qr='',manualSecret='',pageData={},selected
 
 let extensionDevice='',extensionRemoved=false;
 let qrLink=null,filenameSignal=null;
+let feedbackOffset=0,feedbackStatus='';
 let devicePairing=null,deviceFilter='all',connectionStatus='unchecked',toastTimer,monthlyOpen=false;
 
 async function checkConnection(silent=false){
@@ -120,6 +122,7 @@ const VIEWS=[
 
  ['blocks','Threat blocklist','lock','Investigate','Review automatically blocked threats and their linked investigations.'],
  ['cases','Incident cases','case','Investigate','Assign an investigation, record evidence and track it through resolution.'],
+ ['feedback','User feedback','help','Investigate','Report a concern about a scan and follow administrator review.'],
 
  ['access','Website access','globe','Investigate','Request website access or review approvals before a blocked page can open.'],
 
@@ -271,6 +274,7 @@ async function overview(){
 function resultCard(result,compact=false){
 
   pageData.inspectedScan=result;
+  const feedbackForm=feedbackSubmission(result,{details,form,select,textarea,notice});
 
   const feedback=lookupFeedback(result);
   const filenameNotice=filenameWarning(result.local_filename_signal);
@@ -281,11 +285,11 @@ function resultCard(result,compact=false){
 
     const metadata=`<div class="stack"><p class="code" data-no-translate>${esc(result.target_display)}</p>${!result.findings?.length?findingContent:''}<p class="meta"><span>Policy</span> <bdi data-no-translate>${esc(result.risk_policy_version??'—')}</bdi></p><p class="meta"><span>Reference</span> <bdi data-no-translate>${esc(result.id??'—')}</bdi></p><p class="meta">Risk is scored by the backend.</p>${feedback&&!feedback.warning?`<p class="meta">${esc(feedback.message)}</p>${feedback.cached?'<p class="meta">Cached reputation result</p>':''}`:''}${btn('Download scan evidence','download-scan','small')}</div>`;
 
-    return `${filenameNotice}<section class="panel results compact-result stack risk-${esc(String(result.severity??'Unknown').toLowerCase())}" aria-label="Risk assessment"><div class="result-heading"><h2>Risk result</h2>${tag(result.severity)}</div><div class="result-score"><div class="score">${result.score===null||result.score===undefined?'—':number(result.score)}<small> / 100</small></div>${tag(result.completeness)}</div>${result.target_kind==='download'?`<p class="code" data-no-translate>${esc(result.target_display)}</p>`:''}${notice(result.suggested_action??'Review available evidence before proceeding.',result.containment?.active||result.severity==='High'||result.severity==='Critical'?'warning':'',true)}${result.findings?.length?findingContent:''}${result.unknown_codes?.length?notice('Unavailable checks: '+result.unknown_codes.join(', '),'warning'):''}${feedback?.warning?`<div class="notice ${feedback.warning?'warning':''}"><span>${esc(feedback.message)}</span>${feedback.retry?`<p class="meta"><span>Retry after</span> <bdi>${number(feedback.retry)}</bdi> <span>seconds.</span></p>`:''}${feedback.cached?'<p class="meta">Cached reputation result</p>':''}</div>`:''}${result.override_id?notice('An administrator exception applies. Original risk evidence remains recorded.','warning'):''}<p class="meta">${result.severity==='Unknown'?'No usable evidence was available for this assessment. Unknown is not a safe result.':'The score reflects confirmed rules and available evidence. Low does not guarantee safety.'}</p>${details('Scan details',metadata)}</section>${btn('Open evidence workspace','open-history','ghost full result-workspace')}`;
+    return `${filenameNotice}<section class="panel results compact-result stack risk-${esc(String(result.severity??'Unknown').toLowerCase())}" aria-label="Risk assessment"><div class="result-heading"><h2>Risk result</h2>${tag(result.severity)}</div><div class="result-score"><div class="score">${result.score===null||result.score===undefined?'—':number(result.score)}<small> / 100</small></div>${tag(result.completeness)}</div>${result.target_kind==='download'?`<p class="code" data-no-translate>${esc(result.target_display)}</p>`:''}${notice(result.suggested_action??'Review available evidence before proceeding.',result.containment?.active||result.severity==='High'||result.severity==='Critical'?'warning':'',true)}${result.findings?.length?findingContent:''}${result.unknown_codes?.length?notice('Unavailable checks: '+result.unknown_codes.join(', '),'warning'):''}${feedback?.warning?`<div class="notice ${feedback.warning?'warning':''}"><span>${esc(feedback.message)}</span>${feedback.retry?`<p class="meta"><span>Retry after</span> <bdi>${number(feedback.retry)}</bdi> <span>seconds.</span></p>`:''}${feedback.cached?'<p class="meta">Cached reputation result</p>':''}</div>`:''}${result.override_id?notice('An administrator exception applies. Original risk evidence remains recorded.','warning'):''}<p class="meta">${result.severity==='Unknown'?'No usable evidence was available for this assessment. Unknown is not a safe result.':'The score reflects confirmed rules and available evidence. Low does not guarantee safety.'}</p>${details('Scan details',metadata)}${feedbackForm}</section>${btn('Open evidence workspace','open-history','ghost full result-workspace')}`;
 
   }
 
-  return `${filenameNotice}<section class="panel results stack risk-${esc(String(result.severity??'Unknown').toLowerCase())}" aria-label="Risk assessment"><div class="row between"><h2>Risk result</h2>${tag(result.severity)}</div><div class="row between"><div class="score">${result.score===null||result.score===undefined?'—':number(result.score)}<small> / 100</small></div><div>${tag(result.completeness)}<div class="meta mt14"><span>Policy</span> <bdi>${esc(short(result.risk_policy_version))}</bdi></div></div></div><p class="code">${esc(result.target_display)}</p>${notice(result.suggested_action??'Review available evidence before proceeding.',result.containment?.active||result.severity==='High'||result.severity==='Critical'?'warning':'',true)}<div>${result.findings?.length?`<h3>Confirmed findings</h3><ul class="result-list">${result.findings.map(r=>`<li><strong data-no-translate>${esc(r.title)}</strong> · ${number(r.points)} points<br>${evidence(r.detail)}</li>`).join('')}</ul>`:empty('No confirmed findings',result.severity==='Unknown'?'No usable evidence was available for this assessment. Unknown is not a safe result.':'This assessment found no confirmed signals in the checks performed.')}</div>${result.unknown_codes?.length?notice('Unavailable checks: '+result.unknown_codes.join(', '),'warning'):''}${feedback?`<div class="notice ${feedback.warning?'warning':''}"><span>${esc(feedback.message)}</span>${feedback.retry?`<p class="meta mt14"><span>Retry after</span> <bdi>${number(feedback.retry)}</bdi> <span>seconds.</span></p>`:''}${feedback.cached?'<p class="meta mt14">Cached reputation result</p>':''}</div>`:''}${result.override_id?notice('An administrator exception applies. Original risk evidence remains recorded.','warning'):''}<div class="status-rail"><span><span>Reference</span> <bdi>${esc(short(result.id))}</bdi></span><span>Risk is scored by the backend.</span></div><p class="meta">The score reflects confirmed rules and available evidence. Low does not guarantee safety.</p>${btn('Download scan evidence','download-scan','small ghost')}</section>${compact?btn('Open evidence workspace','open-history','dark full'):explanationForm(result)}`;
+  return `${filenameNotice}<section class="panel results stack risk-${esc(String(result.severity??'Unknown').toLowerCase())}" aria-label="Risk assessment"><div class="row between"><h2>Risk result</h2>${tag(result.severity)}</div><div class="row between"><div class="score">${result.score===null||result.score===undefined?'—':number(result.score)}<small> / 100</small></div><div>${tag(result.completeness)}<div class="meta mt14"><span>Policy</span> <bdi>${esc(short(result.risk_policy_version))}</bdi></div></div></div><p class="code">${esc(result.target_display)}</p>${notice(result.suggested_action??'Review available evidence before proceeding.',result.containment?.active||result.severity==='High'||result.severity==='Critical'?'warning':'',true)}<div>${result.findings?.length?`<h3>Confirmed findings</h3><ul class="result-list">${result.findings.map(r=>`<li><strong data-no-translate>${esc(r.title)}</strong> · ${number(r.points)} points<br>${evidence(r.detail)}</li>`).join('')}</ul>`:empty('No confirmed findings',result.severity==='Unknown'?'No usable evidence was available for this assessment. Unknown is not a safe result.':'This assessment found no confirmed signals in the checks performed.')}</div>${result.unknown_codes?.length?notice('Unavailable checks: '+result.unknown_codes.join(', '),'warning'):''}${feedback?`<div class="notice ${feedback.warning?'warning':''}"><span>${esc(feedback.message)}</span>${feedback.retry?`<p class="meta mt14"><span>Retry after</span> <bdi>${number(feedback.retry)}</bdi> <span>seconds.</span></p>`:''}${feedback.cached?'<p class="meta mt14">Cached reputation result</p>':''}</div>`:''}${result.override_id?notice('An administrator exception applies. Original risk evidence remains recorded.','warning'):''}<div class="status-rail"><span><span>Reference</span> <bdi>${esc(short(result.id))}</bdi></span><span>Risk is scored by the backend.</span></div><p class="meta">The score reflects confirmed rules and available evidence. Low does not guarantee safety.</p>${btn('Download scan evidence','download-scan','small ghost')}</section>${feedbackForm}${compact?btn('Open evidence workspace','open-history','dark full'):explanationForm(result)}`;
 
 }
 
@@ -369,7 +373,15 @@ async function access(){
 
 
 
-const renderers={blocks,access,settings,overview,scan,files,alerts,history:()=>scanHistory(false),myhistory:()=>scanHistory(true),risks,overrides,reports,accounts,cases,privacy,evaluation,usability,guidance,account,
+async function userFeedbackPage(){
+ const reviewer=['head_administrator','administrator'].includes(state.profile?.role);
+ const rows=await api(`feedback?${feedbackStatus?'status='+feedbackStatus+'&':''}limit=50&offset=${feedbackOffset}`);
+ const row=rows.find(r=>r.id===selected)??rows[0];selected=row?.id??'';
+ pageData={rows,row,personal:state.profile?.role==='normal_user'};
+ return `<section class="panel stack"><h2>${reviewer?'Review user feedback':'My security feedback'}</h2>${notice('Feedback is linked to original scan evidence. Review decisions do not automatically change scores, exceptions or threat blocks.')}${select('Filter status','feedback_status',[['','All feedback'],['pending','Pending review'],['reviewed','Reviewed']],feedbackStatus)}${table(rows,[['Destination','target_display'],['Risk',r=>tag(r.severity)],['Feedback type',r=>esc(r.category==='suspicious_result'?'Suspicious result':'Warning challenge')],['Submitted by','reporter'],['Status',r=>tag(r.status)],['Submitted',r=>esc(date(r.created_at))]])}<div class="row">${btn('Previous','feedback-previous','small',feedbackOffset?'':'disabled')}${btn('Next','feedback-next','small',rows.length===50?'':'disabled')}</div></section>${row?`<section class="panel stack"><h2>Feedback details</h2>${selectRows('Feedback',rows,selected)}<p class="meta">Scan reference: <bdi data-no-translate>${esc(row.scan_id)}</bdi></p>${btn('Inspect original scan','inspect-scan','small',`data-id="${esc(row.scan_id)}"`)}<h3>User explanation</h3><p class="feedback-copy" data-no-translate>${esc(row.message)}</p>${row.status==='reviewed'?`<h3>Administrator decision</h3><p>${esc(FEEDBACK_OUTCOMES.find(([key])=>key===row.outcome)?.[1]??row.outcome)}</p><p class="feedback-copy" data-no-translate>${esc(row.review_note)}</p><p class="meta">${esc(row.reviewed_by)} · ${esc(date(row.reviewed_at))}</p>`:reviewer?form('feedback-review',select('Review outcome','outcome',FEEDBACK_OUTCOMES)+textarea('Review explanation','review_note','','required minlength="10" maxlength="2000"')+notice('Review the original evidence before recording a decision. Any block release requires the existing separate investigation workflow.'),'Record review'):notice('Waiting for administrator review. Existing protections remain active.')}</section>`:''}`;
+}
+
+const renderers={feedback:userFeedbackPage,blocks,access,settings,overview,scan,files,alerts,history:()=>scanHistory(false),myhistory:()=>scanHistory(true),risks,overrides,reports,accounts,cases,privacy,evaluation,usability,guidance,account,
 
  findings:()=>listPage('findings',[['Finding','title'],['Risk',r=>tag(r.severity)],['Points','points'],['Evidence','detail'],['Detected',r=>esc(date(r.created_at))],['Scan',r=>btn('Inspect','inspect-scan','small',`data-id="${esc(r.scan_id)}"`)]]),
 
@@ -484,6 +496,7 @@ app.addEventListener('click',async event=>{
     if(action==='scan-active'){scanResult=await send({type:'SCAN_URL',target:pageData.active.url,includePath:false});await renderPopup();}
 
     if(action==='open-block-case'){if(!allowedViews().some(r=>r[0]==='cases'))throw new Error('Incident access is not available for this role.');view='cases';selected=button.dataset.id;pageData={};window.history.replaceState(null,'','#cases');await renderView();return;}
+    if(action==='feedback-next'||action==='feedback-previous'){feedbackOffset=Math.max(0,feedbackOffset+(action==='feedback-next'?50:-50));selected='';await renderView();return;}
     if(action==='inspect-scan'){const r=await api((pageData.personal?'my/scans/':'scans/')+button.dataset.id);shell(resultCard(r)+btn('Back to results','refresh'));}
 
     if(action==='run-ml'){const p=reportPeriod(period),r=await api(`reports/monthly/ml?year=${p.year}&month=${p.month}`);pageData.ml=r;document.querySelector('#ml-result').innerHTML=r.status==='ready'?notice(`${r.unusual_days.length} unusual days. ${r.active_training_days} active historical days. These results support review, not a threat verdict.`)+table(r.daily_results,[['Day','date'],['Scans','scans'],['Unusual','unusual']])+notice(r.limitation,'',true)+btn('Download ML evidence','download-ml','small'):notice(r.reason??'Insufficient historical observations.','warning')+btn('Download ML evidence','download-ml','small');}
@@ -576,6 +589,8 @@ app.addEventListener('submit',async event=>{
     else if(action==='case-safety')await commit('cases/'+selected+'/safety',incidentActionBody(action,data,pageData.row));
     else if(action==='case-block-device')await commit('cases/'+selected+'/block-device',incidentActionBody(action,data,pageData.row));
     else if(action==='case-remove'){await api('cases/'+selected+'/remove','POST',incidentActionBody(action,data,pageData.row));selected='';await renderView();toast('Incident removed. Scan evidence and threat blocks remain.');}
+    else if(action==='feedback-submit'){await api('feedback','POST',feedbackCreateBody(data));if(popup){f.innerHTML=notice('Feedback submitted. Track the administrator decision in Dashboard → User feedback.');}else{await navigate('feedback');}toast('Feedback sent for administrator review.');}
+    else if(action==='feedback-review')await commit('feedback/'+selected+'/review',feedbackReviewBody(data,pageData.row));
     else if(action==='case-note')await commit('cases/'+selected+'/notes',{body:data.body});
 
     else if(action==='case-status')await commit('cases/'+selected+'/status',{status:data.status,assignee:data.assignee,reason:data.reason,expected_revision:pageData.row.revision});
@@ -604,6 +619,7 @@ app.addEventListener('submit',async event=>{
 app.addEventListener('toggle',event=>{if(event.target.classList.contains('monthly-workspace'))monthlyOpen=event.target.open;},true);
 
 app.addEventListener('change',event=>{
+ if(event.target.name==='feedback_status'){feedbackStatus=event.target.value;feedbackOffset=0;selected='';void renderView();return;}
  if(event.target.name==='extension_removed'){if(busy||loading)return;extensionRemoved=event.target.checked;void renderView();return;}
  if(event.target.name==='qrImage'){qrLink=null;scanResult=null;const review=app.querySelector('[data-form="qr-scan"]');if(review)review.closest('.stack').remove();}
  if(event.target.name==='file'){const signal=inspectFilename(event.target.files?.[0]?.name);const warning=event.target.form?.querySelector('[data-filename-warning]');if(warning){warning.hidden=!signal.warning;warning.innerHTML=filenameWarning(signal);}return;}
