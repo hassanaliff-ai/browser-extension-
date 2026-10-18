@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "SecureScope",
+  "version": "0.9.1",
+  "description": "Prototype that checks visited sites, pasted links, and page links locally for risk indicators.",
+
+  "permissions": [
+    "webNavigation",
+    "alarms",
+    "notifications",
+    "storage"
+  ],
+
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["inline-links.js"],
+      "css": ["inline-links.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "securescope@bahrainpolytechnic.example",
+      "strict_min_version": "109.0"
+    }
+  }
+}

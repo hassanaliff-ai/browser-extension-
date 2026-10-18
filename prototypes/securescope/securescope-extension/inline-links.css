@@ -1,0 +1,21 @@
+.securescope-inline-badge {
+  display: inline-block !important;
+  margin-inline-start: 0.3em !important;
+  padding: 0.1em 0.4em !important;
+  border: 1px solid currentColor !important;
+  border-radius: 0.35em !important;
+  font: 600 11px/1.35 Arial, sans-serif !important;
+  vertical-align: baseline !important;
+  background: #fff8e6 !important;
+  color: #6b3b00 !important;
+}
+
+.securescope-inline-badge[data-severity="high"] {
+  background: #fff0e7 !important;
+  color: #8a2d00 !important;
+}
+
+.securescope-inline-badge[data-severity="critical"] {
+  background: #ffe8e8 !important;
+  color: #8f1010 !important;
+}

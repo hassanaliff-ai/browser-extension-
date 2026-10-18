@@ -1,5 +1,13 @@
 # ExtSecure browser extension and backend
 
+## Basel's SecureScope proof of concept
+
+Basel's Chrome extension, RDAP domain-age module, local FastAPI endpoints, and
+offline reputation adapter are in [`prototypes/securescope/`](prototypes/securescope/README.md).
+This is a separate prototype for controlled testing. It is not connected to the
+ExtSecure extension or backend at the repository root, and its browser-to-backend
+requests remain disabled.
+
 Version 0.8.18 adds installed-extension inventory by device with audited On, Off, Block and Remove controls. See [Extension inventory controls](docs/Extension%20Inventory%20Controls.md).
 
 Version 0.8.17 adds local QR-image decoding with explicit destination reputation checks and immediate misleading-filename warnings. Both work in the toolbar popup and console. See [QR and filename safety](docs/QR%20and%20Filename%20Safety.md).

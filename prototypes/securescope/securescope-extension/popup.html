@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SecureScope</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main class="app">
+    <header>
+      <img src="icons/icon48.png" alt="" class="logo" />
+      <h1>SecureScope</h1>
+    </header>
+    <p class="intro">Check a website link before you open it.</p>
+    <form id="check-form">
+      <label for="url-input">Website URL</label>
+      <input id="url-input" name="url" type="text" inputmode="url"
+             placeholder="https://example.com" maxlength="4096"
+             autocomplete="off" autocapitalize="off" spellcheck="false" required />
+      <button id="check-button" type="submit">Check link</button>
+    </form>
+    <p class="privacy-note">Checks the site address only. Paths, search terms, and URL tokens are not analyzed or saved.</p>
+    <section id="result" class="result" aria-live="polite" hidden>
+      <div class="result-heading">
+        <h2>Result</h2>
+        <strong id="result-severity" class="severity"></strong>
+      </div>
+      <p id="result-url" class="result-url"></p>
+      <p id="result-coverage" class="coverage"></p>
+      <ul id="result-reasons" class="reasons"></ul>
+    </section>
+    <section class="history-section" aria-labelledby="history-heading">
+      <div class="history-heading">
+        <h2 id="history-heading">Recent checks</h2>
+        <button id="clear-history" type="button" class="text-button">Clear</button>
+      </div>
+      <p id="history-empty" class="empty">No checks yet.</p>
+      <ul id="history-list" class="history-list"></ul>
+    </section>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
