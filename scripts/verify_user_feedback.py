@@ -24,6 +24,9 @@ def verify():
     import re
     core.write_text(re.sub(r"export const API_ORIGIN = '[^']+';",f"export const API_ORIGIN = '{origin}';",core.read_text(encoding='utf-8')),encoding='utf-8')
     manifest=extension/'manifest.json'; data=json.loads(manifest.read_text(encoding='utf-8'))
+    if os.environ.get('EXTSECURE_TEST_SCENARIO')=='inventory':
+        data['permissions'].append('management')
+        data['optional_permissions']=[p for p in data['optional_permissions'] if p!='management']
     data['content_security_policy']['extension_pages']=re.sub(r'connect-src [^;]+;',f'connect-src {origin};',data['content_security_policy']['extension_pages'])
     manifest.write_text(json.dumps(data),encoding='utf-8')
     password=secrets.token_urlsafe(24); head_secret=pyotp.random_base32(); user_secret=pyotp.random_base32()
@@ -59,7 +62,7 @@ def verify():
             EXTSECURE_TEST_HEAD_SECRET=head_secret,EXTSECURE_TEST_SCAN=scan['id'])
         node=env.get('EXTSECURE_NODE') or shutil.which('node')
         if not node:raise RuntimeError('Set EXTSECURE_NODE to the Node executable')
-        scenario='registration-browser.mjs' if os.environ.get('EXTSECURE_TEST_SCENARIO')=='registration' else 'user-feedback-browser.mjs'
+        scenario={'registration':'registration-browser.mjs','inventory':'inventory-browser.mjs'}.get(os.environ.get('EXTSECURE_TEST_SCENARIO'),'user-feedback-browser.mjs')
         result=subprocess.run([node,str(ROOT/'extension/tests'/scenario)],env=env,cwd=ROOT,
             capture_output=True,text=True,encoding='utf-8',timeout=180,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)

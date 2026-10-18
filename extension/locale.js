@@ -18,6 +18,11 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'Inventory synced':'تمت مزامنة الجرد', 'Inventory not synced':'لم تتم مزامنة الجرد',
+ 'Full inventory not synced':'لم تتم مزامنة الجرد الكامل',
+ 'Device registration is complete. Allow Chrome inventory access once to upload all installed extensions in this Chrome profile.':'اكتمل تسجيل الجهاز. اسمح بالوصول إلى جرد Chrome مرة واحدة لرفع جميع الإضافات المثبتة في ملف Chrome هذا.',
+ 'Full inventory has not been synced from this device. On that device, open My account, click Connect Chrome extensions and allow Chrome inventory permission.':'لم تتم مزامنة الجرد الكامل من هذا الجهاز. افتح حسابي عليه، ثم اضغط ربط إضافات Chrome وامنح إذن الجرد.',
+ 'Only extensions installed in the connected Chrome profile are included. Other Chrome profiles and browsers need their own connection.':'يشمل الجرد الإضافات المثبتة في ملف Chrome المرتبط فقط. تحتاج الملفات والمتصفحات الأخرى إلى اتصال مستقل.',
  'Registration submitted':'تم إرسال طلب التسجيل', 'Submitted to API':'أُرسل إلى API',
  'Continue to log in':'المتابعة إلى تسجيل الدخول',
  'Authenticator verification is complete. The request was sent for approval. Sign in after a reviewer approves it.':'اكتمل التحقق بتطبيق المصادقة وأُرسل الطلب للموافقة. سجّل الدخول بعد اعتماد الطلب من المسؤول.',

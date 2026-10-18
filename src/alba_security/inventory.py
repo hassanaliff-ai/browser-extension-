@@ -221,6 +221,7 @@ def browser_state(db, request):
     return {'removed':bool(device and device.inventory_removed),'enrollment_required': bool(policy and policy.enrollment_required),
             'device_id': row.device_id if row else None,
             'device_name': db.get(Device, row.device_id).name if row else None,
+            'last_sync': iso(row.last_sync) if row else None,
             'blocked': bool(row and row.blocked and not is_pending(db, row)),
             'trusted': bool(row and not row.blocked and not is_pending(db, row)),
             'pending': is_pending(db, row), 'linked': bool(row)}
@@ -308,6 +309,24 @@ def save_extensions(db, row, items, *, full_snapshot=False):
     db.get(Device, row.device_id).last_seen = now
     if full_snapshot:
         row.last_sync = now
+
+
+def save_browser_inventory(db, row, payload, actor):
+    if row.chrome_extension_id not in {item.id for item in payload.extensions if item.enabled}:
+        raise HTTPException(422, 'The enabled ExtSecure extension must be included in the snapshot.')
+    previous=list(db.execute(select(Extension.extension_key,Extension.name,Extension.version,
+        ChromeObservation.enabled,ChromeObservation.may_disable,ChromeObservation.may_enable)
+        .join(ChromeObservation,ChromeObservation.extension_id==Extension.id)
+        .where(Extension.device_id==row.device_id,ChromeObservation.present.is_(True))))
+    incoming=[(item.id,item.name,item.version,item.enabled,item.may_disable,item.may_enable) for item in payload.extensions]
+    changed=row.last_sync is None or sorted(tuple(item) for item in previous)!=sorted(incoming)
+    save_extensions(db, row, payload.extensions, full_snapshot=True)
+    if changed:
+        audit(db, 'inventory', row.device_id, actor, 'chrome_inventory_synced',
+              enabled_count=sum(item.enabled for item in payload.extensions), installed_count=len(payload.extensions))
+    db.commit()
+    return {'device_id':row.device_id, 'enabled_count':sum(item.enabled for item in payload.extensions),
+            'installed_count':len(payload.extensions), 'last_sync':iso(row.last_sync)}
 
 
 def apply_device_decision(db, device_id, payload, actor):
@@ -511,10 +530,4 @@ def install_inventory(app, session_scope, require_actor, directory):
             row=browser_registration(db,request)
         if not row or row.blocked:
             raise HTTPException(403, 'Link an active device before syncing Chrome inventory.')
-        # The inventory API describes a client snapshot, not independent endpoint attestation.
-        if row.chrome_extension_id not in {item.id for item in payload.extensions if item.enabled}:
-            raise HTTPException(422, 'The enabled ExtSecure extension must be included in the snapshot.')
-        save_extensions(db, row, payload.extensions, full_snapshot=True)
-        audit(db, 'inventory', row.device_id, actor, 'chrome_inventory_synced', enabled_count=sum(item.enabled for item in payload.extensions), installed_count=len(payload.extensions))
-        db.commit()
-        return {'device_id': row.device_id, 'enabled_count': sum(item.enabled for item in payload.extensions), 'installed_count':len(payload.extensions), 'last_sync': iso(row.last_sync)}
+        return save_browser_inventory(db,row,payload,actor)

@@ -26,6 +26,7 @@ def package(origin):
         archive.writestr('INSTALL ON ANOTHER DEVICE.txt',f'''ExtSecure temporary public API
 API: {origin}
 Extract the ZIP. Open chrome://extensions, enable Developer mode, click Load unpacked and choose this extracted folder. Register/sign in using your own account, complete its approval and authenticator verification, then Add this device and complete device approval. Click Connect Chrome extensions to include installed extensions. No custom certificate installation is needed.
+Updating an existing unpacked copy: replace files in the SAME existing folder, then click Reload on ExtSecure at chrome://extensions. Do not clear its browser data. In My account, click Connect Chrome extensions and allow the inventory permission once. Inventory includes enabled and disabled extensions in this Chrome profile, and refreshes on changes and every minute while Chrome is running. GitHub uploads do not automatically update unpacked extensions; Chrome Web Store distribution is needed for ordinary Chrome-managed automatic updates.
 The host laptop must stay on with its API and tunnel running. This URL is temporary and changes when the tunnel is recreated; obtain a rebuilt ZIP after a change. This is a testing endpoint until Basel supplies the permanent API. Only approved accounts/devices can use protected features.
 ''')
     return output

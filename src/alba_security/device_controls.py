@@ -18,7 +18,7 @@ class ControlWakeups:
             while len(self.values)>4096:self.values.popitem(last=False)
 
 def install_device_controls(app,session_scope):
-    from alba_security.inventory import browser_registration,is_pending,DeviceEnrollment,ChromeObservation
+    from alba_security.inventory import browser_registration,is_pending,DeviceEnrollment,ChromeObservation,ChromeSnapshot,lock_inventory_device,save_browser_inventory
     wakeups=ControlWakeups();app.state.extension_control_wakeups=wakeups
     @app.post('/api/device/heartbeat')
     def heartbeat(request:Request,db=Depends(session_scope)):
@@ -39,6 +39,17 @@ def install_device_controls(app,session_scope):
         if not device or device.inventory_removed or (enrollment and enrollment.status!='approved'):
             raise HTTPException(403,'Approved device connection required.')
         return row
+
+    @app.post('/api/device/inventory')
+    def inventory(payload:ChromeSnapshot,request:Request,db=Depends(session_scope)):
+        row=own(db,request)
+        lock_inventory_device(db,row.device_id)
+        db.refresh(row)
+        row=own(db,request)
+        if row.blocked:raise HTTPException(403,'This device is blocked.')
+        # The credential selects the only writable device; no caller-supplied
+        # device/account identity can redirect a snapshot to another computer.
+        return save_browser_inventory(db,row,payload,'device:'+row.device_id)
     def commands(db,row):
         items=db.execute(select(ExtensionControl,Extension).join(Extension,Extension.id==ExtensionControl.extension_id).where(Extension.device_id==row.device_id,Extension.inventory_removed.is_(False)))
         return [{'extension_id':item.id,'chrome_id':item.extension_key,'device_id':row.device_id,**control_data(control)} for control,item in items if item.extension_key!=row.chrome_extension_id and (control.status=='pending' or control.desired=='blocked')]

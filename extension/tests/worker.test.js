@@ -247,12 +247,16 @@ test('Chrome permission must be granted before extension metadata is read',async
 test('Inventory cannot sync from an unpaired browser',async()=>{
  reset();signed();await assert.rejects(handleMessage({type:'SYNC_INVENTORY'}),/Link this Chrome/);assert.equal(calls.some(c=>c.options),false);
 });
-test('A paired browser without an account session cannot read or upload Chrome inventory',async()=>{
- reset();localStore.deviceCredential={token:'test-device-token'};const original=chrome.management.getAll;let reads=0;
- chrome.management.getAll=async()=>{reads++;return [];};
- try{await assert.rejects(handleMessage({type:'SYNC_INVENTORY'}),error=>error.status===401);assert.equal(reads,0);assert.equal(calls.some(c=>c.options),false);}
- finally{chrome.management.getAll=original;}
+test('An approved paired browser keeps installed inventory current while signed out',async()=>{
+ reset();localStore.deviceCredential={token:'test-device-token'};const original=chrome.management.getAll;
+ chrome.management.getAll=async()=>[{id:'a'.repeat(32),name:'ExtSecure',version:'1',enabled:true,type:'extension'},{id:'b'.repeat(32),name:'Disabled',version:'1',enabled:false,type:'extension'}];
+ responder=url=>url.includes('/api/device/extension-controls')?{cursor:0,commands:[]}:{installed_count:2,enabled_count:1};
+ try{const result=await handleMessage({type:'SYNC_INVENTORY'});assert.equal(result.installed_count,2);
+  const call=calls.find(c=>c.url?.endsWith('/api/device/inventory'));assert.equal(JSON.parse(call.options.body).extensions.length,2);
+  assert.equal(call.options.headers.Authorization,undefined);assert.equal(call.options.headers['X-ExtSecure-Device'],'test-device-token');assert.equal(store.session,undefined);
+ }finally{chrome.management.getAll=original;}
 });
+
 test('Chrome sync sends a minimal installed snapshot and records the explicit opt-in',async()=>{
  reset();signed();localStore.deviceCredential={token:'test-device-token'};const original=chrome.management.getAll;
  chrome.management.getAll=async()=>[{id:'a'.repeat(32),name:'ExtSecure',version:'0.7.0',enabled:true,type:'extension',permissions:['tabs']},{id:'b'.repeat(32),name:'Disabled',version:'1',enabled:false,type:'extension'}];
@@ -289,10 +293,10 @@ for(const detail of ['This device was removed. Reconnect through approved device
  try{await assert.rejects(handleMessage({type:'API',path:'/api/overview'}));assert.equal(sessionRules.length,0);assert.equal(store.session.token,'test-token');}
  finally{globalThis.fetch=previous;}
 });
-test('Inventory snapshots require sign-in; device control delivery continues while signed out',async()=>{
+test('Inventory events refresh signed-in and signed-out paired profiles',async()=>{
  reset();signed();localStore={deviceCredential:{token:'test-device-token'},inventoryConnected:true};
  hooks['inventory-enabled']();await flush();await flush();assert.equal(calls.filter(c=>c.url?.endsWith('/inventory/sync')).length,1);
- calls=[];delete store.session;hooks['inventory-disabled']();await flush();await flush();assert.equal(calls.some(c=>c.url?.endsWith('/inventory/sync')),false);
+ calls=[];delete store.session;responder=url=>{if(url.includes('cursor=0'))throw new Error('End test watch');return url.includes('/api/device/extension-controls')?{cursor:0,commands:[]}:{};};hooks['inventory-disabled']();await flush();await flush();assert.equal(calls.some(c=>c.url?.endsWith('/api/device/inventory')),true);
  assert(calls.some(c=>c.url?.includes('/api/device/extension-controls?cursor=-1')&&c.options.headers['X-ExtSecure-Device']==='test-device-token'&&!c.options.headers.Authorization));
 });
 

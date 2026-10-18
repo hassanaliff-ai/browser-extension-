@@ -30,7 +30,7 @@ globalThis.chrome={runtime:{id:'a'.repeat(32),sendMessage:async message=>{
   profile.inventory.linked=true;profile.inventory.device_name='Windows Chrome';
   return {ok:true,data:{linked:true,pending:false,blocked:false,inventory_status:'permission_required'}};
  }
- if(message.type==='SYNC_INVENTORY')return {ok:true,data:{enabled_count:3}};
+ if(message.type==='SYNC_INVENTORY')return {ok:true,data:{enabled_count:3,installed_count:5}};
  throw new Error('Unexpected message '+message.type);
 },reload:()=>reloads++},permissions:{request:()=>{permissionCalls++;return Promise.resolve(true);}}};
 globalThis.FormData=class {constructor(form){this.form=form;}*[Symbol.iterator](){yield* Object.entries(this.form.values??{});}};
@@ -93,7 +93,7 @@ test('Granted permission connects inventory through the dedicated worker message
  calls.length=0;let requested=false;
  chrome.permissions.request=()=>{requested=true;return Promise.resolve(true);};
  const pending=clickSync();assert.equal(requested,true);await pending;
- assert(calls.some(call=>call.type==='SYNC_INVENTORY'));assert.match(toast.textContent,/3 enabled Chrome extensions synced/);
+ assert(calls.some(call=>call.type==='SYNC_INVENTORY'));assert.match(toast.textContent,/5 installed extensions synced: 3 enabled, 2 disabled/);
 });
 test('Missing permission API is reported with recovery instructions',async()=>{
  calls.length=0;chrome.permissions.request=undefined;await clickSync();
