@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {connectionBadge,filterRecords,requestedRole,updateAccountReview,resetDestinationReview,validateReportPeriod,safeActiveTab} from '../workspace-kit.js';
+import {connectionBadge,connectionMessage,connectionPanel,filterRecords,requestedRole,updateAccountReview,resetDestinationReview,validateReportPeriod,safeActiveTab} from '../workspace-kit.js';
+
+test('Connection diagnostics distinguish localhost packages from public failures',()=>{
+ assert.match(connectionMessage({status:'offline',api_origin:'http://127.0.0.1:8765',reason:'network_error'}),/another device.*public HTTPS ZIP/);
+ const publicResult={status:'offline',api_origin:'https://public.example',reason:'timeout'};
+ assert.match(connectionMessage(publicResult),/timed out/);
+ assert.match(connectionMessage(publicResult),/https:\/\/public.example/);
+ assert.doesNotMatch(connectionMessage(publicResult),/start TestAPI/);
+ assert.match(connectionMessage({...publicResult,status:'ready'}),/configured API is reachable/);
+ assert.match(connectionMessage({...publicResult,reason:'http_error',http_status:502}),/HTTP 502/);
+ const html=connectionPanel('offline',{api_origin:'https://public.example/<script>'});
+ assert(!html.includes('<script>'));assert(html.includes('data-connection-detail'));
+});
 
 test('Weekly reports require a real, completed Monday-based UTC week',()=>{
  const now=new Date('2026-10-07T13:00:00Z');

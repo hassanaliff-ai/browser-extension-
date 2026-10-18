@@ -1,4 +1,4 @@
-import {escapeHtml as esc} from './core.js';
+import {escapeHtml as esc,API_ORIGIN} from './core.js';
 
 export function validateReportPeriod(kind,value,now=new Date()) {
   const month=/^20\d{2}-(0[1-9]|1[0-2])$/;
@@ -45,8 +45,17 @@ export function connectionBadge(status='unchecked') {
   return `<button type="button" class="connection-chip ${esc(status)}" data-action="check-connection" aria-label="Check API connection"><span class="dot" aria-hidden="true"></span><span>${esc(label)}</span></button>`;
 }
 
-export function connectionPanel(status='unchecked') {
-  return `<section class="panel stack"><div class="row between"><h2>Connection and recovery</h2><div data-connection-badge>${connectionBadge(status)}</div></div><p class="muted">Check the existing local API before running scans or generating reports.</p><ol class="recovery-steps"><li>Run Start ExtSecure.cmd from your installed project folder.</li><li>Reload ExtSecure on chrome://extensions after an update, then reopen its console.</li><li>Sign in with your approved account and authenticator. Add this Chrome device if requested.</li></ol><p class="meta">A connected API does not guarantee provider availability or a safe result.</p><p class="code">http://127.0.0.1:8765</p></section>`;
+export function connectionMessage(result={}) {
+  const origin=result.api_origin??API_ORIGIN;
+  if(result.status==='ready')return 'The configured API is reachable: '+origin;
+  const reason={timeout:'The connection timed out.',network_error:'Chrome could not connect to this address.',http_error:'The server returned HTTP '+(result.http_status??'error')+'.',invalid_response:'The server did not return a valid health response.',unexpected_service:'This address did not identify itself as ExtSecure TestAPI.'}[result.reason]??'The API could not be verified.';
+  const local=/^http:\/\/(127\.0\.0\.1|localhost)(?::\d+)?$/.test(origin);
+  return reason+' '+origin+' '+(local?'This package uses localhost. On another device, install the public HTTPS ZIP; on the host, start TestAPI.':'Check this address in Chrome using /health. If the temporary URL expired, install the latest public HTTPS ZIP, then reload ExtSecure.');
+}
+
+export function connectionPanel(status='unchecked',result={}) {
+  const origin=result.api_origin??API_ORIGIN,local=/^http:\/\//.test(origin);
+  return `<section class="panel stack"><div class="row between"><h2>Connection and recovery</h2><div data-connection-badge>${connectionBadge(status)}</div></div><p class="meta">Configured API address</p><p class="code" data-no-translate>${esc(origin)}</p><div data-connection-detail role="status">${status==='unchecked'?'':esc(connectionMessage({...result,status}))}</div><ol class="recovery-steps"><li>${local?'On another device, install the public HTTPS ZIP. Localhost connects only to the device running Chrome.':'Open the configured address with /health in Chrome. The host API and temporary public tunnel must be running.'}</li><li>Reload ExtSecure on chrome://extensions after replacing its files, then reopen its console.</li><li>Sign in with your approved account and authenticator. Add this Chrome device if requested.</li></ol><p class="meta">A connected API does not guarantee provider availability or a safe result.</p></section>`;
 }
 
 export function safeActiveTab(tab) {

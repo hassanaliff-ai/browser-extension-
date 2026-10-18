@@ -8,7 +8,7 @@ import {avatar,prepareLogo} from './account-logo.js';
 
 import {explanationForm,runExplanation,intelligenceReports,runPeriodReport,downloadPeriodReport,changePeriodInput} from './intelligence-ui.js';
 
-import {connectionBadge,connectionPanel,filterRecords,requestedRole,updateAccountReview,resetDestinationReview} from './workspace-kit.js';
+import {connectionBadge,connectionPanel,connectionMessage,filterRecords,requestedRole,updateAccountReview,resetDestinationReview} from './workspace-kit.js';
 
 import {updateAccessDecision} from './review-controls.js';
 
@@ -39,14 +39,15 @@ let qrLink=null,filenameSignal=null;
 let feedbackOffset=0,feedbackStatus='';
 let suggestionOffset=0,suggestionStatus='';
 let devicePairing=null,deviceFilter='all',connectionStatus='unchecked',toastTimer,monthlyOpen=false;
+let connectionResult={};
 
 async function checkConnection(silent=false){
 
  connectionStatus='checking';paintConnection();
 
- try{connectionStatus=(await send({type:'HEALTH'})).status;}catch{connectionStatus='offline';}
+ try{connectionResult=await send({type:'HEALTH'});connectionStatus=connectionResult.status;}catch{connectionResult={status:'offline',reason:'network_error'};connectionStatus='offline';}
 
- paintConnection();if(!silent)toast(connectionStatus==='ready'?'The local API is reachable. Provider checks may still be unavailable.':'The API is unavailable. Run Start ExtSecure.cmd, then check again.',connectionStatus!=='ready');
+ paintConnection();for(const element of app.querySelectorAll?.('[data-connection-detail]')??[])element.textContent=connectionMessage(connectionResult);if(!silent)toast(connectionMessage(connectionResult),connectionStatus!=='ready');
 
 }
 
@@ -356,7 +357,7 @@ async function account(){return deviceConnection()+`<div class="grid-even"><sect
 
 function preferencesForm(){const prefs=getPreferences();return form('preferences',`<div class="fields appearance-fields">${select('Appearance','theme',THEMES,prefs.theme)}${select('Table size','tableSize',TABLE_SIZES,prefs.tableSize)}${select('Language','language',LANGUAGES,prefs.language)}${select('Time zone','timeZone',TIME_ZONES,prefs.timeZone)}</div>`,'Save preferences','small');}
 
-async function settings(){const storage=['head_administrator','administrator'].includes(state.profile?.role)?databasePanel(await api('database/status')):'';return `<section class="panel stack"><h2>Appearance, language and time</h2><p class="muted">Arabic and English are supported. Times follow your selected zone; monthly report boundaries stay in UTC.</p>${preferencesForm()}${notice('These settings apply to the popup, console and blocked-page screen.')}${notice('Recorded evidence and administrator notes keep their original language.')}</section>`+connectionPanel(connectionStatus)+storage;}
+async function settings(){const storage=['head_administrator','administrator'].includes(state.profile?.role)?databasePanel(await api('database/status')):'';return `<section class="panel stack"><h2>Appearance, language and time</h2><p class="muted">Arabic and English are supported. Times follow your selected zone; monthly report boundaries stay in UTC.</p>${preferencesForm()}${notice('These settings apply to the popup, console and blocked-page screen.')}${notice('Recorded evidence and administrator notes keep their original language.')}</section>`+connectionPanel(connectionStatus,connectionResult)+storage;}
 
 async function access(){
 
@@ -654,7 +655,7 @@ window.addEventListener('hashchange',()=>{const key=location.hash.slice(1);if(st
 observeLocalization();
 observeTableSize(applyTableSize);
 
-try{const preferences=await send({type:'PREFERENCES'});setPreferences({...preferences,tableSize:await loadTableSize(preferences.tableSize)});state=await send({type:'STATE'});view=location.hash.slice(1);await renderView();}catch(error){app.innerHTML=previewNotice+`<main id="main" class="page stack recovery-page">${brand()}<h1>Reconnect to your workspace</h1>${error.code==='EXTENSION_UPDATE_REQUIRED'?recoveryContent(error):notice(error.message,'error')+connectionPanel(connectionStatus)+btn('Try again','refresh','primary')}</main>`;}
+try{const preferences=await send({type:'PREFERENCES'});setPreferences({...preferences,tableSize:await loadTableSize(preferences.tableSize)});state=await send({type:'STATE'});view=location.hash.slice(1);await renderView();}catch(error){app.innerHTML=previewNotice+`<main id="main" class="page stack recovery-page">${brand()}<h1>Reconnect to your workspace</h1>${error.code==='EXTENSION_UPDATE_REQUIRED'?recoveryContent(error):notice(error.message,'error')+connectionPanel(connectionStatus,connectionResult)+btn('Try again','refresh','primary')}</main>`;}
 
 
 

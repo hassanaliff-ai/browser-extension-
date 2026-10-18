@@ -45,6 +45,19 @@ test('Health checks work anonymously and never mislabel an unreachable API as co
  finally{globalThis.fetch=original;}
  reset();responder=()=>({status:'ok',service:'another service'});assert.equal((await handleMessage({type:'HEALTH'})).status,'offline');
 });
+
+test('Health diagnostics identify the configured origin, timeout and invalid responses',async()=>{
+ reset();const original=fetch;
+ try{
+  globalThis.fetch=async()=>{throw Object.assign(new Error('slow'),{name:'TimeoutError'});};
+  let result=await handleMessage({type:'HEALTH'});
+  assert.equal(result.status,'offline');assert.equal(result.reason,'timeout');assert.equal(result.api_origin,'http://127.0.0.1:8765');
+  globalThis.fetch=async()=>new Response('Unavailable',{status:503});
+  result=await handleMessage({type:'HEALTH'});assert.equal(result.http_status,503);assert.equal(result.reason,'http_error');
+  globalThis.fetch=async()=>new Response('<html>proxy</html>',{status:200});
+  result=await handleMessage({type:'HEALTH'});assert.equal(result.reason,'invalid_response');
+ }finally{globalThis.fetch=original;}
+});
 test('A successful delayed protected response cannot cross an account switch',async()=>{
  reset();store.session={token:'old-account',expires_at:new Date(Date.now()+60000).toISOString()};const original=fetch;let release;
  globalThis.fetch=async()=>new Promise(resolve=>release=()=>resolve(new Response(JSON.stringify([{secret:'old-account-record'}]))));

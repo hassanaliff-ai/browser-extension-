@@ -18,6 +18,10 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'Configured API address':'عنوان API المستخدم',
+ 'On another device, install the public HTTPS ZIP. Localhost connects only to the device running Chrome.':'على جهاز آخر، ثبّت حزمة HTTPS العامة. يتصل localhost بالجهاز الذي يعمل عليه Chrome فقط.',
+ 'Open the configured address with /health in Chrome. The host API and temporary public tunnel must be running.':'افتح العنوان المستخدم مع إضافة /health في Chrome. يجب تشغيل API والاتصال العام المؤقت على الجهاز المضيف.',
+ 'Reload ExtSecure on chrome://extensions after replacing its files, then reopen its console.':'بعد استبدال الملفات، أعد تحميل ExtSecure من chrome://extensions ثم افتح لوحة التحكم مجدداً.',
  'User suggestions':'اقتراحات المستخدمين', 'Suggest an improvement':'اقترح تحسيناً',
  'My suggestions':'اقتراحاتي', 'Review user suggestions':'مراجعة اقتراحات المستخدمين',
  'Suggestion title':'عنوان الاقتراح', 'Suggestion category':'تصنيف الاقتراح',

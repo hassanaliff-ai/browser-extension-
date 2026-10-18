@@ -190,12 +190,15 @@ export async function handleMessage(message,sender={}) {
   await storageReady;
   if (!message || typeof message.type !== 'string') throw new Error('Invalid extension request.');
   if(message.type==='HEALTH') {
-    // Fixed local health endpoint only; never attach account or device credentials.
+    // Use this package's configured endpoint, never a caller-supplied URL.
+    const metadata={api_origin:API_ORIGIN,checked_at:new Date().toISOString()};
     try {
-      const response=await fetch(API_ORIGIN+'/health',{method:'GET',headers:{Accept:'application/json'},credentials:'omit',cache:'no-store',redirect:'error',signal:AbortSignal.timeout(5000)});
-      const data=await response.json();
-      return {status:response.ok&&data.status==='ok'&&['TestAPI','ExtSecure API'].includes(data.service)?'ready':'offline',checked_at:new Date().toISOString()};
-    } catch {return {status:'offline',checked_at:new Date().toISOString()};}
+      const response=await fetch(API_ORIGIN+'/health',{method:'GET',headers:{Accept:'application/json'},credentials:'omit',cache:'no-store',redirect:'error',signal:AbortSignal.timeout(12000)});
+      if(!response.ok)return {...metadata,status:'offline',reason:'http_error',http_status:response.status};
+      let data;try{data=await response.json();}catch{return {...metadata,status:'offline',reason:'invalid_response'};}
+      const ready=data?.status==='ok'&&['TestAPI','ExtSecure API'].includes(data.service);
+      return {...metadata,status:ready?'ready':'offline',reason:ready?null:'unexpected_service'};
+    } catch(error){return {...metadata,status:'offline',reason:['TimeoutError','AbortError'].includes(error.name)?'timeout':'network_error'};}
   }
   if (message.type === 'PREFERENCES') return normalizePreferences((await chrome.storage.local.get('preferences')).preferences);
   if (message.type === 'SAVE_PREFERENCES') {
