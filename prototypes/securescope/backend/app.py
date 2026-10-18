@@ -8,18 +8,36 @@ from __future__ import annotations
 
 import ipaddress
 import re
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
 import tldextract
 from fastapi import FastAPI, HTTPException
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.rdap_lookup import lookup_domain_age
 from backend.virustotal import VirusTotalDomainClient
 
 
-app = FastAPI(title="SecureScope RDAP prototype", version="0.1.0")
+app = FastAPI(title="SecureScope RDAP prototype", version="0.1.0", docs_url=None)
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+
+@app.get("/docs", include_in_schema=False)
+def local_api_docs():
+    """Serve Swagger UI without depending on an external CDN."""
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - Swagger UI",
+        swagger_js_url="/static/swagger-ui-bundle.js",
+        swagger_css_url="/static/swagger-ui.css",
+        swagger_favicon_url="/static/favicon.png",
+    )
+
+
 _extract = tldextract.TLDExtract(suffix_list_urls=())
 # Deliberately has no API key. Live reputation lookups require an approved
 # licence and a separate explicit configuration step.

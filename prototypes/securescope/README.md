@@ -52,6 +52,9 @@ To inspect the local API documentation, start the service on loopback only:
 Then open `http://127.0.0.1:8000/docs` and stop the service with Ctrl+C when
 finished. The local API has no administrator authentication or request rate
 limit, so it must not be exposed to a network or used with Alba browsing data.
+The `/docs` page serves its Swagger UI 5.33.3 CSS and JavaScript from
+`backend/static` instead of a CDN. These files come from `swagger-ui-dist`;
+its Apache 2.0 licence is included as `backend/static/LICENSE`.
 
 ## Load the extension for manual testing
 
