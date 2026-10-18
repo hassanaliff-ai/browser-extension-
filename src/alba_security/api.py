@@ -30,6 +30,7 @@ from alba_security.admin_auth import AdminAuth, AdminLoginChallenge, Authenticat
 from alba_security.admin_directory import AdminDirectory
 from alba_security.registration import install_registration
 from alba_security.user_feedback import install_user_feedback
+from alba_security.user_suggestions import install_user_suggestions
 from alba_security.intelligence import install_intelligence
 from alba_security.website_access import install_website_access
 from alba_security.threat_blocks import contain_scan, active_block, block_record, block_identity, install_threat_blocks
@@ -371,6 +372,7 @@ def create_app(
     install_intelligence(app, session_scope, require_actor, admin_auth)
     install_inventory(app, session_scope, require_actor, admin_auth)
     install_user_feedback(app, session_scope, require_actor, admin_auth)
+    install_user_suggestions(app, session_scope, require_actor, admin_auth)
 
     def scan_display(db: Session, scan: Scan) -> str:
         if scan.target_kind == "url" and not privacy_settings(db)["show_hostnames"]:

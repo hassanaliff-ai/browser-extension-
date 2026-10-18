@@ -19,7 +19,7 @@ def verify():
         env.update(EXTSECURE_CONTAINMENT_PG_URL=url,EXTSECURE_TEST_DATABASE_URL=url,PYTHONPATH=str(ROOT/'src'))
         output=ROOT/'.private'/('feedback-pg-'+uuid.uuid4().hex)
         output.mkdir(parents=True)
-        result=subprocess.run([sys.executable,'-m','pytest','tests/alba/test_user_feedback.py',
+        result=subprocess.run([sys.executable,'-m','pytest','tests/alba/test_user_feedback.py','tests/alba/test_user_suggestions.py',
             'tests/alba/test_postgresql_integration.py','-q',
             '--basetemp='+str(output/'tests')],cwd=ROOT,env=env,capture_output=True,text=True,encoding='utf-8',
             creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
