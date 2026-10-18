@@ -33,6 +33,19 @@ def recorded_process_alive(pid,marker,endpoint):
 def public_processes_alive(state):
     return recorded_process_alive(state['gateway_pid'],'scripts.lan_gateway:app','--port 8768') and recorded_process_alive(state['tunnel_pid'],'cloudflared','--url http://127.0.0.1:8768')
 
+def public_tunnel_expired(state):
+    """Recover an explicitly rejected tunnel, without rotating on DNS outages."""
+    offset=state.get('tunnel_log_offset')
+    if not isinstance(offset,int) or isinstance(offset,bool) or offset<0:return False
+    log=ROOT/'.private/public-api/tunnel.log'
+    try:
+        with log.open('rb') as handle:
+            handle.seek(0,2);end=handle.tell()
+            handle.seek(max(offset,end-16384))
+            recent=handle.read(16384)
+        return b'Unauthorized: Tunnel not found' in recent
+    except OSError:return False
+
 def publish_package(origin):
     from scripts.start_public_api import package
     import shutil
@@ -60,7 +73,7 @@ def cycle(failures):
     state_path=ROOT/'.private/public-api/state.json'
     state=json.loads(state_path.read_text()) if state_path.exists() else None
     # A transient DNS/network failure must not rotate a live tunnel's URL.
-    if state is None or not public_processes_alive(state):
+    if state is None or not public_processes_alive(state) or public_tunnel_expired(state):
         if state is not None:stop()
         start(wait_for_health=False)
         state=json.loads(state_path.read_text())

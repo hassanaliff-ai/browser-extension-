@@ -65,7 +65,7 @@ def start(wait_for_health=True):
         time.sleep(.5)
     if not origin:
         tunnel.terminate();gateway.terminate();raise RuntimeError('No temporary public URL was issued. Inspect the private tunnel log.')
-    state.write_text(json.dumps({'origin':origin,'gateway_pid':gateway.pid,'tunnel_pid':tunnel.pid,'enabled':True}))
+    state.write_text(json.dumps({'origin':origin,'gateway_pid':gateway.pid,'tunnel_pid':tunnel.pid,'enabled':True,'tunnel_log_offset':log_offset}))
     # Supervision must keep checking the local API while public DNS is settling.
     if not wait_for_health:return origin
     with httpx.Client(timeout=10,trust_env=False) as client:

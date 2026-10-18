@@ -60,6 +60,28 @@ def test_dead_tunnel_processes_trigger_controlled_recovery(recovery,monkeypatch)
     monkeypatch.setattr(supervisor,'healthy',lambda _:True);monkeypatch.setattr(supervisor,'public_processes_alive',lambda _:False)
     supervisor.cycle(0);recovery['stop'].assert_called_once();recovery['start'].assert_called_once_with(wait_for_health=False)
 
+def test_terminal_rejection_recovers_even_when_tunnel_process_is_alive(recovery,monkeypatch):
+    monkeypatch.setattr(supervisor,'healthy',lambda _:True)
+    monkeypatch.setattr(supervisor,'public_tunnel_expired',lambda _:True)
+    supervisor.cycle(0)
+    recovery['stop'].assert_called_once();recovery['start'].assert_called_once_with(wait_for_health=False)
+
+def test_rejection_from_previous_tunnel_does_not_rotate_current_url(recovery):
+    log=supervisor.ROOT/'.private/public-api/tunnel.log'
+    previous=b'ERR Unauthorized: Tunnel not found\n'
+    log.write_bytes(previous+b'INF Registered tunnel connection\n')
+    assert not supervisor.public_tunnel_expired({'tunnel_log_offset':len(previous)})
+    assert supervisor.public_tunnel_expired({'tunnel_log_offset':0})
+    assert not supervisor.public_tunnel_expired({})
+
+def test_transient_errors_are_not_expired_tunnels(recovery):
+    log=supervisor.ROOT/'.private/public-api/tunnel.log'
+    log.write_bytes(b'ERR connection with edge closed\nINF Retrying connection\n')
+    assert not supervisor.public_tunnel_expired({'tunnel_log_offset':0})
+
+def test_missing_tunnel_log_does_not_break_recovery(recovery):
+    assert not supervisor.public_tunnel_expired({'tunnel_log_offset':0})
+
 def test_already_packaged_origin_does_not_rebuild_every_poll(recovery,monkeypatch):
     (supervisor.STATE/'package-origin.txt').write_text('https://temporary.example')
     monkeypatch.setattr(supervisor,'healthy',lambda _:True);supervisor.cycle(0);recovery['publish'].assert_not_called()
