@@ -21,9 +21,11 @@ existing ExtSecure application and use different contracts and access controls.
   than treating missing evidence as a safe result.
 - Loopback development addresses are excluded from public-site risk scoring.
 
-The extension's backend switch is **off**. The database, administrator
-authentication, and integration into the root ExtSecure application are outside
-this prototype. Do not run both Chrome extensions in the same test profile:
+The extension's backend switch is **off**. The database and administrator
+authentication are not connected to this prototype. The root ExtSecure process
+can mount these API routes at `/securescope` for local testing, but that does
+not merge the two Chrome extensions or their risk policies. Do not run both
+Chrome extensions in the same test profile:
 ExtSecure can block navigation while SecureScope observes it.
 
 ## Run the tests

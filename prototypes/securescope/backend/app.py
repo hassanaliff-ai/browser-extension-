@@ -13,28 +13,40 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import tldextract
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.rdap_lookup import lookup_domain_age
-from backend.virustotal import VirusTotalDomainClient
+from .rdap_lookup import lookup_domain_age
+from .virustotal import VirusTotalDomainClient
 
 
 app = FastAPI(title="SecureScope RDAP prototype", version="0.1.0", docs_url=None)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
+@app.middleware("http")
+async def reject_cross_origin_browser_requests(request: Request, call_next):
+    # The local prototype has no user authentication. Do not let an unrelated
+    # web page use the loopback server to trigger RDAP or reputation lookups.
+    origin = request.headers.get("origin")
+    if origin is not None and origin != f"{request.url.scheme}://{request.headers.get('host', '')}":
+        return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
+    return await call_next(request)
+
+
 @app.get("/docs", include_in_schema=False)
-def local_api_docs():
+def local_api_docs(request: Request):
     """Serve Swagger UI without depending on an external CDN."""
+    prefix = request.scope.get("root_path", "").rstrip("/")
     return get_swagger_ui_html(
-        openapi_url=app.openapi_url,
+        openapi_url=f"{prefix}{app.openapi_url}",
         title=f"{app.title} - Swagger UI",
-        swagger_js_url="/static/swagger-ui-bundle.js",
-        swagger_css_url="/static/swagger-ui.css",
-        swagger_favicon_url="/static/favicon.png",
+        swagger_js_url=f"{prefix}/static/swagger-ui-bundle.js",
+        swagger_css_url=f"{prefix}/static/swagger-ui.css",
+        swagger_favicon_url=f"{prefix}/static/favicon.png",
     )
 
 

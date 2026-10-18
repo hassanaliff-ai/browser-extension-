@@ -4,9 +4,18 @@
 
 Basel's Chrome extension, RDAP domain-age module, local FastAPI endpoints, and
 offline reputation adapter are in [`prototypes/securescope/`](prototypes/securescope/README.md).
-This is a separate prototype for controlled testing. It is not connected to the
-ExtSecure extension or backend at the repository root, and its browser-to-backend
-requests remain disabled.
+For local development, the root FastAPI process can also mount these endpoints
+at `/securescope` by setting `SECURESCOPE_DEV_ENABLED=1`. The prototype Chrome
+extension remains a separate client and its browser-to-backend requests remain
+disabled while authentication and the shared risk contract are unfinished.
+
+To run both APIs in one process on loopback, install `requirements.txt` in the
+root `.venv`, configure the root `.env` as described below, and run
+`scripts/start_combined_local.ps1`. The server binds to `127.0.0.1:8765`,
+which the ExtSecure Chrome extension already uses. The ExtSecure API is at
+`/docs`, its monitoring API at `/monitor/docs` when configured, and the
+SecureScope API at `/securescope/docs`. The mounted prototype is for controlled
+local testing only.
 
 Version 0.8.18 adds installed-extension inventory by device with audited On, Off, Block and Remove controls. See [Extension inventory controls](docs/Extension%20Inventory%20Controls.md).
 

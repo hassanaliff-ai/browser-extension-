@@ -308,7 +308,9 @@ def retention_candidates(db: Session):
     held_blocks = select(ThreatBlock.scan_id)
     held_cases = select(IncidentCase.scan_id)
     held_alerts = select(Alert.scan_id).where(Alert.status.in_(['open', 'acknowledged']))
-    query = select(Scan.id).where(Scan.created_at < cutoff, Scan.id.not_in(held_cases), Scan.id.not_in(held_alerts), Scan.id.not_in(held_blocks))
+    from alba_security.user_feedback import UserSecurityFeedback
+    held_feedback = select(UserSecurityFeedback.scan_id)
+    query = select(Scan.id).where(Scan.created_at < cutoff, Scan.id.not_in(held_cases), Scan.id.not_in(held_alerts), Scan.id.not_in(held_blocks), Scan.id.not_in(held_feedback))
     return list(db.scalars(query).all()), cutoff, settings
 
 
@@ -495,7 +497,7 @@ def install_governance(app, session_scope, require_actor, directory):
             {'data': 'Case / audit', 'stored': 'Administrator identity, decisions and notes', 'purpose': 'Accountable response and change review'},
             {'data': 'Monthly report', 'stored': 'Aggregate counts and reviewed summary', 'purpose': 'Security reporting'},
             {'data': 'Website approval', 'stored': 'Explicitly requested URL scheme, host, port and path; requester, reviewer, reasons and expiry; no query or fragment', 'purpose': 'Controlled website access and decision audit'},
-        ], 'ai_processing': 'By default the model receives fixed security categories and aggregate counts. Optional public-page or matching text-file excerpts require explicit consent, are bounded, and are not persisted as raw content. AI explanations follow scan deletion through their scan foreign key. Saved weekly/monthly report snapshots are retained separately for administrator review; deleting a scan does not rewrite a historical report snapshot.', 'retention_scope': 'Scan evidence without a linked case or an open/acknowledged alert. Cases, reports, website approval history and administrative audit records are held for investigation and review. Approval expiry ends access; it does not erase the decision history.',
+        ], 'ai_processing': 'By default the model receives fixed security categories and aggregate counts. Optional public-page or matching text-file excerpts require explicit consent, are bounded, and are not persisted as raw content. AI explanations follow scan deletion through their scan foreign key. Saved weekly/monthly report snapshots are retained separately for administrator review; deleting a scan does not rewrite a historical report snapshot.', 'retention_scope': 'Scan evidence without linked feedback, a case, threat containment or an open/acknowledged alert. Feedback and linked scans are held after review to preserve evidence. Cases, reports, website approval history and administrative audit records are held for investigation and review. Approval expiry ends access; it does not erase the decision history.',
             'note_guidance': 'Do not enter passwords, full browsing URLs, file paths or personal details in free-text fields.'}
 
     @app.post('/api/privacy')

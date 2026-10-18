@@ -128,7 +128,7 @@ def _extension_record(monitor, target, verdict, actor, device_id=None):
     payload = payload.model_copy(update={
         'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
         'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
-        'extension_name': 'ExtSecure', 'extension_version': '0.8.29',
+        'extension_name': 'ExtSecure', 'extension_version': '0.8.30',
     })
     with monitor.state.session_factory() as db:
         from alba_security.inventory import scan_device_fields
@@ -349,6 +349,13 @@ def create_app() -> FastAPI:
         )
         application.state.monitoring_app = monitor
         application.mount("/monitor", monitor, name="monitor")
+
+    # The student prototype is an explicit local-development feature. It has
+    # separate contracts and no administrator authentication yet, so it must
+    # never be mounted by default on the operational ExtSecure service.
+    if os.getenv("SECURESCOPE_DEV_ENABLED", "0").strip().lower() in {"1", "true", "on"}:
+        from prototypes.securescope.backend.app import app as securescope_app
+        application.mount("/securescope", securescope_app, name="securescope")
 
     return application
 

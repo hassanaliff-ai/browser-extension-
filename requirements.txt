@@ -5,6 +5,7 @@ pydantic==2.13.5
 pydantic-settings==2.15.0
 httpx==0.28.1
 idna>=3.10,<4
+tldextract>=5.3,<6
 SQLAlchemy>=2.0,<3
 psycopg[binary]>=3.2,<4
 streamlit>=1.35,<2

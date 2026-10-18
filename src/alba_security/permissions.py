@@ -56,6 +56,10 @@ OWNER_ROUTES = {
 }
 
 def allowed(role, method, route):
+    if role in ROLE_LABELS and route == '/api/feedback':
+        return method in {'GET', 'POST'}
+    if route == '/api/feedback/{feedback_id}/review':
+        return method == 'POST' and role in {'head_administrator', 'administrator'}
     if method == 'GET' and route == '/api/ai-jobs/{job_id}':
         return role in ROLE_LABELS
     if role in ROLE_LABELS:
@@ -97,7 +101,7 @@ ALL_VIEWS = [
     'Scan history', 'Devices', 'Extensions', 'Security events', 'Whitelist & overrides',
     'Reports', 'Accounts', 'Incident cases',
     'Privacy governance', 'Detection evaluation', 'Usability and accessibility',
-    'Security guidance', 'My account', 'My file history', 'Website access',
+    'Security guidance', 'My account', 'My file history', 'Website access', 'User feedback',
 
 ]
 
@@ -108,7 +112,7 @@ def profile(username, role):
         views = [v for v in views if v not in {'Downloaded-file checks',
             'Whitelist & overrides', 'Privacy governance',
             'Detection evaluation', 'Usability and accessibility'}]
-    elif role == 'normal_user': views = ['Downloaded-file checks', 'My file history', 'Security guidance', 'My account', 'Website access']
+    elif role == 'normal_user': views = ['Downloaded-file checks', 'My file history', 'Security guidance', 'My account', 'Website access', 'User feedback']
     return {'username': username, 'display_name': 'Head of Administrator' if role == 'head_administrator' else username,
             'role': role, 'role_label': ROLE_LABELS.get(role, 'No access'), 'views': views,
             'can_manage_accounts': role == 'head_administrator',

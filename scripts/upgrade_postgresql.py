@@ -1,7 +1,7 @@
 """Back up and verify an additive upgrade of an existing local PostgreSQL deployment."""
 import json,os,shutil,subprocess,sys,uuid
 from dotenv import dotenv_values
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine,inspect
 from setup_postgresql import ROOT,stored_urls,provision
 from activate_postgresql import api_process,stop_api,start_api
 from alba_security.database_migration import load_metadata,table_digest
@@ -27,12 +27,13 @@ def upgrade():
             '--file',str(destination/'before-upgrade.dump'),'--no-password'],
             env=environment,capture_output=True,check=True,creationflags=subprocess.CREATE_NO_WINDOW)
         metadata=load_metadata()
+        existing_tables=set(inspect(engine).get_table_names())
         with engine.connect() as connection:
-            before={table.name:table_digest(connection,table) for table in metadata.sorted_tables}
+            before={table.name:table_digest(connection,table) for table in metadata.sorted_tables if table.name in existing_tables}
         provision()
         apply_migrations(engine, ROOT/'sql/migrations', runtime_role=app_url.username)
         with engine.connect() as connection:
-            after={table.name:table_digest(connection,table) for table in metadata.sorted_tables}
+            after={table.name:table_digest(connection,table) for table in metadata.sorted_tables if table.name in before}
         if before!=after:raise RuntimeError('Existing row verification did not match')
         runtime=create_engine(app_url,pool_pre_ping=True)
         try:status=database_status(runtime)

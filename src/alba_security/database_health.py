@@ -3,7 +3,7 @@ from sqlalchemy import inspect,text
 from alba_security.database_migration import load_metadata
 from alba_security.postgresql import VIEW_SQL
 
-SCHEMA_REVISION = '2026-10-15.1'
+SCHEMA_REVISION = '2026-10-18.1'
 
 
 def database_status(engine):

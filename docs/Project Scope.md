@@ -6,4 +6,6 @@ Retained: relational database integrity and queries, basic ordered transactional
 
 Incident cases retain investigators, notes, timeline, status and resolution. High/Critical detections create a containment investigation and a persistent block. This core safety behavior does not depend on configurable automation. Resolving a case does not release its threat block; an administrator must explicitly confirm release.
 
+User security feedback allows scan-linked concerns and warning challenges. Administrators record review outcomes; users follow their own submissions. Feedback does not modify scores or release containment and does not restore the removed assignment/escalation automation.
+
 Migration 0004 deletes six optional-feature tables, retaining scans, incidents, notes, threat blocks, active scoring configuration and historical administrative audit evidence. Historical migrations stay in sequence for upgrade compatibility. Their old SQL definitions are historical schema instructions, not enabled features. Migration execution tracks versions only; the obsolete checksum column is removed.
