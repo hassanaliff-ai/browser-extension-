@@ -25,10 +25,18 @@ def test_account_role_controls_immediate_connection_or_pending_approval(roles, r
     row = response.json()
     approved = role in {'head_administrator','administrator'}
     assert row['pending'] is not approved and row['blocked'] is False
-    assert row['status'] == ('Active' if approved else 'Pending approval')
+    assert row['status']=='Offline'  # Presence requires a real heartbeat, not just registration.
+    assert row['access_status']==('Trusted' if approved else 'Pending approval')
     assert row['trusted'] is approved
     assert row['operating_system']=='Windows' and row['linked']
     assert row['ip_address'] is None  # A test peer or localhost is not a LAN IP.
+    assert client.post('/api/device/heartbeat',headers={'X-ExtSecure-Device':KEY}).status_code==200
+    visible=next(r for r in client.get('/api/devices',headers=headers['head_administrator']).json() if r['id']==row['device_id'])
+    assert visible['status']=='Active' and visible['online'] is True
+    assert visible['pending'] is not approved
+    assert visible['name'] and visible['operating_system']=='Windows'
+    extensions=client.get('/api/extensions',headers=headers['head_administrator']).json()
+    assert any(r['device_id']==row['device_id'] and r['extension_key']==SELF['id'] for r in extensions)
     assert 'browser_token' not in row and 'pairing_code' not in row and KEY not in str(row)
     browser={**headers[role],'X-ExtSecure-Device':KEY}
     check=client.post('/api/access/check', headers=browser, json={'target':'https://example.com/'})
@@ -59,7 +67,7 @@ def test_pending_device_can_be_approved_then_sync_but_cannot_approve_itself(role
     decision={'blocked':False,'expected_revision':device['revision'],'reason':'Administrator verified this device owner'}
     assert client.post(path,headers=browser,json=decision).status_code==403
     assert client.post(path,headers=headers['head_administrator'],json=decision).status_code==200
-    assert connect(client,browser).json()['status']=='Active'
+    assert connect(client,browser).json()['access_status']=='Trusted'
     assert client.post('/api/inventory/sync',headers=browser,json={'extensions':[SELF]}).status_code==200
 
 
@@ -142,7 +150,7 @@ def test_blocked_choice_is_saved_before_activity_for_every_role(roles, role):
     assert response.status_code==200,response.text
     row=response.json()
     assert row['blocked'] is True and row['pending'] is False and row['trusted'] is False
-    assert row['status']=='Blocked' and row['linked']
+    assert row['status']=='Offline' and row['access_status']=='Blocked' and row['linked']
     browser={**headers[role],'X-ExtSecure-Device':KEY}
     assert client.post('/api/access/check',headers=browser,json={'target':'https://example.com/'}).status_code==403
     assert client.post('/api/inventory/sync',headers=browser,json={'extensions':[SELF]}).status_code==403
@@ -191,3 +199,17 @@ def test_refresh_needs_no_initial_choice_and_cannot_change_existing_trust(system
     assert refreshed['device_id']==device['device_id'] and refreshed['trusted'] is True
     retry=connect(client,browser,initial_access='blocked').json()
     assert retry['trusted'] is True  # Status changes require the reviewed status endpoint.
+
+
+def test_separate_devices_join_and_are_visible_to_head_before_approval(roles):
+    client,_,headers,_=roles
+    ids=[]
+    for index,os_name in enumerate(['Windows','macOS','Linux']):
+        reply=connect(client,headers['normal_user'],browser_token=str(index+1)*64,operating_system=os_name,name='New '+os_name+' device')
+        assert reply.status_code==200,reply.text
+        item=reply.json();assert item['pending'];ids.append(item['device_id'])
+    assert len(set(ids))==3
+    visible=client.get('/api/devices',headers=headers['head_administrator'])
+    assert visible.status_code==200
+    devices={r['id']:r for r in visible.json()}
+    assert all(device_id in devices and devices[device_id]['pending'] for device_id in ids)
