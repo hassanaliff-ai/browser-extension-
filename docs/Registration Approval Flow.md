@@ -5,9 +5,10 @@ signing in explicit. The login page uses the existing **Register account** optio
 account-creation button. Switching preserves the username only; it does not carry a password
 into a new account or create an account automatically after a failed login.
 
-Failed sign-in guidance explains that a new user must register, finish
-authenticator verification and receive approval. The response does not reveal
-whether an arbitrary username exists.
+Version 0.8.36 corrects the earlier failed-login advice. Failed sign-in now asks
+users to use their existing credentials and have the head administrator check
+approval or access status. It does not tell already registered users to create
+another account or reveal whether an arbitrary username exists.
 
 After successful authenticator verification, a **Registration submitted** screen
 shows the server-confirmed username, requested role and destination API address.
@@ -35,5 +36,8 @@ identity review, backend approval and two-factor login enforcement are retained.
 
 The browser test used generated credentials and `signup-example` in an isolated
 database and browser profile. It did not create or approve Basel's live account,
-choose his password or bypass authenticator enrollment. Basel must personally
-complete registration against the current public API using the updated package.
+choose his password or bypass authenticator enrollment. Subsequent live checks
+confirmed Basel completed registration and approval. On 19 October his account
+was found disabled; the owner's requested repair restored its previously approved
+access while preserving the existing password and authenticator. He should use
+Log in with the existing account, rather than register again.

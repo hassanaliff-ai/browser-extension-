@@ -1,6 +1,6 @@
 import {escapeHtml as esc} from './core.js';
 
-export const LOGIN_HELP='Sign-in was not accepted. New users must create an account, finish authenticator verification and receive approval before logging in. Approved users should check their username and password.';
+export const LOGIN_HELP='Sign-in was not accepted. Use your existing username and password. If you already registered, do not register again; ask the head administrator to check your account approval and access status.';
 
 export function registrationReceipt(data,role,origin){
  if(data?.registered!==true||data.status!=='pending_review'||typeof data.username!=='string'||!/^[a-z0-9][a-z0-9._-]{2,79}$/.test(data.username)||!['normal_user','manager','administrator'].includes(role))throw new Error('Registration confirmation was incomplete. Check the connection and retry verification before assuming the request was submitted.');

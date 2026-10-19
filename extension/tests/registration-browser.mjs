@@ -18,7 +18,7 @@ try{
  await page.goto('chrome-extension://'+id+'/console.html');
  let login=page.locator('[data-form="login"]');await login.locator('[name="username"]').fill('signup-example');
  await login.locator('[name="password"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await login.locator('[type="submit"]').click();
- await page.getByText(/New users must create an account/).waitFor();record('Unknown login explains registration and approval without creating an account');
+ await page.getByText(/Use your existing username and password/).waitFor();record('Failed login gives account-access guidance without asking an existing user to register again');
  await page.getByRole('button',{name:'Register account',exact:true}).click();
  const register=page.locator('[data-form="register"]');assert.equal(await register.locator('[name="username"]').inputValue(),'signup-example');
  assert.equal(await register.locator('[name="password"]').inputValue(),'');record('Existing Register account option preserves only the username');
@@ -33,7 +33,7 @@ try{
  await page.screenshot({path:path.join(output,'registration-submitted.png'),fullPage:true});
  await page.getByRole('button',{name:'Continue to log in',exact:true}).click();
  login=page.locator('[data-form="login"]');assert.equal(await login.locator('[name="username"]').inputValue(),'signup-example');
- await login.locator('[name="password"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await login.locator('[type="submit"]').click();await page.getByText(/New users must create an account/).waitFor();
+ await login.locator('[name="password"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await login.locator('[type="submit"]').click();await page.getByText(/Use your existing username and password/).waitFor();
  assert.equal(await page.locator('[data-form="verify"]').count(),0);record('An unapproved account still cannot sign in');
  await login.locator('[name="username"]').fill('feedback-head');await login.locator('[name="password"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await login.locator('[type="submit"]').click();
  let second=page.locator('[data-form="verify"]');await second.waitFor();await second.locator('[name="code"]').fill(otp(process.env.EXTSECURE_TEST_HEAD_SECRET));await second.locator('[type="submit"]').click();await page.locator('.page-title').waitFor();
@@ -47,6 +47,13 @@ try{
  second=page.locator('[data-form="verify"]');await second.waitFor();
  if(Math.floor(Date.now()/30000)===usedCounter)await new Promise(r=>setTimeout(r,30200-Date.now()%30000));
  await second.locator('[name="code"]').fill(otp(secret));await second.locator('[type="submit"]').click();await page.locator('.page-title').waitFor();record('Approved new account completes password and authenticator sign-in');
+ await page.locator('[data-action="logout"]').first().click();
+ login=page.locator('[data-form="login"]');await login.locator('[name="username"]').fill('signup-example');await login.locator('[name="password"]').fill('Wrong password for isolated login test');await login.locator('[type="submit"]').click();
+ await page.getByText(/Use your existing username and password/).waitFor();assert.equal(await page.locator('[data-form="register"]').count(),0);record('Existing account with wrong password remains on login and is not told to create an account');
+ await login.locator('[name="password"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await login.locator('[type="submit"]').click();
+ second=page.locator('[data-form="verify"]');await second.waitFor();await new Promise(r=>setTimeout(r,30200-Date.now()%30000));
+ await second.locator('[name="code"]').fill(otp(secret));await second.locator('[type="submit"]').click();await page.locator('.page-title').waitFor();record('The same approved account signs in again with its original password and authenticator');
+ await page.screenshot({path:path.join(output,'repeat-sign-in.png'),fullPage:true});
  assert.deepEqual(errors,[]);record('No page JavaScript errors');
  await fs.writeFile(path.join(output,'results.json'),JSON.stringify({passed:checks.length,checks},null,2));
 }catch(error){if(page)await page.screenshot({path:path.join(output,'registration-failure.png'),fullPage:true});throw error;}

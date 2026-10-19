@@ -5,7 +5,9 @@ test('Registration confirmation requires an actual verified pending response',()
  for(const data of [{},{registered:false},{registered:true,status:'active',username:'test-user'}])assert.throws(()=>registrationReceipt(data,'normal_user','https://api.example'));
  const receipt=registrationReceipt({registered:true,status:'pending_review',username:'test-user',password:'DO NOT KEEP',totp_secret:'DO NOT KEEP'},'normal_user','https://api.example');
  assert.equal(receipt.username,'test-user');assert.equal(receipt.status,'pending_review');assert(!JSON.stringify(receipt).includes('DO NOT KEEP'));
- assert(LOGIN_HELP.includes('receive approval before logging in'));
+ assert(LOGIN_HELP.includes('Use your existing username and password'));
+ assert(LOGIN_HELP.includes('do not register again'));
+ assert(!LOGIN_HELP.includes('must create an account'));
 });
 test('Pending confirmation escapes content and offers login without granting access',()=>{
  const html=registrationPendingPanel({username:'<script>',role:'normal_user',api_origin:'https://api.example'},{notice:s=>s,btn:s=>s});
