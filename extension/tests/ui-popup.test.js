@@ -63,6 +63,16 @@ test('The signed-out screen keeps registration and connection diagnostics availa
  }finally{chrome.runtime.sendMessage=original;}
 });
 
+test('Registration username pattern is valid with Chrome Unicode sets',async()=>{
+ app.querySelector=()=>null;
+ await handlers.click({target:{closest:()=>({dataset:{authMode:'register'}})}});
+ const pattern=app.innerHTML.match(/name="username"[^>]*pattern="([^"]+)"/)?.[1];
+ assert.ok(pattern);
+ const username=new RegExp(`^(?:${pattern})$`,'v');
+ assert.equal(username.test('basel-user'),true);
+ assert.equal(username.test('Basel User'),false);
+});
+
 test('Authenticator verification remains a required separate screen',async()=>{
  const original=chrome.runtime.sendMessage;
  chrome.runtime.sendMessage=async message=>message.type==='STATE'?{ok:true,data:{challenge:true,version:VERSION}}:original(message);
