@@ -18,6 +18,9 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'Account validity':'صلاحية الحساب',
+ 'Unlimited (no expiry)':'غير محدودة (دون انتهاء)',
+ 'Accounts have no expiry. If your session ends, log in again with the same account. Every role uses password and authenticator verification.':'الحسابات لا تنتهي صلاحيتها. إذا انتهت جلستك، سجّل الدخول مجدداً بالحساب نفسه. جميع الأدوار تستخدم كلمة المرور وتطبيق المصادقة.',
  'Inventory synced':'تمت مزامنة الجرد', 'Inventory not synced':'لم تتم مزامنة الجرد',
  'Full inventory not synced':'لم تتم مزامنة الجرد الكامل',
  'Device registration is complete. Allow Chrome inventory access once to upload all installed extensions in this Chrome profile.':'اكتمل تسجيل الجهاز. اسمح بالوصول إلى جرد Chrome مرة واحدة لرفع جميع الإضافات المثبتة في ملف Chrome هذا.',

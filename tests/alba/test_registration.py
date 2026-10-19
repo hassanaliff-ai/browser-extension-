@@ -169,3 +169,44 @@ def test_registration_ui_finishes_with_approval_pending_and_no_session(http):
     assert_clean(instance)
     assert 'admin_session_token' not in instance.session_state
     assert any('administrator must approve' in r.value for r in instance.success)
+
+
+def test_approved_account_remains_valid_after_ten_years(system):
+    client,application,headers,_=system
+    enrollment=enroll(client);finish(client,enrollment);approve(client,headers)
+    directory=application.state.admin_directory
+    with application.state.session_factory() as db:
+        row=db.get(RegisteredAdmin,'new-admin')
+        row.created_at=utc_now()-timedelta(days=3650)
+        row.approved_at=utc_now()-timedelta(days=3650)
+        db.commit()
+    directory.primary.clock=lambda:utc_now()+timedelta(days=3650)
+    first=client.post('/api/admin/login',json={'username':'new-admin','password':PASSWORD})
+    assert first.status_code==200,first.text
+    second=client.post('/api/admin/verify',json={'challenge_token':first.json()['challenge_token'],'totp_code':pyotp.TOTP(enrollment['totp_secret']).at(directory.primary.clock())})
+    assert second.status_code==200,second.text
+    auth={'Authorization':'Bearer '+second.json()['access_token']}
+    assert client.get('/api/admin/me',headers=auth).json()['username']=='new-admin'
+    with application.state.session_factory() as db:assert db.get(RegisteredAdmin,'new-admin').status=='active'
+
+
+def test_session_expiry_keeps_account_and_allows_sign_in_without_registering_again(system):
+    from sqlalchemy import update
+    from alba_security.admin_auth import AdminSession
+    client,application,headers,_=system
+    enrollment=enroll(client);finish(client,enrollment);approve(client,headers)
+    auth=login(client,enrollment)
+    with application.state.session_factory() as db:
+        row=db.get(RegisteredAdmin,'new-admin');original=(row.password_hash,row.totp_encrypted,row.approved_by)
+        db.execute(update(AdminSession).where(AdminSession.username=='new-admin').values(expires_at=utc_now()-timedelta(seconds=1)))
+        db.commit()
+    assert client.get('/api/admin/me',headers=auth).status_code==401
+    application.state.admin_directory.primary.clock=lambda:utc_now()+timedelta(seconds=90)
+    first=client.post('/api/admin/login',json={'username':'new-admin','password':PASSWORD})
+    assert first.status_code==200,first.text
+    second=client.post('/api/admin/verify',json={'challenge_token':first.json()['challenge_token'],'totp_code':pyotp.TOTP(enrollment['totp_secret']).at(application.state.admin_directory.primary.clock())})
+    assert second.status_code==200,second.text
+    with application.state.session_factory() as db:
+        row=db.get(RegisteredAdmin,'new-admin')
+        assert row.status=='active' and original==(row.password_hash,row.totp_encrypted,row.approved_by)
+        assert db.query(RegistrationEnrollment).count()==0
