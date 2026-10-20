@@ -22,7 +22,7 @@ Cloudflare Quick Tunnel addresses are temporary. The supervisor keeps the existi
 
 The supervisor also replaces a tunnel whose current-generation log explicitly reports `Unauthorized: Tunnel not found`, even if its process is still running. Each new tunnel records its log offset so an old tunnel's rejection cannot trigger repeated replacement. Missing logs and ordinary connection/DNS failures do not count as terminal rejection.
 
-The extension on the host continues using localhost. Extensions installed on other devices must receive the rebuilt package when its temporary address changes. This setup cannot provide a permanent public URL or remotely update an already-installed unpacked extension. A named tunnel/domain or permanent hosted API is required for that.
+The development source retains localhost; the installed public package uses the public HTTPS address. Extensions installed on other devices must receive the rebuilt package when its temporary address changes. This setup cannot provide a permanent public URL or remotely update an already-installed unpacked extension. A named tunnel/domain or permanent hosted API is required for that.
 
 ## Validation
 
@@ -31,3 +31,10 @@ Recovery-policy tests cover disabled configuration, duplicate-safe supervision p
 On 15 October 2026, all 11 recovery-policy tests passed. A live stop/recovery test replaced the API worker in 15.4 seconds, restored public HTTPS, retained authentication requirements, and preserved 16 scans, 16 security events, 5 devices, 8 extension records and 16 scan ownership records. No separate manual API start was used during that test.
 
 On 18 October 2026, 15 recovery-policy tests passed, including terminal tunnel rejection, separation of current and previous log generations, transient connection failures and missing-log handling.
+
+
+## Verification — 20 October 2026
+
+Automatic supervision remains enabled and running. Boot and logon triggers are enabled, with a repeating one-minute recovery trigger. The task has no execution time limit, permits battery operation and has restart-on-failure recovery configured. PostgreSQL 18 is running with automatic startup. Local and public TestAPI health checks returned HTTP 200. The supervisor also reports the configured local AI service ready.
+
+No healthy API or tunnel was restarted during this verification. The existing public address was preserved. Availability still depends on the host staying powered on and connected; a temporary tunnel cannot guarantee a permanent public address.
