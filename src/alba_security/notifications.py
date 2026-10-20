@@ -32,8 +32,11 @@ class NotificationSettings:
     webhook_urls: tuple[str, ...] = ()
     webhook_secret: str | None = None
     timeout_seconds: float = 10.0
+    email_provider: str = "smtp"
 
     def __post_init__(self) -> None:
+        if self.email_provider not in {"smtp", "gmail_oauth"}:
+            raise ValueError("Unknown email provider")
         if not math.isfinite(self.timeout_seconds) or not 0 < self.timeout_seconds <= 60:
             raise ValueError("Notification timeout must be finite and between 0 and 60 seconds")
         if not 1 <= self.smtp_port <= 65535:
@@ -49,14 +52,23 @@ class NotificationSettings:
     @classmethod
     def from_env(cls) -> "NotificationSettings":
         webhook_list = os.getenv("ALERT_WEBHOOK_URLS") or os.getenv("ALERT_WEBHOOK_URL", "")
+        provider = os.getenv("EMAIL_PROVIDER", "smtp")
+        recipients = os.getenv("ADMIN_EMAILS", "")
+        if provider == "gmail_oauth":
+            from .gmail_oauth import load_authorization
+            try:
+                recipients = load_authorization()["recipient"]
+            except RuntimeError:
+                recipients = ""
         return cls(
+            email_provider=provider,
             smtp_host=os.getenv("SMTP_HOST"),
             smtp_port=int(os.getenv("SMTP_PORT", "587")),
             smtp_username=os.getenv("SMTP_USERNAME"),
             smtp_password=os.getenv("SMTP_PASSWORD"),
             smtp_from=os.getenv("SMTP_FROM"),
             admin_emails=tuple(
-                email.strip() for email in os.getenv("ADMIN_EMAILS", "").split(",") if email.strip()
+                email.strip() for email in recipients.split(",") if email.strip()
             ),
             webhook_urls=tuple(url.strip() for url in webhook_list.split(",") if url.strip()),
             webhook_secret=os.getenv("ALERT_WEBHOOK_SECRET"),
@@ -67,6 +79,10 @@ class NotificationSettings:
 def _deliver_email(
     recipients: tuple[str, ...], subject: str, body: str, settings: NotificationSettings
 ) -> None:
+    if settings.email_provider == "gmail_oauth":
+        from .gmail_oauth import deliver
+        deliver(recipients, subject, body, settings.timeout_seconds)
+        return
     if settings.timeout_seconds <= 0:
         raise ValueError("Notification timeout must be positive")
     if not settings.smtp_host or not settings.smtp_from:
@@ -136,7 +152,7 @@ def _send_email_result(
     recipients: tuple[str, ...], subject: str, body: str,
     settings: NotificationSettings, sender: EmailSender,
 ) -> dict[str, Any]:
-    if not recipients or not settings.smtp_host or not settings.smtp_from:
+    if not recipients or (settings.email_provider == "smtp" and (not settings.smtp_host or not settings.smtp_from)):
         return _outcome("email", "skipped", reason="not_configured")
     try:
         sender(recipients, subject, body, settings)
@@ -222,7 +238,7 @@ def send_monthly_report(
         except (ValueError, OverflowError) as error:
             return [*previous_successes.values(), _outcome("configuration", "failed", error_type=type(error).__name__)]
     sender = email_sender or _deliver_email
-    if not settings.admin_emails or not settings.smtp_host or not settings.smtp_from:
+    if not settings.admin_emails or (settings.email_provider == "smtp" and (not settings.smtp_host or not settings.smtp_from)):
         return [*previous_successes.values(), _outcome("email", "skipped", reason="not_configured")]
     outcomes = []
     for recipient in settings.admin_emails:

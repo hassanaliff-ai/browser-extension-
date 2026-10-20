@@ -1,3 +1,7 @@
+# Preferred: Google sign-in
+
+Use `scripts/configure_google_mail.py` for Gmail browser sign-in without entering a Gmail password into ExtSecure. See [Google Gmail Sign-in](Google%20Gmail%20Sign-in.md) for the one-time OAuth client setup. The SMTP instructions below remain an optional legacy route.
+
 # Private Gmail alert setup
 
 The sender display name is ExtSecure. Gmail still requires an actual authenticated sender address behind that name.
