@@ -12,7 +12,7 @@ export function accessReviewBody(request, form) {
   if(!['24','168'].includes(form.duration))throw new Error('Choose 24 hours, 7 days or Forever.');
   return {...body,decision:'temporary',duration_hours:Number(form.duration)};
 }
-export const VERSION = '0.8.38';
+export const VERSION = '0.8.39';
 export const WORKER_CAPABILITIES = Object.freeze(['device-enrollment','chrome-inventory','device-access-choice']);
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;
 export const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Unknown'];
@@ -74,7 +74,7 @@ export function safeApiPath(path, method = 'GET') {
   if(method==='POST'&&/^\/api\/suggestions(?:\/[a-zA-Z0-9-]+\/review)?$/.test(path))return true;
   if (method === 'GET') return /^\/api\/(admin\/(me|accounts|registrations)|database\/status|overview|risk-policy|devices|extensions|findings|scans(?:\/[a-zA-Z0-9-]+)?|my\/scans(?:\/[a-zA-Z0-9-]+)?|overrides(?:\/audit)?|reports\/monthly(?:\/(stats|ml))?|alerts|events|cases(?:\/[a-zA-Z0-9-]+)?|case-assignees|privacy(?:\/retention-preview)?|evaluations|usability|governance\/audit)(?:\?[a-zA-Z0-9=&-]+)?$/.test(path);
   if (method !== 'POST') return false;
-  return /^\/api\/(admin\/(login|verify|logout|register(?:\/(verify|cancel|qr))?|downloads\/scan|registrations\/[a-z0-9._-]+\/(approve|reject)|accounts\/[a-z0-9._-]+\/(role|disable))|overrides(?:\/[a-zA-Z0-9-]+\/deactivate)?|reports\/monthly\/(generate|20\d{2}-(0[1-9]|1[0-2])\/send)|alerts\/[a-zA-Z0-9-]+\/status|cases(?:\/[a-zA-Z0-9-]+\/(notes|status|safety|block-device|remove))?|privacy(?:\/retention-apply)?|evaluations|usability(?:\/[a-zA-Z0-9-]+\/status)?)$/.test(path);
+  return /^\/api\/(admin\/(login|verify|logout|register(?:\/(verify|cancel|qr))?|downloads\/scan|registrations\/[a-z0-9._-]+\/(approve|reject)|accounts\/[a-z0-9._-]+\/(role|disable))|overrides(?:\/[a-zA-Z0-9-]+\/deactivate)?|reports\/monthly\/generate|alerts\/[a-zA-Z0-9-]+\/status|cases(?:\/[a-zA-Z0-9-]+\/(notes|status|safety|block-device|remove))?|privacy(?:\/retention-apply)?|evaluations|usability(?:\/[a-zA-Z0-9-]+\/status)?)$/.test(path);
 }
 export function apiError(status, body) {
   if (status === 401) return 'Sign-in or verification was not accepted. Check your credentials; expired sessions need a new sign-in.';

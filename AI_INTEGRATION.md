@@ -25,7 +25,7 @@ From the installation folder, run:
 python -m alba_security.intelligence_runner --kind both --language ar
 ```
 
-Run this command daily through the deployment's scheduler to prepare the previous closed UTC week and month. The unique `(kind,period,language)` constraint makes repeated runs return the existing draft. Scheduling has not been installed on the user's Windows account. The new periodic job saves drafts and never sends them automatically. Existing reviewed monthly email delivery remains available in the original monthly report workflow once SMTP/admin recipients are configured.
+Run this command daily through the deployment's scheduler to prepare the previous closed UTC week and month. The unique `(kind,period,language)` constraint makes repeated runs return the existing draft. Native Windows weekly and monthly schedules are installed separately. The new periodic job saves drafts and never sends them automatically. Reports remain available in the extension; external email delivery has been removed.
 
 ## API and verification
 

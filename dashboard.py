@@ -973,13 +973,8 @@ def show_monthly_reports(token: str) -> None:
     period = f"{year:04d}-{month:02d}"
 
     notice = st.session_state.pop("report_notice", None)
-    if isinstance(notice, dict):
-        if notice.get("status") == "sent":
-            st.success("The report was sent to the configured administrators.")
-        elif notice.get("status") == "draft":
-            st.success("The report draft was generated and saved.")
-        else:
-            st.warning("The report was not sent. Review the delivery results and email settings.")
+    if isinstance(notice, dict) and notice.get("status") == "draft":
+        st.success("The report draft was generated and saved.")
 
     st.subheader(f"Statistics · {period}")
     stats = fetch(f"/api/reports/monthly/stats?year={year}&month={month}", token, dict)
@@ -1038,7 +1033,7 @@ def show_monthly_reports(token: str) -> None:
     selected = next((item for item in reports if item.get("period") == period), None)
     st.subheader("Saved report")
     if not st.session_state.get("account_profile", {}).get("can_manage_reports"):
-        st.caption("Manager access: review reports and ML evidence. Administrators prepare and send reports.")
+        st.caption("Manager access: review reports and ML evidence. Administrators prepare saved reports.")
     if selected is None:
         st.info("No report has been generated for this month.")
         if st.session_state.get("account_profile", {}).get("can_manage_reports") and st.button("Generate LLM draft", key="generate_monthly_report"):
@@ -1051,8 +1046,7 @@ def show_monthly_reports(token: str) -> None:
     else:
         st.write(f"**Status:** {display(selected.get('status')).title()}")
         st.caption(
-            f"Generated: {display(selected.get('generated_at'))} · "
-            f"Sent: {display(selected.get('sent_at'))}"
+            f"Generated: {display(selected.get('generated_at'))}"
         )
         st.write(f"**Subject:** {display(selected.get('subject'))}")
         body = selected.get("body")
@@ -1063,28 +1057,6 @@ def show_monthly_reports(token: str) -> None:
             disabled=True,
             key=f"monthly_report_body_{period}",
         )
-        if selected.get("status") != "sent":
-            st.caption("Sending uses this saved draft. Review it before choosing Send.")
-            if st.session_state.get("account_profile", {}).get("can_manage_reports") and st.button("Send report to administrators", type="primary", key="send_monthly_report"):
-                result = post_admin(f"/api/reports/monthly/{period}/send", token)
-                if result is not None:
-                    st.session_state["report_notice"] = {"status": result.get("status")}
-                    st.rerun()
-        else:
-            st.success("This report was sent. It cannot be sent again from this view.")
-
-        outcomes = selected.get("delivery_outcomes")
-        if isinstance(outcomes, list) and outcomes:
-            st.markdown("**Delivery results**")
-            show_table([
-                {
-                    "Channel": display(item.get("channel")),
-                    "Status": display(item.get("status")),
-                    "Reason": display(item.get("reason") or item.get("error_type")),
-                }
-                for item in outcomes if isinstance(item, dict)
-            ], "No delivery results are available.")
-
     st.subheader("Previous reports")
     previous_rows = []
     for item in reports:
@@ -1095,7 +1067,6 @@ def show_monthly_reports(token: str) -> None:
             "Scans": count(item_stats.get("total_scans")),
             "High / Critical": count(item_stats.get("high_risk_scans")),
             "Generated": display(item.get("generated_at")),
-            "Sent": display(item.get("sent_at")),
         })
     show_table(previous_rows, "No monthly reports have been generated yet.")
 
@@ -1208,6 +1179,8 @@ def main() -> None:
     st.sidebar.caption(account.get('display_name', '') + ' · ' + account.get('role_label', ''))
     views = {
         "Website access": lambda token: st.info('Website approvals are managed in the Chrome extension. Open ExtSecure, choose Open console, then Website access.'),
+        "User feedback": lambda token: st.info('Scan-linked feedback is managed in the Chrome extension. Open ExtSecure, choose Open console, then User feedback.'),
+        "User suggestions": lambda token: st.info('Product suggestions are managed in the Chrome extension. Open ExtSecure, choose Open console, then User suggestions.'),
         "My account": show_my_account,
         "My file history": show_personal_history,
         "Overview": show_overview,

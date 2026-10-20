@@ -17,6 +17,18 @@ def ensure_schema(engine: Engine) -> None:
     """
     Base.metadata.create_all(engine)
     inspector = inspect(engine)
+    if 'monthly_reports' in inspector.get_table_names():
+        retired = {'sent_at', 'delivery_outcomes'} & {c['name'] for c in inspector.get_columns('monthly_reports')}
+        if retired:
+            if engine.dialect.name == 'postgresql':
+                raise RuntimeError('Apply PostgreSQL migration 0012 before starting this release; email delivery has been removed.')
+            if engine.dialect.name != 'sqlite':
+                raise RuntimeError('Upgrade retired report-delivery columns before starting this release.')
+            with engine.begin() as connection:
+                connection.exec_driver_sql("UPDATE monthly_reports SET status='draft' WHERE status<>'draft'")
+                for column in sorted(retired):
+                    connection.exec_driver_sql('ALTER TABLE monthly_reports DROP COLUMN ' + column)
+            inspector = inspect(engine)
     if 'device_registrations' in inspector.get_table_names() and 'last_heartbeat' not in {c['name'] for c in inspector.get_columns('device_registrations')}:
         with engine.begin() as connection:
             column_type='TIMESTAMP WITH TIME ZONE' if engine.dialect.name=='postgresql' else 'TIMESTAMP'

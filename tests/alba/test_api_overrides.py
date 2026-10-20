@@ -20,7 +20,7 @@ def _signed_in_client(tmp_path):
 
     def notifier(**kwargs):
         notifications.append(kwargs)
-        return [{"channel": "email", "status": "sent"}]
+        return [{"channel": "webhook", "status": "sent"}]
 
     auth = AdminAuth("admin", PasswordHasher().hash("password-123"), secret)
     database_file = tmp_path / "override-api.db"

@@ -1,3 +1,5 @@
+> Scope update, 20 October 2026: email delivery has been removed. Any email/SMTP results below describe historical verification and do not represent a current feature. Reports, console alerts and webhook support remain.
+
 # ExtSecure role review — 5 October 2026
 
 The reviewed source was consolidated into the installed project. Existing account credentials, environment settings and production data were preserved.

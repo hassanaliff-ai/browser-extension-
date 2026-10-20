@@ -128,7 +128,7 @@ def _extension_record(monitor, target, verdict, actor, device_id=None):
     payload = payload.model_copy(update={
         'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
         'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
-        'extension_name': 'ExtSecure', 'extension_version': '0.8.38',
+        'extension_name': 'ExtSecure', 'extension_version': '0.8.39',
     })
     with monitor.state.session_factory() as db:
         from alba_security.inventory import scan_device_fields
@@ -255,7 +255,7 @@ def _record_monitoring_scan(monitoring_app: FastAPI, body: ScanRequest, verdict:
         from alba_security.inventory import scan_device_fields
         payload = payload.model_copy(update=scan_device_fields(db, device_id))
         # The public endpoint has no verified device identity. Persist the scan
-        # for administrators, but do not send email or webhooks for public calls.
+        # for administrators, but do not send webhooks for public calls.
         result = monitoring_app.state.record_scan(payload, db, notify=False, actor=owner)
 
 

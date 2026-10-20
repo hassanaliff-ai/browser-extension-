@@ -17,7 +17,6 @@ from alba_security.models import Alert, Base, Device, Extension, Finding, Scan, 
 from alba_security.notifications import (
     NotificationSettings,
     send_high_severity_alert,
-    send_monthly_report,
 )
 import alba_security.notifications as notification_module
 from alba_security.reports import (
@@ -140,135 +139,14 @@ def test_monthly_llm_requires_explicit_model(report_db, monkeypatch):
             generate_monthly_report(report_db, 2026, 9, llm_client=object())
 
 
-def test_high_severity_notification_uses_every_channel_and_redacts_raw_message():
-    deliveries = []
-    settings = NotificationSettings(
-        smtp_host="smtp.example", smtp_from="alerts@example.org",
-        admin_emails=("admin@example.org",),
-        webhook_urls=("https://hooks.example/one", "https://hooks.example/two"),
-    )
-
-    def email_sender(recipients, subject, body, _settings):
-        deliveries.append(("email", recipients, subject, body))
-
-    def webhook_sender(url, payload, _settings):
-        deliveries.append(("webhook", url, payload))
-        if url.endswith("/two"):
-            raise TimeoutError("contains internal secret")
-
-    outcomes = send_high_severity_alert(
-        alert_id="alert-1", scan_id="scan-1", severity="Critical",
-        message="Threat at https://private.example/path?token=secret", score=90,
-        settings=settings, email_sender=email_sender, webhook_sender=webhook_sender,
-    )
-    assert outcomes == [
-        {"channel": "email", "status": "sent"},
-        {"channel": "webhook", "status": "sent", "destination_index": 1},
-        {"channel": "webhook", "status": "failed", "destination_index": 2, "error_type": "TimeoutError"},
-    ]
-    assert "private.example" not in repr(deliveries)
-    assert "secret" not in repr(outcomes)
-    assert deliveries[1][2]["event"] == "high_severity_threat"
-    assert send_high_severity_alert(
-        alert_id="a", scan_id="s", severity="Medium", message="x", settings=settings,
-        email_sender=email_sender, webhook_sender=webhook_sender,
-    ) == []
-    assert len(deliveries) == 3
 
 
-def test_monthly_report_sends_to_admin_email_only():
-    deliveries = []
-    settings = NotificationSettings(
-        smtp_host="smtp.example", smtp_from="reports@example.org",
-        admin_emails=("admin1@example.org", "admin2@example.org"),
-        webhook_urls=("https://hooks.example/alerts",),
-    )
-    report = {"subject": "September report", "body": "Summary and verified counts"}
-    outcomes = send_monthly_report(
-        report, settings=settings,
-        email_sender=lambda *args: deliveries.append(args),
-    )
-    assert len(outcomes) == 2
-    assert all(item["status"] == "sent" for item in outcomes)
-    assert [call[0] for call in deliveries] == [("admin1@example.org",), ("admin2@example.org",)]
-    assert deliveries[0][1:3] == ("September report", "Summary and verified counts")
-    assert send_monthly_report(report, settings=NotificationSettings()) == [
-        {"channel": "email", "status": "skipped", "reason": "not_configured"}
-    ]
 
 
-def test_real_adapters_use_tls_timeout_and_sign_the_exact_webhook_body(monkeypatch):
-    calls = {}
-
-    class FakeSMTP:
-        def __init__(self, host, port, timeout):
-            calls["smtp_connection"] = (host, port, timeout)
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-        def starttls(self, *, context):
-            calls["tls"] = context is not None
-
-        def login(self, username, password):
-            calls["login"] = (username, password)
-
-        def send_message(self, message, *, to_addrs):
-            calls["email"] = (message, to_addrs)
-
-    class FakeHTTPClient:
-        def __init__(self, *, timeout, follow_redirects):
-            calls["http_settings"] = (timeout, follow_redirects)
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-        def post(self, url, *, content, headers):
-            calls["webhook"] = (url, content, headers)
-            return SimpleNamespace(raise_for_status=lambda: None)
-
-    monkeypatch.setattr(notification_module.smtplib, "SMTP", FakeSMTP)
-    monkeypatch.setattr(notification_module.httpx, "Client", FakeHTTPClient)
-    settings = NotificationSettings(
-        smtp_host="smtp.example", smtp_port=587,
-        smtp_username="service-account", smtp_password="private-password",
-        smtp_from="alerts@example.org", admin_emails=("admin@example.org",),
-        webhook_urls=("https://hooks.example/alert",), webhook_secret="shared-secret",
-        timeout_seconds=4.5,
-    )
-    outcomes = send_high_severity_alert(
-        alert_id="a1", scan_id="s1", severity="High", message="Private URL", score=70,
-        settings=settings,
-    )
-    assert [item["status"] for item in outcomes] == ["sent", "sent"]
-    assert calls["smtp_connection"] == ("smtp.example", 587, 4.5)
-    assert calls["tls"] is True
-    assert calls["login"] == ("service-account", "private-password")
-    assert calls["email"][1] == ["admin@example.org"]
-    assert calls["http_settings"] == (4.5, False)
-    _, body, headers = calls["webhook"]
-    expected_digest = hmac.new(b"shared-secret", body, hashlib.sha256).hexdigest()
-    assert headers["X-Alba-Signature"] == f"sha256={expected_digest}"
-    assert headers["Content-Type"] == "application/json"
-    assert headers["Idempotency-Key"] == "a1"
-    assert b"Private URL" not in body
-
-    invalid = NotificationSettings(webhook_urls=("http://hooks.example/alert",))
-    assert send_high_severity_alert(
-        alert_id="a1", scan_id="s1", severity="High", message="x", settings=invalid,
-    )[-1] == {
-        "channel": "webhook", "status": "failed", "destination_index": 1, "error_type": "ValueError"
-    }
 
 
 def test_invalid_notification_environment_returns_a_failure_outcome(monkeypatch):
-    monkeypatch.setenv("SMTP_PORT", "not-a-number")
+    monkeypatch.setenv("NOTIFICATION_TIMEOUT_SECONDS", "not-a-number")
     assert send_high_severity_alert(
         alert_id="a1", scan_id="s1", severity="High", message="x"
     ) == [{"channel": "configuration", "status": "failed", "error_type": "ValueError"}]
@@ -349,50 +227,8 @@ def test_notification_timeout_is_finite_and_bounded(timeout):
         NotificationSettings(timeout_seconds=timeout)
 
 
-def test_repeated_alert_destinations_are_delivered_once():
-    emails, webhooks = [], []
-    settings = NotificationSettings(
-        smtp_host="smtp.example", smtp_from="alerts@example.org",
-        admin_emails=(" admin@example.org ", "admin@example.org", ""),
-        webhook_urls=("https://hooks.example/one", " https://hooks.example/one "),
-    )
-    outcomes = send_high_severity_alert(
-        alert_id="a", scan_id="s", severity="High", message="private",
-        settings=settings, email_sender=lambda *args: emails.append(args),
-        webhook_sender=lambda *args: webhooks.append(args),
-    )
-    assert emails[0][0] == ("admin@example.org",)
-    assert len(emails) == len(webhooks) == 1
-    assert len(outcomes) == 2
 
 
-def test_partial_smtp_refusal_is_reported_as_failed(monkeypatch):
-    class FakeSMTP:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-        def starttls(self, **kwargs):
-            pass
-
-        def send_message(self, *args, **kwargs):
-            return {"admin@example.org": (450, b"try later")}
-
-    monkeypatch.setattr(notification_module.smtplib, "SMTP", FakeSMTP)
-    outcomes = send_monthly_report(
-        {"subject": "Monthly report", "body": "Summary"},
-        settings=NotificationSettings(
-            smtp_host="smtp.example", smtp_from="reports@example.org", admin_emails=("admin@example.org",),
-        ),
-    )
-    assert outcomes[0]["status"] == "failed"
-    assert outcomes[0]["error_type"] == "SMTPRecipientsRefused"
-    assert "admin@example.org" not in repr(outcomes)
 
 
 def test_webhook_redirects_are_failed_without_forwarding_the_alert(monkeypatch):
@@ -415,34 +251,3 @@ def test_webhook_redirects_are_failed_without_forwarding_the_alert(monkeypatch):
     assert outcomes[-1]["error_type"] == "HTTPStatusError"
     assert len(requests) == 1
     assert requests[0].url.host == "hooks.example"
-
-
-def test_smtp_tls_failure_never_falls_back_to_plaintext(monkeypatch):
-    attempts = []
-
-    class BrokenTLS:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-        def starttls(self, **kwargs):
-            raise notification_module.ssl.SSLError("certificate rejected")
-
-        def send_message(self, *args, **kwargs):
-            attempts.append("send")
-
-    monkeypatch.setattr(notification_module.smtplib, "SMTP", BrokenTLS)
-    outcomes = send_monthly_report(
-        {"subject": "Monthly report", "body": "Summary"},
-        settings=NotificationSettings(
-            smtp_host="smtp.example", smtp_from="reports@example.org", admin_emails=("admin@example.org",),
-        ),
-    )
-    assert outcomes[0]["status"] == "failed"
-    assert outcomes[0]["error_type"] == "SSLError"
-    assert attempts == []

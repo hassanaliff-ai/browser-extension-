@@ -159,11 +159,9 @@ CREATE TABLE monthly_reports (
 	body TEXT NOT NULL,
 	summary_source VARCHAR(30) NOT NULL,
 	generated_at TIMESTAMP WITH TIME ZONE NOT NULL,
-	sent_at TIMESTAMP WITH TIME ZONE,
-	delivery_outcomes JSON NOT NULL,
 	status VARCHAR(12) NOT NULL,
 	PRIMARY KEY (id),
-	CONSTRAINT ck_monthly_report_status CHECK (status IN ('draft', 'sent', 'failed'))
+	CONSTRAINT ck_monthly_report_status CHECK (status IN ('draft'))
 );
 
 CREATE TABLE registered_administrators (

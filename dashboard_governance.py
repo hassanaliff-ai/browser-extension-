@@ -199,7 +199,7 @@ def render(view, token, fetch, post):
             ('Review a threat', 'Avoid opening the flagged destination or file. Inspect the scan evidence, open a case, assign an administrator, and record investigation notes. Resolve only after documenting the evidence and decision.'),
             ('Check a downloaded file', 'Use a SHA-256 hash when possible. Uploading a file sends its bytes to the backend for hashing; only its hash is sent to the reputation provider. Unknown requires follow-up and is not a clean verdict.'),
             ('Use an exception responsibly', 'An exception suppresses external notifications for its exact matching target. It does not erase findings, lower a score, prove a destination is safe, or cover subdomains automatically. Include a reason and expiry.'),
-            ('Prepare a monthly report', 'Review the aggregate totals and generated narrative before sending. The report uses the saved statistics, and SMTP acceptance does not confirm delivery to an inbox.'),
+            ('Prepare a monthly report', 'Review the aggregate totals and generated narrative in the console. The saved report preserves its statistics and can be downloaded.'),
             ('Protect browsing data', 'Keep private URLs, passwords and local file paths out of notes. Review collection and retention rules. Linked cases and pending alerts protect their source scan evidence from the retention operation.'),
         ]:
             with st.expander(title):

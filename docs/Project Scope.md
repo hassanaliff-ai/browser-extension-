@@ -11,3 +11,5 @@ User security feedback allows scan-linked concerns and warning challenges. Admin
 User suggestions provide a separate channel for product improvement ideas. Each user follows their own proposals; administrators review, respond and update progress without changing security controls.
 
 Migration 0004 deletes six optional-feature tables, retaining scans, incidents, notes, threat blocks, active scoring configuration and historical administrative audit evidence. Historical migrations stay in sequence for upgrade compatibility. Their old SQL definitions are historical schema instructions, not enabled features. Migration execution tracks versions only; the obsolete checksum column is removed.
+
+Email delivery was retired on 20 October 2026. SMTP, Gmail authorization, Brevo setup, email report-send actions and email-only database metadata are removed. High/Critical alerts, immediate blocking, incident cases, optional HTTPS webhooks and weekly/monthly report generation remain. Migration 0012 preserves report bodies/statistics and removes email-delivery fields and email notification events.

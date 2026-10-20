@@ -173,7 +173,7 @@ security responsibilities and the six additional investigation and governance ro
 | Whitelist and overrides | Expiring, audited exact URL/domain exceptions; original risk evidence remains visible. |
 | Downloaded-file checks | Administrator SHA-256 lookup or a file upload up to 32 MiB; only the hash goes to VirusTotal. |
 | Reports | UTC statistics, separately labeled AI narrative, saved drafts, and retries for recipients who have not accepted delivery. |
-| High-severity alerts | Email/webhook delivery outcomes plus acknowledge, resolve and reopen actions with review notes. |
+| High-severity alerts | In-console alerts and webhook delivery outcomes plus acknowledge, resolve and reopen actions with review notes. |
 | Usability and accessibility | Actual walkthrough records, issue tracking, documented fixes and verified retests. |
 | Privacy and data governance | Data inventory, collection purpose, hostname minimization and retention preview with investigation holds. |
 | Incident response and cases | Scan-linked cases, administrator assignment, notes, audited status changes and resolution reasons. |
@@ -201,7 +201,7 @@ does not establish a threat, and scan risk scores are unchanged.
 LLM draft generation saves the same ML evidence in the report's statistics and
 includes a constrained ML summary in the prompt and delivered report body.
 Saved reports remain immutable snapshots; previously saved reports are not
-regenerated. Administrator review and the existing email-delivery controls remain
+regenerated. Administrator review and saved report history remain
 in place. Install the updated requirements to provide scikit-learn.
 Implementation reference: https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html
 
@@ -373,7 +373,7 @@ VirusTotal verdicts from `/scan` are also recorded in monitoring risk and scan
 history. Failed lookups that reached VirusTotal appear as Unknown events. With
 monitoring enabled, `/scan` requires an approved scanning account session or a
 trusted server-side ingestion token. Managers cannot submit scans. User checks
-are linked to personal ownership. These bridge requests do not trigger external email or webhook
+are linked to personal ownership. These bridge requests do not trigger external webhook
 notifications. Protected ingestion is the path for device and extension events.
 
 The monitoring dashboard shows the overview, devices, extensions, findings,
@@ -394,7 +394,7 @@ revokes it. Repeated invalid codes trigger a temporary lockout.
 | Administrator file checks | `POST /monitor/api/admin/downloads/scan`, `POST /monitor/api/admin/downloads/scan-file` | Administrator bearer session |
 | Alert review | `POST /monitor/api/alerts/{alert_id}/status` | Administrator bearer session |
 | URL/domain exceptions | `GET/POST /monitor/api/overrides`, `POST /monitor/api/overrides/{id}/deactivate`, `GET /monitor/api/overrides/audit` | Administrator bearer session |
-| Reports | `GET /monitor/api/reports/monthly/stats`, `GET /monitor/api/reports/monthly`, `POST /monitor/api/reports/monthly/generate`, `POST /monitor/api/reports/monthly/{YYYY-MM}/send` | Administrator bearer session |
+| Reports | `GET /monitor/api/reports/monthly/stats`, `GET /monitor/api/reports/monthly`, `POST /monitor/api/reports/monthly/generate` | Administrator bearer session |
 
 For example, a trusted caller can submit a synthetic check from PowerShell:
 
@@ -435,35 +435,21 @@ extension or companion service must call one of these routes. Do not put
 `INGEST_TOKEN` or `VT_API_KEY` in a distributed extension.
 
 Monthly reports cover a completed UTC calendar month. Administrators can view
-aggregate statistics, generate a saved draft, and explicitly email it. Set
-`LLM_PROVIDER=ollama` and `OLLAMA_MODEL=qwen3:4b-instruct` for this computer's local
-model; **Start ExtSecure.cmd** starts the installed local runtime and API after
-a restart. OpenAI remains an optional provider with its backend key and model. The
-model receives only aggregate counts and fixed finding categories, never raw
-URLs, filenames, device names, or individual events. To prepare and send the
-previous completed month from a trusted scheduler, run:
+aggregate statistics and generate saved drafts for in-extension review. Weekly
+and monthly automatic LLM drafts retain their existing schedules and history.
+Use the configured local Ollama model or an optional backend OpenAI provider.
+Only aggregate counts and fixed finding categories enter report prompts.
+
+The trusted monthly runner saves reports without external delivery:
 
 ```bash
 python -m alba_security.monthly_runner
 ```
 
-Use `--prepare-only` to save without emailing. The runner reads process
-environment variables, so supply `DATABASE_URL`, the OpenAI settings, and
-SMTP settings to its process; it does not automatically read `.env`. No
-schedule is installed by this repository.
-
-Report retries retain recipient hashes for accepted SMTP handoffs and retry only
-remaining recipients. SMTP acceptance does not confirm inbox delivery. Run one
-report worker for SQLite; PostgreSQL serializes dispatch with a row lock. A crash
-between external acceptance and the database commit can still cause a resend.
-
-For report email and High/Critical alert email, configure `SMTP_HOST`,
-`SMTP_PORT`, `SMTP_FROM`, `ADMIN_EMAILS`, and any SMTP login credentials. SMTP
-uses TLS. High/Critical alerts can also go to an HTTPS
-`ALERT_WEBHOOK_URL` or comma-separated `ALERT_WEBHOOK_URLS`; an optional
-`ALERT_WEBHOOK_SECRET` signs each payload. Failed or unconfigured deliveries
-are recorded as failed or skipped, not as successful sends. The example
-settings contain no working credentials or recipient addresses.
+High/Critical alerts remain in the extension. Optional HTTPS webhooks use
+`ALERT_WEBHOOK_URL` or `ALERT_WEBHOOK_URLS`, with `ALERT_WEBHOOK_SECRET` for signed
+payloads. Failed or unconfigured webhook deliveries are recorded accurately.
+Email delivery, SMTP, Gmail OAuth and Brevo were removed from project scope.
 
 Webhook requests include a stable `Idempotency-Key` for each alert. Receivers
 must implement deduplication using that key. Alert status changes do not resend
@@ -485,7 +471,7 @@ do not expose its token to untrusted clients.
 
 ## Testing
 
-The test suite uses mocked VirusTotal, LLM, email, and webhook integrations and
+The test suite uses mocked VirusTotal, LLM and webhook integrations and
 temporary databases, so it makes no real external requests or deliveries:
 
 ```bash

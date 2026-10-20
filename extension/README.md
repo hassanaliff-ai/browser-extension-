@@ -93,7 +93,7 @@ The privacy inventory documents this separate data category.
 
 Reputation scanning remains explicit. URL scans default to origin only; optional
 paths exclude query/fragment/credentials. Files up to 32 MiB are SHA-256 hashed
-locally and only the digest is sent. VirusTotal, LLM, email and webhook credentials
+locally and only the digest is sent. VirusTotal, LLM and webhook credentials
 stay on the backend. Registration needs higher-role approval and TOTP verification.
 
 ## Verification

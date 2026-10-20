@@ -56,3 +56,5 @@ test('Both approval and rejection require explicit destination review confirmati
   assert.equal(accessReviewBody({revision:1},{decision,duration:'24',reason:'Reviewed business need',confirmed:true}).confirmed,true);
  }
 });
+
+test('Retired email report routes cannot be requested by the extension',()=>{assert.equal(safeApiPath('/api/reports/monthly/2026-09/send','POST'),false);assert.equal(safeApiPath('/api/reports/monthly/generate','POST'),true);});

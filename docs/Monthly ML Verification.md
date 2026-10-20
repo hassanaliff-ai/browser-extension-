@@ -1,3 +1,5 @@
+> Scope update, 20 October 2026: email delivery has been removed. Any email/SMTP results below describe historical verification and do not represent a current feature. Reports, console alerts and webhook support remain.
+
 # Monthly machine-learning verification
 
 Verified on 4 October 2026: **10 focused tests passed** and **63 existing

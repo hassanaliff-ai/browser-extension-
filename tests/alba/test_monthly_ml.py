@@ -7,8 +7,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from alba_security.models import Base, Device, Scan
 from alba_security.monthly_ml import analyze_month
-from alba_security.notifications import NotificationSettings
-from alba_security.report_job import prepare_monthly_report, dispatch_monthly_report, MonthlyReportRecord
+from alba_security.report_job import prepare_monthly_report, MonthlyReportRecord
 from tests.alba.test_governance import system  # noqa: F401
 from tests.test_dashboard import http, app, assert_clean, button, response  # noqa: F401
 
@@ -88,9 +87,9 @@ def test_06_model_outputs_exclude_browsing_and_device_identifiers(db):
     assert result['features'][-1] == 'unknown_fraction'
 
 
-def test_07_llm_and_saved_delivery_include_same_ml_snapshot(db):
+def test_07_llm_and_saved_report_include_same_ml_snapshot(db):
     seed(db)
-    prompts, deliveries = [], []
+    prompts = []
     def generate(**kwargs):
         prompts.append(kwargs['input'])
         return SimpleNamespace(output_text='Review unusual activity alongside the verified monthly statistics.')
@@ -98,12 +97,9 @@ def test_07_llm_and_saved_delivery_include_same_ml_snapshot(db):
     report = prepare_monthly_report(db, 2026, 9, llm_client=fake, model='mock-model')
     assert report.stats['machine_learning']['status'] == 'ready'
     assert 'machine_learning' in prompts[0] and 'PRIVATE' not in prompts[0]
-    settings = NotificationSettings(smtp_host='smtp.invalid', smtp_from='reports@example.invalid', admin_emails=('admin@example.invalid',))
-    delivered = dispatch_monthly_report(db, report, settings=settings, email_sender=lambda *args: deliveries.append(args))
-    assert delivered.status == 'sent' and 'Machine-learning activity review' in deliveries[0][2]
+    assert 'Machine-learning activity review' in report.body
     assert prepare_monthly_report(db, 2026, 9, llm_client=fake, model='mock-model').id == report.id
-    dispatch_monthly_report(db, report, settings=settings, email_sender=lambda *args: deliveries.append(args))
-    assert len(prompts) == len(deliveries) == 1
+    assert len(prompts) == 1
     assert db.scalar(select(MonthlyReportRecord)).stats['machine_learning'] == report.stats['machine_learning']
 
 

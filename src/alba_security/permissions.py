@@ -33,7 +33,7 @@ ADMIN_WRITES = {
     '/api/threat-blocks/{block_id}/release',
     '/api/admin/downloads/scan', '/api/admin/downloads/scan-file',
     '/api/overrides', '/api/overrides/{override_id}/deactivate',
-    '/api/reports/monthly/generate', '/api/reports/monthly/{period}/send',
+    '/api/reports/monthly/generate',
     '/api/alerts/{alert_id}/status',
     '/api/cases', '/api/cases/{case_id}/notes', '/api/cases/{case_id}/status',
     '/api/privacy', '/api/privacy/retention-apply', '/api/evaluations',

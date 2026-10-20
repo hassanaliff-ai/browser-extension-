@@ -1,3 +1,5 @@
+> Scope update, 20 October 2026: email delivery has been removed. Any email/SMTP results below describe historical verification and do not represent a current feature. Reports, console alerts and webhook support remain.
+
 # ExtSecure 0.8.0 — practical verification
 
 Verified on 7 October 2026. This update improves Hasan's extension interfaces,

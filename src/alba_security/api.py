@@ -44,8 +44,8 @@ from alba_security.overrides import (
 from alba_security.models import Alert, Base, Device, Extension, Finding, PersonalScan, Scan, SecurityEvent, utc_now
 from alba_security.file_lookup import lookup_file_hash
 from alba_security.notifications import send_high_severity_alert
-from alba_security.notifications import EmailSender, NotificationSettings
-from alba_security.report_job import MonthlyReportRecord, dispatch_monthly_report, prepare_monthly_report
+from alba_security.notifications import NotificationSettings
+from alba_security.report_job import MonthlyReportRecord, prepare_monthly_report
 from alba_security.reports import (
     ReportConfigurationError, ReportGenerationError, aggregate_month,
 )
@@ -217,8 +217,6 @@ def _report_record(item: MonthlyReportRecord) -> dict:
         "summary_source": item.summary_source,
         "status": item.status,
         "generated_at": _iso(item.generated_at),
-        "sent_at": _iso(item.sent_at) if item.sent_at else None,
-        "delivery_outcomes": item.delivery_outcomes,
     }
 
 
@@ -244,7 +242,6 @@ def create_app(
     notification_settings: NotificationSettings | None = None,
     report_llm_client: Any | None = None,
     report_model: str | None = None,
-    report_email_sender: EmailSender | None = None,
     additional_admins: list[AdminAuth] | None = None,
 ) -> FastAPI:
     """Create the application, with explicit settings for deployments/tests."""
@@ -998,18 +995,6 @@ def create_app(
         except ReportGenerationError as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
         return _report_record(record)
-
-    @app.post("/api/reports/monthly/{period}/send", dependencies=[Admin])
-    def send_report(period: str, db: Session = Depends(session_scope)) -> dict:
-        if not re.fullmatch(r"20[0-9]{2}-(0[1-9]|1[0-2])", period):
-            raise HTTPException(status_code=422, detail="Period must use YYYY-MM")
-        record = db.scalar(select(MonthlyReportRecord).where(MonthlyReportRecord.period == period))
-        if record is None:
-            raise HTTPException(status_code=404, detail="Monthly report not found")
-        sent = dispatch_monthly_report(
-            db, record, settings=notification_settings, email_sender=report_email_sender,
-        )
-        return _report_record(sent)
 
     @app.get("/api/alerts", dependencies=[Admin])
     def alerts(db: Session = Depends(session_scope), limit: int = Query(default=200, ge=1, le=500)) -> list[dict]:

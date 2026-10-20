@@ -1,4 +1,4 @@
-"""Monthly report API prepares factual drafts and sends them once."""
+"""Monthly report API preserves factual drafts without external delivery."""
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -12,13 +12,11 @@ from sqlalchemy.orm import Session
 from alba_security.admin_auth import AdminAuth
 from alba_security.api import create_app
 from alba_security.models import Alert, Finding, Scan, SecurityEvent
-from alba_security.notifications import NotificationSettings
 
 
 def test_monthly_report_generation_and_admin_delivery(tmp_path):
     secret = pyotp.random_base32()
     prompts = []
-    deliveries = []
 
     def fake_create(**kwargs):
         prompts.append(kwargs)
@@ -26,13 +24,6 @@ def test_monthly_report_generation_and_admin_delivery(tmp_path):
 
     fake_llm = SimpleNamespace(responses=SimpleNamespace(create=fake_create))
 
-    def fake_email(recipients, subject, body, _settings):
-        deliveries.append((recipients, subject, body))
-
-    settings = NotificationSettings(
-        smtp_host="smtp.example.invalid", smtp_from="alerts@example.invalid",
-        admin_emails=("admin@example.invalid",),
-    )
     auth = AdminAuth("admin", PasswordHasher().hash("password-123"), secret)
     app = create_app(
         database_url=f"sqlite:///{(tmp_path / 'reports.db').as_posix()}",
@@ -41,8 +32,6 @@ def test_monthly_report_generation_and_admin_delivery(tmp_path):
         alert_notifier=lambda **_kwargs: [],
         report_llm_client=fake_llm,
         report_model="test-summary-model",
-        notification_settings=settings,
-        report_email_sender=fake_email,
     )
     with TestClient(app) as client:
         login = client.post("/api/admin/login", json={"username": "admin", "password": "password-123"})
@@ -94,15 +83,11 @@ def test_monthly_report_generation_and_admin_delivery(tmp_path):
         assert again.json()["id"] == report["id"]
         assert len(prompts) == 1
 
-        sent = client.post(f"/api/reports/monthly/{report['period']}/send", headers=admin)
-        assert sent.status_code == 200, sent.text
-        assert sent.json()["status"] == "sent"
-        assert sent.json()["delivery_outcomes"][0]["status"] == "sent"
-        assert deliveries[0][0] == ("admin@example.invalid",)
-        sent_again = client.post(f"/api/reports/monthly/{report['period']}/send", headers=admin)
-        assert sent_again.status_code == 200
-        assert len(deliveries) == 1
+        removed = client.post(f"/api/reports/monthly/{report['period']}/send", headers=admin)
+        assert removed.status_code in (404, 405)
+        assert 'sent_at' not in report and 'delivery_outcomes' not in report
         assert len(client.get("/api/reports/monthly", headers=admin).json()) == 1
+
 
 
 def test_current_month_cannot_be_sent_as_complete_report(tmp_path):

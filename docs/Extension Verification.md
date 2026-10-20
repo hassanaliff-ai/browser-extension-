@@ -1,3 +1,5 @@
+> Scope update, 20 October 2026: email delivery has been removed. Any email/SMTP results below describe historical verification and do not represent a current feature. Reports, console alerts and webhook support remain.
+
 # ExtSecure Chrome extension 0.5.0 verification
 
 Verified on 5 October 2026. The extension package and installed backend are updated

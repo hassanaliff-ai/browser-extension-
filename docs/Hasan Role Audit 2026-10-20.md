@@ -1,3 +1,5 @@
+> Scope update, 20 October 2026: email delivery has been removed. Any email/SMTP results below describe historical verification and do not represent a current feature. Reports, console alerts and webhook support remain.
+
 # Hasan role audit — 20 October 2026
 
 Release: ExtSecure 0.8.38. Scope was taken from Project Scope.md and the owner's current role requests. Removed advanced monitoring, policy approval, assignment/escalation automation, general importing and control-effectiveness features were not restored. VirusTotal/RDAP module ownership and unrelated proposal/reflection files were left outside the changes.
