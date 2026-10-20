@@ -62,3 +62,17 @@ export function safeActiveTab(tab) {
   try{const url=new URL(tab?.url);if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return {url:'',host:''};return {url:url.href,host:url.hostname};}
   catch{return {url:'',host:''};}
 }
+
+export function accountAccessBody(data) {
+ if(data.confirmed!==true&&data.confirmed!=='on')throw new Error('Confirm the account access change before applying it.');
+ const reason=String(data.reason??'').trim();
+ if(reason.length<8||reason.length>500)throw new Error('Give an account access reason of 8–500 characters.');
+ if(data.operation==='disable')return {confirmed:true,reason};
+ if(data.operation!=='role'||!['normal_user','manager','administrator'].includes(data.role))throw new Error('Choose a valid account access action and role.');
+ return {role:data.role,reason};
+}
+export function resetAccountAccessReview(form) {
+ if(form?.dataset.form!=='account-role')return;
+ const confirmed=form.querySelector('[name="confirmed"]');if(confirmed)confirmed.checked=false;
+ const reason=form.querySelector('[name="reason"]');if(reason)reason.value='';
+}

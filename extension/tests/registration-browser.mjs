@@ -54,6 +54,17 @@ try{
  second=page.locator('[data-form="verify"]');await second.waitFor();await new Promise(r=>setTimeout(r,30200-Date.now()%30000));
  await second.locator('[name="code"]').fill(otp(secret));await second.locator('[type="submit"]').click();await page.locator('.page-title').waitFor();record('The same approved account signs in again with its original password and authenticator');
  await page.screenshot({path:path.join(output,'repeat-sign-in.png'),fullPage:true});
+ await page.locator('[data-action="logout"]').first().click();
+ login=page.locator('[data-form="login"]');await login.locator('[name="username"]').fill('feedback-head');await login.locator('[name="password"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await login.locator('[type="submit"]').click();
+ second=page.locator('[data-form="verify"]');await second.waitFor();await second.locator('[name="code"]').fill(otp(process.env.EXTSECURE_TEST_HEAD_SECRET));await second.locator('[type="submit"]').click();await page.locator('.page-title').waitFor();
+ await page.goto('chrome-extension://'+id+'/console.html#accounts');await page.getByRole('heading',{name:'Approved accounts'}).waitFor();
+ await page.getByText('Change account access',{exact:true}).click();const access=page.locator('[data-form="account-role"]');await access.locator('[name="username"]').selectOption('signup-example');
+ await access.locator('[name="reason"]').fill('Initial role review must not authorize another action');await access.locator('[name="confirmed"]').check();await access.locator('[name="operation"]').selectOption('disable');
+ assert.equal(await access.locator('[name="confirmed"]').isChecked(),false);assert.equal(await access.locator('[name="reason"]').inputValue(),'');record('Changing to Disable resets the old confirmation and reason in the real account form');
+ await access.locator('[name="reason"]').fill('Head administrator explicitly reviewed and disabled the isolated account');await access.locator('[name="confirmed"]').check();await access.locator('[type="submit"]').click();
+ await page.waitForFunction(()=>![...document.querySelectorAll('td')].some(x=>x.textContent==='signup-example'));record('Confirmed account disable succeeds through the actual UI and removes active access');
+ await page.screenshot({path:path.join(output,'account-disable-reviewed.png'),fullPage:true});
+ await page.locator('[data-action="logout"]').first().click();login=page.locator('[data-form="login"]');await login.locator('[name="username"]').fill('signup-example');await login.locator('[name="password"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await login.locator('[type="submit"]').click();await page.getByText(/Use your existing username and password/).waitFor();assert.equal(await page.locator('[data-form="verify"]').count(),0);record('Disabled account is denied without prompting repeated registration');
  assert.deepEqual(errors,[]);record('No page JavaScript errors');
  await fs.writeFile(path.join(output,'results.json'),JSON.stringify({passed:checks.length,checks},null,2));
 }catch(error){if(page)await page.screenshot({path:path.join(output,'registration-failure.png'),fullPage:true});throw error;}

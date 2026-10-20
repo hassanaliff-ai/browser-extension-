@@ -18,6 +18,9 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'The threat is blocked. Sign out and reopen ExtSecure to finish clearing earlier approvals.':'تم حظر التهديد. سجّل الخروج وأعد فتح ExtSecure لإكمال مسح الموافقات السابقة.',
+ 'I understand that Disable denies future sign-in and both actions revoke existing sessions.':'أفهم أن التعطيل يمنع تسجيل الدخول لاحقاً وأن كلا الإجراءين يلغي الجلسات الحالية.',
+ 'The destination is blocked, but some open tabs could not be redirected. Close those tabs and review the incident.':'تم حظر الوجهة، لكن تعذرت إعادة توجيه بعض علامات التبويب المفتوحة. أغلقها وراجع الحادثة.',
  'Account validity':'صلاحية الحساب',
  'Unlimited (no expiry)':'غير محدودة (دون انتهاء)',
  'Accounts have no expiry. If your session ends, log in again with the same account. Every role uses password and authenticator verification.':'الحسابات لا تنتهي صلاحيتها. إذا انتهت جلستك، سجّل الدخول مجدداً بالحساب نفسه. جميع الأدوار تستخدم كلمة المرور وتطبيق المصادقة.',

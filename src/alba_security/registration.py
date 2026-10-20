@@ -73,6 +73,12 @@ class AccountReview(BaseModel):
     role: Literal['administrator', 'manager', 'normal_user'] = 'normal_user'
 
 
+class AccountDisable(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    confirmed: bool = Field(strict=True)
+    reason: str = Field(min_length=8, max_length=500, pattern=r'.*\S.*')
+
+
 def install_registration(app, session_scope, require_actor, directory, throttle):
     from alba_security.governance import audit
     from alba_security.admin_auth import AdminSession
@@ -182,13 +188,14 @@ def install_registration(app, session_scope, require_actor, directory, throttle)
                         headers={'Cache-Control': 'no-store'})
 
     @app.post('/api/admin/accounts/{username}/disable')
-    def disable(username: str, actor: str = Admin, db: Session = Depends(session_scope)):
+    def disable(username: str, payload: AccountDisable, actor: str = Admin, db: Session = Depends(session_scope)):
         if username == directory.primary.username: raise HTTPException(409, 'The main administrator account is protected')
         row = db.get(RegisteredAdmin, username)
         if row is None: raise HTTPException(404, 'Registered account not found')
+        if not payload.confirmed: raise HTTPException(422, 'Confirm that this account will lose access')
         row.status = 'disabled'
         db.execute(update(AdminSession).where(AdminSession.username == username).values(revoked_at=utc_now()))
-        audit(db, 'account', username, actor, 'account_disabled')
+        audit(db, 'account', username, actor, 'account_disabled', reason=payload.reason)
         db.commit()
         return {'disabled':True}
 

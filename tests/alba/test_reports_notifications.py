@@ -130,9 +130,14 @@ def test_llm_receives_only_aggregate_data_and_writes_report(report_db):
 
 
 def test_monthly_llm_requires_explicit_model(report_db, monkeypatch):
+    # A developer may have the local Ollama model configured in .env.
+    # Exercise missing-model handling independently for both supported providers.
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
-    with pytest.raises(ReportConfigurationError, match="OPENAI_MODEL"):
-        generate_monthly_report(report_db, 2026, 9, llm_client=object())
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    for provider in ('openai','ollama'):
+        monkeypatch.setenv('LLM_PROVIDER',provider)
+        with pytest.raises(ReportConfigurationError, match="OPENAI_MODEL or OLLAMA_MODEL"):
+            generate_monthly_report(report_db, 2026, 9, llm_client=object())
 
 
 def test_high_severity_notification_uses_every_channel_and_redacts_raw_message():

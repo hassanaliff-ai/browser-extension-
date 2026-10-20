@@ -160,7 +160,7 @@ def test_administrator_can_use_security_workflows_but_not_account_management(rol
 def test_owner_account_cannot_be_disabled_demoted_or_duplicated(roles):
     client, _, headers, _ = roles
     owner = headers['head_administrator']
-    assert client.post('/api/admin/accounts/hasan/disable',headers=owner).status_code == 409
+    assert client.post('/api/admin/accounts/hasan/disable',headers=owner,json={'confirmed':True,'reason':'Access revoked after an explicit administrator review'}).status_code == 409
     assert client.post('/api/admin/accounts/hasan/role',headers=owner,
         json={'reason':'Try to demote the only owner','role':'normal_user'}).status_code == 409
     assert client.post('/api/admin/accounts/administrator/role',headers=owner,
@@ -182,7 +182,7 @@ def test_role_change_revokes_sessions_and_is_audited(roles):
 
 def test_disabled_account_loses_access_and_cannot_sign_in(roles):
     client, _, headers, _ = roles
-    assert client.post('/api/admin/accounts/manager/disable',headers=headers['head_administrator']).status_code == 200
+    assert client.post('/api/admin/accounts/manager/disable',headers=headers['head_administrator'],json={'confirmed':True,'reason':'Access revoked after an explicit administrator review'}).status_code == 200
     assert client.get('/api/admin/me',headers=headers['manager']).status_code == 401
     assert client.post('/api/admin/login',json={'username':'manager','password':PASSWORD}).status_code == 401
 

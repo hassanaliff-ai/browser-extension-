@@ -1,65 +1,22 @@
-# ExtSecure account roles and approval
+# ExtSecure account roles and access
 
-The primary `ADMIN_USERNAME` account is the **Head of Administrator**. It is the
-single owner identity, protected against self-disable, demotion and public
-registration. The setup tool defaults to `head-of-administrator`. Existing
-deployments retain their primary account credentials and receive the owner role.
+The configured ADMIN_USERNAME account is the Head of Administrator. It is protected against self-disable, demotion and duplicate public registration. All account roles use a password plus backend-verified authenticator code. QR enrollment is rendered locally.
 
-| Role | Access |
+| Account role | Main privileges |
 | --- | --- |
-| Normal user | Check file hashes or upload files for hashing, review only their own file-check history and evidence, read security guidance, view their own account. |
-| Manager | View organization monitoring, scans, findings, devices, extensions, events, monthly statistics, saved reports and ML results. Review alerts and create, assign and update incident cases. Cannot change security configuration, deliver reports or manage accounts. |
-| Administrator | Security operations, file checks, exceptions, report generation and delivery, policy workflows, privacy and retention, detection evaluation, usability testing and incident cases. Cannot approve users, assign roles or revoke other users' access. |
-| Head of Administrator | All administrator workflows plus sole authority to approve or reject requests, assign roles and disable access. Independent policy review still requires a different approved administrator. |
+| Normal user | Own file checks/history, website access requests, security guidance, own scan-linked feedback, suggestions and own account/device registration. |
+| Manager | Organization monitoring and inventory, reports for review, incident investigation/notes and alert handling; approval of normal-user registrations. |
+| Administrator | Security operations, exceptions, reporting/delivery, privacy, detection/usability evaluation, incident protection and manager/normal-user approval. |
+| Head of Administrator | All administrator functions, administrator approvals, existing-account role changes and account disabling. |
 
-Registration requires a password of at least 12 characters and verified TOTP
-enrollment. It creates a pending account, never a session or an active grant.
-Only the owner can approve it and select one of the three ordinary roles.
-There is no invitation code and no self-service role selection. Every role
-uses password plus authenticator verification at sign-in.
+The approval pyramid is normal user → manager → administrator → head administrator. A higher role can approve lower roles; accounts cannot approve their own registrations. Only the head changes existing account roles or disables access. Account roles and permissions are checked by the backend on each request, including queued AI jobs and device-dependent actions.
 
-Additional accounts configured with `ADMIN_REVIEWER_*` also enter pending review.
-Their presence in server configuration does not bypass owner approval.
+Registration is completed once: choose a password, verify authenticator enrollment, then wait for approval. Only completed authenticator enrollments appear in Accounts → Pending registrations. Approved accounts have unlimited validity and no expiry date. Sessions normally last 24 hours; an expired session requires login using the same account, not registration. Temporary enrollment and sign-in challenges have separate short security deadlines.
 
-The backend checks the current role and owner approval on every protected
-request. Route permissions are explicit and unlisted routes are denied. Role
-changes and account disable operations revoke existing sessions. Approval,
-rejection, role changes and disable actions are recorded in the audit log.
-Public registration rejects extra role fields and the approval schema cannot
-assign another owner. Pending, rejected, disabled and unapproved accounts cannot
-use existing sessions to bypass approval.
+Disabling an account explicitly denies future login and revokes its current sessions. Version 0.8.38 requires a strict confirmation and an 8–500 character reason at the backend. The extension clears an earlier confirmation/reason when the selected account, role or action changes. Account disable reasons are recorded in append-only audit history. Passwords, bearer tokens and authenticator secrets are excluded from audit records.
 
-Normal-user file checks receive a server-assigned personal device reference.
-Submitted device and extension identities cannot impersonate another workstation.
-Personal history joins scans with authenticated ownership; another account's
-personal scan reference returns 404. Organization monitoring remains restricted
-to managers and administrators. Trusted ingestion uses a separate machine token
-and does not claim personal ownership.
+Changing roles revokes existing sessions. Pending, rejected and disabled accounts cannot bypass approval through old sessions. Approval chains fail closed if an approving account no longer has the required role. Manually deleting an account is separate from session expiration and must follow the owner's explicit request.
 
-On upgrade, earlier active registered accounts without owner-approval metadata
-return to pending review. Their hashes, encrypted authenticator secrets and
-historical data remain intact. The primary owner retains access and can approve
-them with the appropriate role. Retention deletes personal ownership links with
-their scans.
+Device enrollment is separate from account registration. Approved accounts can add a Chrome profile; lower-role devices wait for administrator approval and are visible in inventory while pending. Full extension inventory requires Chrome's management permission. A paired device can send narrow heartbeat/inventory updates without an account session; it cannot use that device key as an account login or read account data.
 
-The account workspace is owner-only. It lists pending requests and approved
-accounts, explains privileges, allows explicit role selection on approval, and
-supports role changes and revocation. The dashboard fetches its navigation from
-the authenticated backend profile on every run. Manager reports display analysis
-and saved reports while hiding generation and delivery controls.
-
-## Verification
-
-Automated tests exercise all protected read routes and restricted write routes,
-real password/TOTP sessions, owner-only account management, head-account
-protection, personal-file isolation, upload ownership, manager investigations,
-audit records, session revocation, legacy migrations and role-specific Streamlit
-screens. External notification and reputation services are isolated in tests.
-
-Deployment secrets belong in private server configuration. Use
-`python -m alba_security.admin_setup` to create a primary account for a fresh
-deployment, then store the emitted values privately and enroll its authenticator.
-Never distribute the owner password, TOTP secret or machine ingestion token in
-the extension or dashboard frontend.
-
-Verified on 4 October 2026: 440 tests and 16 subtests passed in 133.91 seconds.
+Normal-user evidence is ownership-filtered. Managers and administrators receive only the routes granted to their roles. Removed policy-approval, assignment/escalation automation and advanced database-monitoring features remain outside scope.

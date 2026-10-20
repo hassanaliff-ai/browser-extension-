@@ -35,24 +35,36 @@ def wait_until_ready(url):
     return False
 
 
+def ensure_local_ai(environment):
+    """Recover the configured loopback-only model without requiring API/network access."""
+    if environment.get('LLM_PROVIDER', 'openai').strip().lower() != 'ollama':
+        return True
+    local_data=environment.get('LOCALAPPDATA') or os.environ.get('LOCALAPPDATA')
+    if not local_data:
+        return False
+    runtime=Path(local_data)/'ExtSecure'/'ollama'
+    environment=dict(environment)
+    environment.update(OLLAMA_HOST='127.0.0.1:11434', OLLAMA_NO_CLOUD='1',
+                       OLLAMA_MODELS=str(runtime/'models'), OLLAMA_NUM_PARALLEL='1',
+                       OLLAMA_MAX_LOADED_MODELS='1')
+    if reachable('http://127.0.0.1:11434/api/tags'):
+        return True
+    if not (runtime/'ollama.exe').is_file():
+        return False
+    try:
+        launch([str(runtime/'ollama.exe'),'serve'],environment,ROOT/'.private'/'local-ai.log')
+    except OSError:
+        return False
+    return wait_until_ready('http://127.0.0.1:11434/api/tags')
+
+
 def main():
     environment = dict(os.environ)
     settings = dotenv_values(ROOT / '.env')
     environment.update({k: v for k, v in settings.items() if v is not None})
-    if environment.get('LLM_PROVIDER', 'openai') == 'ollama':
-        runtime = Path(os.environ['LOCALAPPDATA']) / 'ExtSecure' / 'ollama'
-        environment.update(OLLAMA_HOST='127.0.0.1:11434', OLLAMA_NO_CLOUD='1',
-                           OLLAMA_MODELS=str(runtime / 'models'), OLLAMA_NUM_PARALLEL='1',
-                           OLLAMA_MAX_LOADED_MODELS='1')
-        if not reachable('http://127.0.0.1:11434/api/tags'):
-            if not (runtime / 'ollama.exe').is_file():
-                print('Local Ollama runtime is missing. Restore it before generating reports.')
-                return 1
-            launch([str(runtime / 'ollama.exe'), 'serve'], environment, ROOT / '.private' / 'local-ai.log')
-            if not wait_until_ready('http://127.0.0.1:11434/api/tags'):
-                print('Local AI did not start. Check .private/local-ai.log.')
-                return 1
-        print('Local AI runtime is running.')
+    if not ensure_local_ai(environment):
+        print('Local AI is unavailable. Check the installed runtime and .private/local-ai.log.')
+        return 1
     if not reachable('http://127.0.0.1:8765/health'):
         environment['PYTHONPATH'] = str(ROOT / 'src')
         environment.update(OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', MKL_NUM_THREADS='1')

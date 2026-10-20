@@ -19,3 +19,25 @@ test('File hash containment stores no file bytes and does not claim OS quarantin
 test('Worker restart restores persistent threat rules',async()=>{reset();await containThreat(result(),'https://danger.example/',clear);rules=[];await restoreThreatRules();assert.equal(rules.length,2);});
 test('Only a backend-confirmed release removes a local hostname block',async()=>{reset();await containThreat(result(),'https://danger.example/',clear);await reconcileThreatHost('https://danger.example/',true);assert.equal(rules.length,2);await reconcileThreatHost('https://danger.example/',false);assert.equal(rules.length,0);});
 test('Block routes are narrow and evidence export excludes secrets and local hosts',()=>{assert.ok(safeApiPath('/api/threat-blocks'));assert.ok(safeApiPath('/api/threat-blocks/host:'+'a'.repeat(64)+'/release','POST'));assert.equal(safeApiPath('/api/threat-blocks/../../release','POST'),false);const exported=scanEvidenceExport({id:'scan',token:'PRIVATE',target:'https://private/a',containment:{host:'private',active:true},findings:[{title:'Threat',detail:'private data',points:80}]});assert.equal(JSON.stringify(exported).includes('PRIVATE'),false);assert.equal(JSON.stringify(exported).includes('private'),false);});
+
+test('One tab disappearing cannot stop containment of the remaining threat tabs',async()=>{
+ reset();const attempted=[];
+ chrome.tabs.query=async()=>[{id:4,url:'https://danger.example/first'},{id:5,url:'https://danger.example/second'}];
+ chrome.tabs.update=async id=>{attempted.push(id);if(id===4)throw new Error('No tab with id: 4');};
+ const protection=await containThreat(result('Critical'),'https://danger.example/',clear);
+ assert.deepEqual(attempted,[4,5]);assert.equal(rules.length,2);assert.equal(protection.blocked,true);assert.equal(protection.redirect_failures,1);assert.match(protection.warning,/Close those tabs/);
+});
+test('File containment cannot interpret a supplied file name as a website',async()=>{
+ reset();const protection=await containThreat(result('Critical','download'),'suspicious-file.pdf',clear);
+ assert.equal(protection.scope,'file_hash');assert.equal(rules.length,0);assert.equal(local.threatContainment[0].host,null);
+});
+
+test('A temporary approval cleanup failure cannot prevent the persistent threat block',async()=>{
+ reset();const protection=await containThreat(result('Critical'),'https://danger.example/',async()=>{throw new Error('Chrome transient cleanup failure');});
+ assert.equal(rules.length,2);assert.equal(local.threatContainment.length,1);assert.equal(protection.blocked,true);assert.match(protection.warning,/finish clearing earlier approvals/);assert(updates.some(r=>r.id===4));
+});
+test('A tab-query failure leaves persistent containment installed and reports the limitation',async()=>{
+ reset();chrome.tabs.query=async()=>{throw new Error('Chrome tab query unavailable');};
+ const protection=await containThreat(result(),'https://danger.example/',clear);
+ assert.equal(rules.length,2);assert.equal(protection.blocked,true);assert.match(protection.warning,/open tabs/);
+});

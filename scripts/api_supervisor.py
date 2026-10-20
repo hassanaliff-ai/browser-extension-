@@ -77,10 +77,15 @@ def cycle(failures):
         if state is not None:stop()
         start(wait_for_health=False)
         state=json.loads(state_path.read_text())
+    from start_extsecure import ensure_local_ai
+    environment=dict(os.environ);environment.update({k:v for k,v in dotenv_values(ROOT/'.env').items() if v is not None})
+    # Local inference recovery must never stop the API or rotate its public URL.
+    try:local_ai_ready=ensure_local_ai(environment)
+    except Exception:local_ai_ready=False
     public=healthy(state['origin'])
     origin_file=STATE/'package-origin.txt'
     if public and (not origin_file.exists() or origin_file.read_text(encoding='utf-8')!=state['origin']):publish_package(state['origin'])
-    checkpoint(state='running' if public else 'waiting_for_public_network',local_api=True,public_api=public,origin=state['origin'])
+    checkpoint(state='running' if public else 'waiting_for_public_network',local_api=True,public_api=public,origin=state['origin'],local_ai_ready=local_ai_ready)
     return failures
 
 def lock_instance():

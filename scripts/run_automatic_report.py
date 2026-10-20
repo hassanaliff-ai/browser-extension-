@@ -25,8 +25,9 @@ def main():
     engine=None
     try:
         import start_extsecure
-        if start_extsecure.main()!=0:
-            raise RuntimeError('Local services could not start')
+        # Reports read PostgreSQL directly; public tunnel/API availability is irrelevant.
+        if not start_extsecure.ensure_local_ai(dict(os.environ)):
+            raise RuntimeError('The configured local report model could not start')
         engine=create_engine(os.environ['DATABASE_URL'],pool_pre_ping=True,
             connect_args={'application_name':'ExtSecure Report Scheduler'})
         with Session(engine,expire_on_commit=False) as db:

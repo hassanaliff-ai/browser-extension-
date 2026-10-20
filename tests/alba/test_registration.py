@@ -130,7 +130,7 @@ def test_disabling_approved_account_revokes_sessions(system):
     approve(client,headers)
     new_header = login(client,enrollment)
     assert client.post('/api/admin/accounts/new-admin/disable',headers=new_header).status_code == 403
-    assert client.post('/api/admin/accounts/new-admin/disable',headers=headers['hasan']).status_code == 200
+    assert client.post('/api/admin/accounts/new-admin/disable',headers=headers['hasan'],json={'confirmed':True,'reason':'Access revoked after an explicit administrator review'}).status_code == 200
     assert client.get('/api/privacy',headers=new_header).status_code == 401
 
 
@@ -210,3 +210,21 @@ def test_session_expiry_keeps_account_and_allows_sign_in_without_registering_aga
         row=db.get(RegisteredAdmin,'new-admin')
         assert row.status=='active' and original==(row.password_hash,row.totp_encrypted,row.approved_by)
         assert db.query(RegistrationEnrollment).count()==0
+
+
+def test_disabling_account_requires_explicit_confirmation_and_auditable_reason(system):
+    from sqlalchemy import select
+    from alba_security.governance import GovernanceAudit
+    client,app,headers,_=system
+    enrollment=enroll(client);finish(client,enrollment);approve(client,headers)
+    for body in [None,{}, {'confirmed':False,'reason':'Explicit reason for a denied disable'}, {'confirmed':'true','reason':'Do not coerce confirmation strings'}, {'confirmed':True,'reason':'       '}, {'confirmed':True,'reason':'short'}]:
+        args={} if body is None else {'json':body}
+        response=client.post('/api/admin/accounts/new-admin/disable',headers=headers['hasan'],**args)
+        assert response.status_code==422,response.text
+        with app.state.session_factory() as db:assert db.get(RegisteredAdmin,'new-admin').status=='active'
+    reason='Head administrator verified that this account must lose access'
+    response=client.post('/api/admin/accounts/new-admin/disable',headers=headers['hasan'],json={'confirmed':True,'reason':reason})
+    assert response.status_code==200,response.text
+    with app.state.session_factory() as db:
+        event=db.scalar(select(GovernanceAudit).where(GovernanceAudit.action=='account_disabled'))
+        assert event.details['reason']==reason and event.actor=='hasan'

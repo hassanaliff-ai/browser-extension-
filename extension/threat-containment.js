@@ -24,23 +24,29 @@ async function saveRules(rows){
 function serial(task){const next=queue.catch(()=>{}).then(task);queue=next;return next;}
 export async function containThreat(result,target,clearGrants){
  if(!result?.containment?.active&&!['High','Critical'].includes(result?.severity))return {blocked:false};
- const host=result.target_kind==='url'||target?threatHost(target):null;
+ const host=result.target_kind==='url'?threatHost(target):null;
  const block=result.containment;
  if(!block?.id)throw new Error('High-risk threat detected. Backend containment is unavailable; do not open this destination or file.');
- await clearGrants({preserveBlocked:true});
+ let cleanupFailed=false;
  await serial(async()=>{
   const saved=(await chrome.storage.local.get(KEY))[KEY]??[];
   const entry={id:block.id,kind:block.kind,fingerprint:block.fingerprint,active:true,host,severity:block.severity,scan_id:block.scan_id};
   await saveRules([...saved.filter(r=>r.id!==entry.id),entry]);
  });
+ // Install the higher-priority persistent block before attempting transient cleanup.
+ try{await clearGrants({preserveBlocked:true});}catch{cleanupFailed=true;}
+ let redirectFailures=0;
  if(host){
-  const tabs=await chrome.tabs.query({});
+  let tabs=[];try{tabs=await chrome.tabs.query({});}catch{redirectFailures++;}
   for(const tab of tabs){try{if(Number.isInteger(tab.id)&&threatHost(tab.url)===host){
    await chrome.storage.session.set({['blocked:'+tab.id]:{url:privateTarget(tab.url,true),captured_at:Date.now()}});
    await chrome.tabs.update(tab.id,{url:chrome.runtime.getURL('blocked.html')});
-  }}catch(error){if(error?.message?.includes('Invalid')||!/^https?:/.test(tab.url??''))continue;throw error;}}
+  }}catch{if(!/^https?:/.test(tab.url??''))continue;redirectFailures++;}}
  }
- return {blocked:true,scope:host?'hostname':'file_hash'};
+ const warnings=[];
+ if(redirectFailures)warnings.push('The destination is blocked, but some open tabs could not be redirected. Close those tabs and review the incident.');
+ if(cleanupFailed)warnings.push('The threat is blocked. Sign out and reopen ExtSecure to finish clearing earlier approvals.');
+ return {blocked:true,scope:host?'hostname':'file_hash',...(redirectFailures?{redirect_failures:redirectFailures}:{}),...(warnings.length?{warning:warnings.join(' ')}:{})};
 }
 export async function reconcileThreatHost(target,blocked){
  if(blocked)return;

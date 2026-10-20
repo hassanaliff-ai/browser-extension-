@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {connectionBadge,connectionMessage,connectionPanel,filterRecords,requestedRole,updateAccountReview,resetDestinationReview,validateReportPeriod,safeActiveTab} from '../workspace-kit.js';
+import {connectionBadge,connectionMessage,connectionPanel,filterRecords,requestedRole,updateAccountReview,resetDestinationReview,validateReportPeriod,safeActiveTab,accountAccessBody,resetAccountAccessReview} from '../workspace-kit.js';
 
 test('Connection diagnostics distinguish localhost packages from public failures',()=>{
  assert.match(connectionMessage({status:'offline',api_origin:'http://127.0.0.1:8765',reason:'network_error'}),/another device.*public HTTPS ZIP/);
@@ -57,4 +57,16 @@ test('Connection states use explicit text and do not inject arbitrary markup',()
 test('Only an HTTP or HTTPS page can enable the popup scan action',()=>{
  assert.equal(safeActiveTab({url:'https://example.com/a?x=1'}).host,'example.com');
  for(const url of ['chrome://extensions','chrome://newtab','file:///C:/file.txt','https://user:secret@example.com','not a URL'])assert.deepEqual(safeActiveTab({url}),{url:'',host:''});
+});
+
+test('Account disabling requires explicit confirmation and a recorded reason',()=>{
+ const data={operation:'disable',confirmed:'on',reason:'Owner reviewed this account access'};
+ assert.deepEqual(accountAccessBody(data),{confirmed:true,reason:data.reason});
+ for(const change of [{confirmed:false},{confirmed:'false'},{reason:'short'},{operation:'unknown'}])assert.throws(()=>accountAccessBody({...data,...change}));
+ assert.deepEqual(accountAccessBody({...data,operation:'role',role:'manager'}),{role:'manager',reason:data.reason});
+});
+test('Changing the account or action discards the previous access confirmation',()=>{
+ const confirmed={checked:true},reason={value:'Review of a different account'};
+ resetAccountAccessReview({dataset:{form:'account-role'},querySelector:s=>s.includes('confirmed')?confirmed:reason});
+ assert.equal(confirmed.checked,false);assert.equal(reason.value,'');
 });

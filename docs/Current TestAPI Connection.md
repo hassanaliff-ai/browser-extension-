@@ -2,9 +2,9 @@
 
 The distributed ExtSecure Chrome Extension.zip and the installed workspace extension use the public TestAPI endpoint:
 
-https://scenario-break-solution-management.trycloudflare.com
+https://joan-designated-explosion-result.trycloudflare.com
 
-Verified on 19 October 2026: local and public /health return service TestAPI; the account-registration endpoint is reachable and rejects an invalid empty request with 422. No test registration was added to the live database.
+Verified on 20 October 2026: local and public /health return service TestAPI; the account-registration endpoint is reachable and rejects an invalid empty request with 422. No test registration was added to the live database.
 
 On another computer, replace files in the existing unpacked-extension folder with this ZIP and click Reload at chrome://extensions. Connection diagnostics must show the HTTPS address above, rather than that computer's localhost or a different server. Register once, complete authenticator verification and receive account approval; then log in with that same account. Registered accounts have no expiry.
 

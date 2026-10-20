@@ -217,9 +217,10 @@ def show_accounts(token: str) -> None:
                 change = st.form_submit_button('Save role and revoke existing sessions')
             if change:
                 if post_admin('/api/admin/accounts/'+chosen+'/role', token, {'reason':reason,'role':role}) is not None: st.rerun()
-            confirmed = st.checkbox('Revoke this account’s access and all existing sessions')
+            disable_reason = st.text_area('Reason for disabling this account', max_chars=500)
+            confirmed = st.checkbox('Disable future sign-in and revoke this account’s existing sessions')
             if st.button('Disable account', disabled=not confirmed):
-                if post_admin('/api/admin/accounts/'+chosen+'/disable', token) is not None: st.rerun()
+                if post_admin('/api/admin/accounts/'+chosen+'/disable', token, {'confirmed':confirmed,'reason':disable_reason}) is not None: st.rerun()
 
 
 def show_my_account(token: str) -> None:
