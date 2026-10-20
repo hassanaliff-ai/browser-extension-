@@ -64,18 +64,20 @@ def main():
     from tkinter import ttk
     from threading import Thread
     values=dotenv_values(ROOT/'.env')
-    root=tk.Tk();root.title('ExtSecure - private email setup');root.geometry('540x410');root.resizable(False,False)
+    root=tk.Tk();root.title('ExtSecure - private email setup');root.geometry('580x530');root.resizable(False,False)
     frame=ttk.Frame(root,padding=24);frame.pack(fill='both',expand=True)
     ttk.Label(frame,text='ExtSecure email alerts',font=('Segoe UI',16,'bold')).pack(anchor='w')
-    ttk.Label(frame,text='Verify the Gmail sender without sending any email.',wraplength=485).pack(anchor='w',pady=(6,14))
+    ttk.Label(frame,text='Automatic Gmail delivery: authorize ExtSecure with a Google app password.',wraplength=485).pack(anchor='w',pady=(6,14))
     sender=tk.StringVar(value=values.get('SMTP_USERNAME',''))
     recipient=tk.StringVar(value=values.get('ADMIN_EMAILS',''))
     password=tk.StringVar()
-    for label,var,masked in [('Sender Gmail account',sender,False),('Administrator recipient',recipient,False),('SMTP password - minimum 6 characters',password,True)]:
+    for label,var,masked in [('Sender Gmail account',sender,False),('Administrator recipient',recipient,False),('Google app password (not your Gmail sign-in password)',password,True)]:
         ttk.Label(frame,text=label).pack(anchor='w')
         ttk.Entry(frame,textvariable=var,show='*' if masked else '').pack(fill='x',pady=(2,9))
-    ttk.Label(frame,text='Sender name: ExtSecure. Gmail must accept the supplied SMTP credential.\nThe password stays in private local server configuration.',wraplength=485).pack(anchor='w')
-    status=tk.StringVar(value='Minimum 6 characters; no application maximum. Password entry is masked.')
+    ttk.Label(frame,text='1. Enable Google two-step verification.\n2. Generate an app password named ExtSecure.\n3. Enter it above and verify. Sender name: ExtSecure.\nCredentials stay in private server configuration, never in the extension.',wraplength=485).pack(anchor='w')
+    import webbrowser
+    ttk.Button(frame,text='Open Google app passwords',command=lambda:webbrowser.open('https://myaccount.google.com/apppasswords')).pack(anchor='w',pady=(8,0))
+    status=tk.StringVar(value='Waiting for Gmail authorization. Verification does not send an email.')
     ttk.Label(frame,textvariable=status,wraplength=485).pack(anchor='w',pady=(12,8))
     def save():
         submitted=(sender.get(),recipient.get(),password.get())
