@@ -11,3 +11,5 @@ Official Gmail references: https://support.google.com/mail/answer/185833 and htt
 The local input accepts at least six characters and has no application-level maximum. It preserves the credential exactly, including spaces and symbols. Gmail still validates authentication, and settings are saved only after acceptance. This input rule does not change Gmail account/provider requirements.
 
 Connection diagnostics distinguish Gmail SMTP disconnections/authentication failures from TestAPI reachability. Successful TCP/TLS connectivity does not prove sender authentication. Rejected or disconnected verification attempts do not save the submitted password or send mail.
+
+Gmail authentication uses exactly one AUTH PLAIN challenge after STARTTLS. Automatic retries across authentication mechanisms were removed because a later disconnect could hide Gmail's original 535 credential rejection. The UI distinguishes SMTP 535, additional authorization (534), a true disconnect and a network/TLS problem. Verification received 535 for the submitted credential; it was not saved, and no mail was sent. Eighteen setup regression tests pass.

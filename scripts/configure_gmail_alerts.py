@@ -9,6 +9,35 @@ from dotenv import dotenv_values,set_key
 ROOT=Path(__file__).resolve().parents[1]
 
 
+
+def authenticate_gmail_once(smtp,sender,password):
+    """Preserve Gmail's first rejection instead of retrying another AUTH mechanism."""
+    code,response=smtp.ehlo()
+    if code!=250:
+        raise smtplib.SMTPHeloError(code,response)
+    if not smtp.has_extn('auth') or 'PLAIN' not in smtp.esmtp_features.get('auth','').upper().split():
+        raise smtplib.SMTPNotSupportedError('Gmail did not advertise AUTH PLAIN after TLS')
+    code,response=smtp.auth('PLAIN',lambda challenge=None:'\0'+sender+'\0'+password,initial_response_ok=False)
+    if code not in (235,503):
+        raise smtplib.SMTPAuthenticationError(code,response)
+
+
+def verification_message(error):
+    if isinstance(error,smtplib.SMTPAuthenticationError):
+        if error.smtp_code==535:
+            return 'Gmail rejected the sender credentials (SMTP 535). Check the Gmail address and use a Gmail-approved SMTP credential. No password was saved.'
+        if error.smtp_code==534:
+            return 'Gmail requires additional account authorization (SMTP 534). Check its app-password or Google sign-in requirements. No password was saved.'
+        return 'Gmail rejected authentication. No password was saved; review the sender account settings.'
+    if isinstance(error,smtplib.SMTPServerDisconnected):
+        return 'Gmail closed the SMTP connection. This is separate from TestAPI. No password was saved.'
+    if isinstance(error,(TimeoutError,OSError)):
+        return 'Could not connect securely to Gmail SMTP. This is separate from TestAPI. No password was saved.'
+    if isinstance(error,ValueError):
+        return str(error)
+    return 'Setup did not complete. Check private settings before retrying. No email was sent.'
+
+
 def save_verified_settings(sender,recipient,password,*,display_name='ExtSecure',env_path=None,smtp_factory=None):
     sender=sender.strip();recipient=recipient.strip();display_name=display_name.strip()
     if not re.fullmatch(r'[A-Za-z0-9._%+-]+@gmail\.com',sender,re.I):
@@ -22,7 +51,7 @@ def save_verified_settings(sender,recipient,password,*,display_name='ExtSecure',
     factory=smtp_factory or smtplib.SMTP
     with factory('smtp.gmail.com',587,timeout=15) as smtp:
         smtp.starttls(context=ssl.create_default_context())
-        smtp.login(sender,password)
+        authenticate_gmail_once(smtp,sender,password)
     path=Path(env_path) if env_path else ROOT/'.env'
     values={'ADMIN_EMAILS':recipient,'SMTP_HOST':'smtp.gmail.com','SMTP_PORT':'587',
             'SMTP_USERNAME':sender,'SMTP_FROM':formataddr((display_name,sender)),'SMTP_PASSWORD':password}
@@ -55,11 +84,7 @@ def main():
             try:
                 save_verified_settings(*submitted)
                 message='Verified and saved. Restart TestAPI to apply email settings. No email was sent.'
-            except ValueError as error:message=str(error)
-            except smtplib.SMTPAuthenticationError:message='Gmail rejected this credential. Check the sender account and its SMTP authentication requirements.'
-            except smtplib.SMTPServerDisconnected:message='Gmail closed its SMTP connection during verification. This is separate from TestAPI. Check Gmail sign-in requirements before retrying.'
-            except (TimeoutError,OSError):message='Could not connect securely to Gmail SMTP. This is separate from the extension TestAPI connection.'
-            except Exception:message='Setup did not complete. Check private settings before retrying. No email was sent.'
+            except Exception as error:message=verification_message(error)
             def done():
                 password.set('');status.set(message);button.configure(state='normal')
             root.after(0,done)
