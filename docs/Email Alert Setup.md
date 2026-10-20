@@ -9,3 +9,5 @@ Restart TestAPI after successful setup so it loads the verified settings. A recr
 Official Gmail references: https://support.google.com/mail/answer/185833 and https://developers.google.com/workspace/gmail/imap/imap-smtp
 
 The local input accepts at least six characters and has no application-level maximum. It preserves the credential exactly, including spaces and symbols. Gmail still validates authentication, and settings are saved only after acceptance. This input rule does not change Gmail account/provider requirements.
+
+Connection diagnostics distinguish Gmail SMTP disconnections/authentication failures from TestAPI reachability. Successful TCP/TLS connectivity does not prove sender authentication. Rejected or disconnected verification attempts do not save the submitted password or send mail.

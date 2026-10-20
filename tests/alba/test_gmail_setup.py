@@ -46,3 +46,11 @@ def test_setup_rejects_values_shorter_than_six_before_authentication(tmp_path,pa
     factory=MagicMock();path=tmp_path/'.env'
     with pytest.raises(ValueError,match='at least 6'):save_verified_settings('sender@gmail.com','admin@example.com',password,env_path=path,smtp_factory=factory)
     factory.assert_not_called();assert not path.exists()
+
+
+def test_gmail_disconnect_during_authentication_preserves_existing_configuration(tmp_path):
+    factory=MagicMock();factory.return_value.__enter__.return_value.login.side_effect=smtplib.SMTPServerDisconnected('Synthetic server disconnect')
+    path=tmp_path/'.env';path.write_text('EXISTING_SETTING=retained\n')
+    with pytest.raises(smtplib.SMTPServerDisconnected):save_verified_settings('sender@gmail.com','admin@example.com','fixture-password',env_path=path,smtp_factory=factory)
+    assert path.read_text()=='EXISTING_SETTING=retained\n'
+    factory.return_value.__enter__.return_value.send_message.assert_not_called()

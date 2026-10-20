@@ -57,7 +57,9 @@ def main():
                 message='Verified and saved. Restart TestAPI to apply email settings. No email was sent.'
             except ValueError as error:message=str(error)
             except smtplib.SMTPAuthenticationError:message='Gmail rejected this credential. Check the sender account and its SMTP authentication requirements.'
-            except Exception:message='Could not verify or save settings. Check the connection and try again.'
+            except smtplib.SMTPServerDisconnected:message='Gmail closed its SMTP connection during verification. This is separate from TestAPI. Check Gmail sign-in requirements before retrying.'
+            except (TimeoutError,OSError):message='Could not connect securely to Gmail SMTP. This is separate from the extension TestAPI connection.'
+            except Exception:message='Setup did not complete. Check private settings before retrying. No email was sent.'
             def done():
                 password.set('');status.set(message);button.configure(state='normal')
             root.after(0,done)
