@@ -22,6 +22,7 @@ import {LOGIN_HELP,registrationPendingPanel} from './registration-flow.js';
 import {consoleNavigation,filterConsoleNavigation,toggleConsoleNavigation} from './console-navigation.js';
 
 import {THEMES,resolvedTheme} from './theme.js';
+import {animateSection} from './motion.js';
 
 import {escapeHtml as esc,SEVERITIES,roleCanWrite,completedMonth,reportPeriod,hashFile,validDigest,privateTarget,VERSION,reviewableAccessRequests,accessReviewBody} from './core.js';
 
@@ -37,7 +38,7 @@ const app=document.querySelector('#app');
 
 let state={},view='',authMode='login',qr='',manualSecret='',pageData={},selected='',period=completedMonth(),scanResult=null,requestSequence=0,busy=false,loading=false,queuedView='';
 
-let extensionDevice='',extensionRemoved=false;
+let extensionDevice='',extensionRemoved=false,renderedView='';
 let qrLink=null,filenameSignal=null;
 let feedbackOffset=0,feedbackStatus='';
 let suggestionOffset=0,suggestionStatus='';
@@ -415,7 +416,7 @@ function recoveryContent(error){
  return `<section class="panel stack"><h2>Update the extension connection</h2>${notice(error.message,'warning')}<p class="meta"><span>Console version</span> <bdi data-no-translate>${esc(VERSION)}</bdi> · <span>Worker version</span> <bdi data-no-translate>${esc(state?.version??'Unknown')}</bdi></p>${btn('Restart ExtSecure','restart-extension','primary')}<p class="meta">After restarting, close this tab and reopen the console from the ExtSecure icon. Sign in again if prompted.</p></section>`;
 }
 
-async function renderView(){const sequence=++requestSequence;if(!state.profile){await renderAuth();return;}if(popup){await renderPopup();return;}if(!allowedViews().some(r=>r[0]===view))view=allowedViews()[0]?.[0]??'account';loading=true;shell('<div class="pending"><div class="stack"><div class="spinner" aria-hidden="true"></div><p role="status">Loading recorded evidence…</p></div></div>');try{const html=await renderers[view]();if(sequence===requestSequence){shell(html);document.querySelector('#main')?.focus({preventScroll:true});}}catch(error){if(sequence===requestSequence&&!await handleExpiredSession(error))shell(recoveryContent(error));}finally{loading=false;if(queuedView&&!busy){const next=queuedView;queuedView='';navigate(next);}}}
+async function renderView(){const sequence=++requestSequence;if(!state.profile){await renderAuth();return;}if(popup){await renderPopup();return;}if(!allowedViews().some(r=>r[0]===view))view=allowedViews()[0]?.[0]??'account';loading=true;shell('<div class="pending"><div class="stack"><div class="spinner" aria-hidden="true"></div><p role="status">Loading recorded evidence…</p></div></div>');try{const html=await renderers[view]();if(sequence===requestSequence){const previous=renderedView;shell(html);animateSection(document.querySelector('#content'),{from:previous,to:view,order:allowedViews().map(row=>row[0])});renderedView=view;document.querySelector('#main')?.focus({preventScroll:true});}}catch(error){if(sequence===requestSequence&&!await handleExpiredSession(error))shell(recoveryContent(error));}finally{loading=false;if(queuedView&&!busy){const next=queuedView;queuedView='';navigate(next);}}}
 
 async function renderPopup(){
  dismissActionPanel({restore:false,focus:false});
