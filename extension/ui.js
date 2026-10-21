@@ -289,7 +289,7 @@ function resultCard(result,compact=false){
   const feedbackForm=feedbackSubmission(result,{details,form,select,textarea,notice});
 
   const feedback=lookupFeedback(result);
-  const filenameNotice=filenameWarning(result.local_filename_signal);
+  const filenameNotice=filenameWarning(result.local_filename_signal)+domainAgeNotice(result);
 
   if(compact){
 
@@ -305,6 +305,13 @@ function resultCard(result,compact=false){
 
 }
 
+function domainAgeNotice(result){
+  if(result.target_kind!=='url'||!result.domain_age)return '';
+  const age=result.domain_age.age_days;
+  if(result.domain_age.status==='Known'&&Number.isInteger(age)&&age>=0)
+    return notice(`SecureScope RDAP: domain registered ${age} days ago.${age<30?' Recently registered domains need extra care.':''}`,age<30?'warning':'');
+  return notice('SecureScope RDAP: registration age unavailable. This does not indicate safety.','warning');
+}
 function filenameWarning(signal){return signal?.warning?notice(signal.message+' Filename: '+signal.name,'warning'):'';}
 function fileForm(){return form('file-scan',`<div class="drop-zone">${icon('download')}<h3>Choose a downloaded file</h3><p class="meta">File contents stay here. Only SHA-256 goes to the backend.</p><input aria-label="Downloaded file" name="file" type="file"><div data-filename-warning role="alert" hidden></div><p class="meta">Maximum 32 MiB · Nothing is uploaded automatically</p></div><div class="meta">Or paste an existing file hash</div>${field('SHA-256 hash','sha256','text','','placeholder="64 hexadecimal characters" autocomplete="off" maxlength="64"')}<p class="meta">The backend checks hash reputation with VirusTotal and records an explainable risk result.</p>`,'Check file hash','primary full');}
 

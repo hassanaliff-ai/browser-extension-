@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { checkWithBackend } from "../securescope-extension/backend-client.js";
 
-const baseUrl = "http://localhost:8000";
+const baseUrl = "http://127.0.0.1:8001/";
 
 test("API client sends only the site origin and accepts a valid response", async () => {
   let sent;
@@ -16,7 +16,7 @@ test("API client sends only the site origin and accepts a valid response", async
   const result = await checkWithBackend("https://example.com", "manual", {
     baseUrl, fetchImpl, now: () => 123,
   });
-  assert.equal(sent.url, "http://localhost:8000/api/v1/check");
+  assert.equal(sent.url, "http://127.0.0.1:8001/api/v1/check");
   assert.deepEqual(JSON.parse(sent.options.body), {
     url: "https://example.com", source: "manual", checked_at: 123,
   });
@@ -33,10 +33,19 @@ test("API client does not send private URL parts or use cleartext remote servers
   assert.equal(await checkWithBackend("https://example.com", "manual", {
     baseUrl: "http://remote.example", fetchImpl,
   }), null);
+  assert.equal(await checkWithBackend("https://example.com", "manual", {
+    baseUrl: "http://127.0.0.1:8000/", fetchImpl,
+  }), null);
+  assert.equal(await checkWithBackend("https://example.com", "manual", {
+    baseUrl: "http://127.0.0.1:8765/securescope/", fetchImpl,
+  }), null);
   assert.equal(calls, 0);
 });
 
-test("API client returns no backend verdict on timeout or malformed response", async () => {
+test("API client returns no backend verdict on 503, timeout, or malformed response", async () => {
+  assert.equal(await checkWithBackend("https://example.com", "manual", {
+    baseUrl, fetchImpl: async () => ({ ok: false, status: 503 }),
+  }), null);
   const timeoutFetch = (_url, { signal }) => new Promise((_resolve, reject) => {
     signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
   });

@@ -55,6 +55,15 @@ test('Website failure explanations are escaped and cannot inject active HTML',as
  assert.match(app.innerHTML,/&lt;img src=x onerror=alert\(1\)&gt;/);
  assert.doesNotMatch(app.innerHTML,/<img src=x/);
 });
+test('Website result shows SecureScope domain age without implying safety',async()=>{
+ await navigate('scan');
+ result={...result,target_kind:'url',severity:'Low',score:0,completeness:'complete',file_lookup:undefined,lookup:{status:'complete'},domain_age:{status:'Known',age_days:12}};
+ await submit('url-scan',{target:'https://example.com/'});
+ assert.match(app.innerHTML,/SecureScope RDAP: domain registered 12 days ago/);
+ result={...result,domain_age:{status:'Unknown'}};
+ await submit('url-scan',{target:'https://example.com/'});
+ assert.match(app.innerHTML,/registration age unavailable. This does not indicate safety/);
+});
 test('Pending access requests render an initially visible required approval duration',async()=>{
  const original=chrome.runtime.sendMessage;
  chrome.runtime.sendMessage=async message=>message.path==='/api/access/requests'?{ok:true,data:[{id:'request1',target:'https://example.com/',requester:'test-head',requester_role:'head_administrator',status:'pending',can_review:true,expires_at:new Date(Date.now()+86400000).toISOString()}]}:original(message);

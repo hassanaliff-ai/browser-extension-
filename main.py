@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 import hashlib
 import hmac
 import os
@@ -41,6 +42,16 @@ _MONITOR_REQUIRED = (
     "ADMIN_PASSWORD_HASH",
     "ADMIN_TOTP_SECRET",
 )
+
+
+class ExtSecureCORSMiddleware(CORSMiddleware):
+    """Leave the student prototype's narrower CORS policy to its own app."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith("/securescope/"):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
 
 
 @asynccontextmanager
@@ -123,8 +134,31 @@ class ExtensionScanRequest(BaseModel):
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path or '/', '', ''))
 
 
-def _extension_record(monitor, target, verdict, actor, device_id=None):
+def _domain_age_evidence(target: str) -> dict:
+    """Look up only the registered domain; never send a page path to RDAP."""
+    from prototypes.securescope.backend.app import registered_domain_from_origin
+    from prototypes.securescope.backend.rdap_lookup import lookup_domain_age
+
+    parsed = urlsplit(target)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    try:
+        domain = registered_domain_from_origin(origin)
+    except ValueError:
+        return {'status': 'Unknown'}
+    evidence = lookup_domain_age(domain)
+    age = evidence.get('age_days')
+    if evidence.get('status') == 'Known' and type(age) is int and age >= 0:
+        return {'status': 'Known', 'age_days': age}
+    return {'status': 'Unknown'}
+
+
+def _extension_record(monitor, target, verdict, actor, device_id=None, domain_age=None):
     payload = _monitoring_payload(ScanRequest(target=target), verdict)
+    if domain_age is not None:
+        from alba_security.risk import SignalInput
+        age = domain_age.get('age_days')
+        status = ('detected' if age < 30 else 'clear') if domain_age.get('status') == 'Known' and type(age) is int else 'unknown'
+        payload = payload.model_copy(update={'signals': [*payload.signals, SignalInput(code='new_domain', status=status)]})
     payload = payload.model_copy(update={
         'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
         'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
@@ -150,6 +184,7 @@ async def extension_scan(body: ExtensionScanRequest, request: Request):
     retry_after = request.app.state.extension_scan_limit.retry_after(actor)
     if retry_after:
         raise HTTPException(429, 'Scan limit reached. Try again shortly.', headers={'Retry-After':str(retry_after)})
+    age_task = asyncio.create_task(asyncio.to_thread(_domain_age_evidence, body.target))
     cache = request.app.state.cache
     key = ('url', body.target)
     result = cache.get(key)
@@ -158,15 +193,25 @@ async def extension_scan(body: ExtensionScanRequest, request: Request):
         try:
             result = await request.app.state.vt.scan_url(body.target)
         except VirusTotalError as error:
+            age_task.cancel()
             if isinstance(error, InvalidTargetError):
                 raise
-            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor, getattr(request.state, 'inventory_device_id', None))
+            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor, getattr(request.state, 'inventory_device_id', None), {'status': 'Unknown'})
             record['lookup'] = {'status':'unavailable', 'reason':_ERROR_STATUS.get(type(error),(502,'Lookup unavailable'))[1]}
+            record['domain_age'] = {'status': 'Unknown'}
             return JSONResponse(record, headers={'Cache-Control':'no-store'})
         cache.set(key, result)
-    record = await run_in_threadpool(_extension_record, monitor, body.target, result.verdict, actor, getattr(request.state, 'inventory_device_id', None))
+    try:
+        domain_age = await asyncio.wait_for(age_task, timeout=2.5)
+    except asyncio.TimeoutError:
+        domain_age = {'status': 'Unknown'}
+    except Exception:
+        logger.exception('SecureScope domain-age evidence unavailable')
+        domain_age = {'status': 'Unknown'}
+    record = await run_in_threadpool(_extension_record, monitor, body.target, result.verdict, actor, getattr(request.state, 'inventory_device_id', None), domain_age)
     record['lookup'] = {'status':'complete', 'cached':cached, 'malicious':result.malicious,
                         'suspicious':result.suspicious, 'harmless':result.harmless, 'undetected':result.undetected}
+    record['domain_age'] = domain_age
     return JSONResponse(record, status_code=201, headers={'Cache-Control':'no-store'})
 
 
@@ -322,7 +367,7 @@ def create_app() -> FastAPI:
     # Preserve the legacy extension API's CORS behavior. Restrict origins at
     # the deployment ingress when exposing this service outside localhost.
     application.add_middleware(
-        CORSMiddleware,
+        ExtSecureCORSMiddleware,
         allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],

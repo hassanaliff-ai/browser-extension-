@@ -22,8 +22,15 @@ function renderResult(entry) {
   severity.textContent = level;
   resultUrl.textContent = typeof entry?.url === "string" && entry.url ? entry.url : "URL not checked";
 
+  const lookupStatus = entry?.lookupStatus;
   if (level === "Unknown") {
     coverage.textContent = "This URL could not be checked. No safety conclusion is available.";
+  } else if (lookupStatus === "backend-unavailable") {
+    coverage.textContent = "Backend evidence is unavailable. Only local warning signs were checked; this does not prove the site is safe.";
+  } else if (lookupStatus === "complete" || lookupStatus === "partial") {
+    coverage.textContent = lookupStatus === "partial"
+      ? "Backend evidence is partial. This result does not certify the site as safe."
+      : "Backend evidence was checked. This result does not certify the site as safe.";
   } else if (level === "Low") {
     coverage.textContent = "No local warning signs found. Reputation and RDAP checks are not active; this does not prove the site is safe.";
   } else {
@@ -58,7 +65,10 @@ async function refreshHistory() {
     const meta = document.createElement("span");
     meta.className = "history-meta";
     const level = SEVERITIES.has(entry.severity) ? entry.severity : "Unknown";
-    meta.textContent = `${level} · ${entry.source === "manual" ? "Manual" : "Visited"} · Local only`;
+    const status = entry.lookupStatus === "backend-unavailable" ? "Backend unavailable"
+      : entry.lookupStatus === "complete" ? "Backend checked"
+      : entry.lookupStatus === "partial" ? "Partial evidence" : "Local only";
+    meta.textContent = `${level} · ${entry.source === "manual" ? "Manual" : "Visited"} · ${status}`;
     item.append(site, meta);
     historyList.append(item);
   }

@@ -7,6 +7,7 @@ the current prototype; authentication and deployment are later work.
 from __future__ import annotations
 
 import ipaddress
+import os
 import re
 from pathlib import Path
 from typing import Literal
@@ -15,26 +16,65 @@ from urllib.parse import urlsplit
 import tldextract
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from .rdap_lookup import lookup_domain_age
+from .request_limits import RequestLimiter
 from .virustotal import VirusTotalDomainClient
 
 
 app = FastAPI(title="SecureScope RDAP prototype", version="0.1.0", docs_url=None)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+_request_limiter = RequestLimiter({"check": 30, "rdap": 10})
 
 
 @app.middleware("http")
 async def reject_cross_origin_browser_requests(request: Request, call_next):
-    # The local prototype has no user authentication. Do not let an unrelated
-    # web page use the loopback server to trigger RDAP or reputation lookups.
+    # The local prototype has no user authentication. Only the specifically
+    # configured unpacked extension may make a cross-origin manual scan.
     origin = request.headers.get("origin")
-    if origin is not None and origin != f"{request.url.scheme}://{request.headers.get('host', '')}":
-        return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
-    return await call_next(request)
+    same_origin = f"{request.url.scheme}://{request.headers.get('host', '')}"
+    route = ("check" if request.url.path in {"/api/v1/check", "/securescope/api/v1/check"}
+             else "rdap" if request.url.path in {"/api/v1/rdap", "/securescope/api/v1/rdap"}
+             else None)
+    cors_headers = None
+    if origin is not None and origin != same_origin:
+        extension_id = os.getenv("SECURESCOPE_ALLOWED_EXTENSION_ID", "").strip()
+        allowed_origin = (f"chrome-extension://{extension_id}"
+                          if re.fullmatch(r"[a-p]{32}", extension_id) else None)
+        if origin != allowed_origin or route != "check":
+            return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
+        cors_headers = {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "content-type",
+            "Vary": "Origin",
+        }
+        if request.method == "OPTIONS":
+            requested_headers = {header.strip().lower() for header in
+                                 request.headers.get("access-control-request-headers", "").split(",")
+                                 if header.strip()}
+            if (request.headers.get("access-control-request-method") != "POST" or
+                    requested_headers - {"content-type"}):
+                return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
+            return Response(status_code=204, headers=cors_headers)
+        if request.method != "POST":
+            return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
+
+    if request.method == "POST" and route is not None:
+        retry_after = _request_limiter.retry_after(route)
+        if retry_after:
+            headers = {"Retry-After": str(retry_after)}
+            if cors_headers:
+                headers.update(cors_headers)
+            return JSONResponse({"detail": "Request limit reached"},
+                                status_code=429, headers=headers)
+    response = await call_next(request)
+    if cors_headers:
+        response.headers.update(cors_headers)
+    return response
 
 
 @app.get("/docs", include_in_schema=False)
@@ -119,7 +159,7 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/api/v1/rdap")
+@app.post("/api/v1/rdap", responses={429: {"description": "Request limit reached"}})
 def rdap_evidence(request: RdapRequest) -> dict:
     try:
         domain = registered_domain_from_origin(request.origin)
@@ -157,7 +197,8 @@ def _score_evidence(origin: str, rdap: dict, reputation: dict) -> CheckResponse:
 @app.post(
     "/api/v1/check",
     response_model=CheckResponse,
-    responses={503: {"description": "Reputation evidence unavailable; no safety verdict"}},
+    responses={429: {"description": "Request limit reached"},
+               503: {"description": "Reputation evidence unavailable; no safety verdict"}},
 )
 def check(request: CheckRequest) -> CheckResponse:
     try:

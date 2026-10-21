@@ -37,7 +37,7 @@ test("popup displays local coverage and never renders raw HTML", async () => {
       assert.equal(url, "https://example.com/path?token=secret");
       const entry = {
         url: "https://example.com", source: "manual", severity: "Low",
-        lookupStatus: "local-only", reasons: ["<script>unsafe</script>"], checkedAt: Date.now(),
+        lookupStatus: "backend-unavailable", reasons: ["<script>unsafe</script>"], checkedAt: Date.now(),
       };
       state.visitHistory = [entry];
       return entry;
@@ -55,9 +55,11 @@ test("popup displays local coverage and never renders raw HTML", async () => {
   await elements["check-form"].listeners.submit({ preventDefault() {} });
 
   assert.equal(elements["result-url"].textContent, "https://example.com");
+  assert.match(elements["result-coverage"].textContent, /Backend evidence is unavailable/);
   assert.match(elements["result-coverage"].textContent, /does not prove the site is safe/);
   assert.equal(elements["result-reasons"].children[0].textContent, "<script>unsafe</script>");
   assert.equal(elements["history-list"].children[0].children[0].textContent, "https://example.com");
+  assert.match(elements["history-list"].children[0].children[1].textContent, /Backend unavailable/);
 
   await elements["clear-history"].listeners.click();
   assert.equal(elements["history-empty"].hidden, false);

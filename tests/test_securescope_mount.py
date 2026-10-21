@@ -13,6 +13,8 @@ def test_securescope_is_not_mounted_by_default(monkeypatch):
 
 def test_combined_server_serves_both_apis_and_local_docs(monkeypatch):
     monkeypatch.setenv("SECURESCOPE_DEV_ENABLED", "1")
+    extension_id = "a" * 32
+    monkeypatch.setenv("SECURESCOPE_ALLOWED_EXTENSION_ID", extension_id)
     with TestClient(main.create_app()) as client:
         assert client.get("/health").json() == {"status": "ok", "service": "TestAPI"}
         assert client.get("/securescope/health").json() == {"status": "ok"}
@@ -29,3 +31,28 @@ def test_combined_server_serves_both_apis_and_local_docs(monkeypatch):
         assert client.post("/securescope/api/v1/check", json={
             "url": "https://example.com", "source": "manual", "checked_at": 0,
         }).status_code == 503
+        allowed = client.post("/securescope/api/v1/check", headers={
+            "Origin": f"chrome-extension://{extension_id}",
+        }, json={"url": "https://example.com", "source": "manual", "checked_at": 0})
+        assert allowed.status_code == 503
+        assert allowed.headers["access-control-allow-origin"] == f"chrome-extension://{extension_id}"
+        preflight = client.options("/securescope/api/v1/check", headers={
+            "Origin": f"chrome-extension://{extension_id}",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        })
+        assert preflight.status_code == 204
+        assert preflight.headers["access-control-allow-origin"] == f"chrome-extension://{extension_id}"
+        denied = client.options("/securescope/api/v1/check", headers={
+            "Origin": "https://unrelated.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        })
+        assert denied.status_code == 403
+        assert "access-control-allow-origin" not in denied.headers
+        legacy = client.options("/extension/scan", headers={
+            "Origin": "https://unrelated.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        })
+        assert legacy.headers["access-control-allow-origin"] == "*"

@@ -19,6 +19,7 @@ from tests.test_integration import _PASSWORD_HASH, _TOTP_SECRET
 
 @pytest.fixture
 def extension_client(monkeypatch):
+    monkeypatch.setattr(main, '_domain_age_evidence', lambda _target: {'status': 'Unknown'})
     for key,value in {'MONITORING_ENABLED':'1','DATABASE_URL':'sqlite:///:memory:',
         'ADMIN_USERNAME':'extension-test-owner','ADMIN_PASSWORD_HASH':_PASSWORD_HASH,
         'ADMIN_TOTP_SECRET':_TOTP_SECRET,'INGEST_TOKEN':'extension-test-ingest'}.items():
@@ -61,10 +62,33 @@ def test_extension_real_risk_result_and_personal_history(extension_client):
     assert response.status_code==201 and response.headers['cache-control']=='no-store'
     result=response.json()
     assert result['severity']=='Low' and result['score']==0 and result['lookup']['status']=='complete'
+    assert result['domain_age']=={'status':'Unknown'} and 'new_domain' in result['unknown_codes']
     assert client.get('/monitor/api/my/scans').json()[0]['id']==result['id']
     with monitor.state.session_factory() as db:
         assert db.scalar(select(PersonalScan)).username=='extension-test-owner'
         assert db.scalar(select(Extension)).name=='ExtSecure'
+
+
+def test_securescope_recent_domain_is_recorded_in_shared_scan(extension_client, monkeypatch):
+    client,monitor,application=extension_client
+    monkeypatch.setattr(main, '_domain_age_evidence', lambda _target: {'status':'Known','age_days':12})
+    mock_lookup(application)
+    response=client.post('/extension/scan',json={'target':'https://example.com/private'})
+    assert response.status_code==201
+    result=response.json()
+    assert result['domain_age']=={'status':'Known','age_days':12}
+    assert any(finding['code']=='new_domain' for finding in result['findings'])
+    with monitor.state.session_factory() as db:
+        assert any(signal['code']=='new_domain' and signal['status']=='detected'
+                   for signal in db.scalar(select(Scan)).signals)
+
+
+def test_securescope_rdap_receives_only_registered_domain(monkeypatch):
+    from prototypes.securescope.backend import rdap_lookup
+    seen=[]
+    monkeypatch.setattr(rdap_lookup, 'lookup_domain_age', lambda domain: (seen.append(domain) or {'status':'Known','age_days':45}))
+    assert main._domain_age_evidence('https://sub.example.co.uk/private?secret=value')=={'status':'Known','age_days':45}
+    assert seen==['example.co.uk']
 
 def test_unknown_upstream_creates_unknown_evidence(extension_client):
     client,_,application=extension_client

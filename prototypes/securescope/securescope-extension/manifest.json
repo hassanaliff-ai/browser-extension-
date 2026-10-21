@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SecureScope",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Prototype that checks visited sites, pasted links, and page links locally for risk indicators.",
 
   "permissions": [
@@ -12,8 +12,7 @@
   ],
 
   "host_permissions": [
-    "http://localhost:8000/*",
-    "http://127.0.0.1:8000/*"
+    "http://127.0.0.1:8001/*"
   ],
 
   "background": {
