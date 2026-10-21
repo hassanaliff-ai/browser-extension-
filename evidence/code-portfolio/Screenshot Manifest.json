@@ -1,6 +1,6 @@
 {
   "revision": "e67a15a",
-  "extension_version": "0.8.41",
+  "extension_version": "0.8.43",
   "date": "2026-10-21",
   "tasks": [
     {
@@ -959,5 +959,110 @@
     }
   ],
   "code_image_style": "VS Code Dark inspired editor with lexical highlighting",
-  "style_updated": "2026-10-21"
+  "style_updated": "2026-10-21",
+  "baseline_extension_version": "0.8.41",
+  "latest_update": {
+    "version": "0.8.43",
+    "revision": "d613033",
+    "sections": [
+      {
+        "title": "Futuristic interface surfaces",
+        "description": "Teal and blue surfaces, navigation, card borders and the background grid.",
+        "file": "extension/futuristic.css",
+        "image": "Update_01_Futuristic_interface_surfaces_Lines_1_16.png",
+        "first_line": 1,
+        "last_line": 16
+      },
+      {
+        "title": "Theme movement and light sweep",
+        "description": "Local theme transitions and decorative effects that cannot intercept input.",
+        "file": "extension/futuristic.css",
+        "image": "Update_02_Theme_movement_and_light_sweep_Lines_49_61.png",
+        "first_line": 49,
+        "last_line": 61
+      },
+      {
+        "title": "Whole page navigation movement",
+        "description": "The complete page slides according to navigation direction, including RTL support.",
+        "file": "extension/motion.js",
+        "image": "Update_03_Whole_page_navigation_movement_Lines_41_57.png",
+        "first_line": 41,
+        "last_line": 57
+      },
+      {
+        "title": "Whole page theme movement",
+        "description": "Theme changes animate the existing page without replacing unfinished form inputs.",
+        "file": "extension/motion.js",
+        "image": "Update_04_Whole_page_theme_movement_Lines_27_40.png",
+        "first_line": 27,
+        "last_line": 40
+      },
+      {
+        "title": "Page rendering integration",
+        "description": "The page heading and all content share the animation target; background refreshes do not replay it.",
+        "file": "extension/ui.js",
+        "image": "Update_05_Page_rendering_integration_Lines_419_419.png",
+        "first_line": 419,
+        "last_line": 419
+      },
+      {
+        "title": "Immediate motion cancellation",
+        "description": "Saved preferences and system reduced motion cancel active movement and clear its markers.",
+        "file": "extension/motion.js",
+        "image": "Update_06_Immediate_motion_cancellation_Lines_1_32.png",
+        "first_line": 1,
+        "last_line": 32
+      },
+      {
+        "title": "Theme movement regression test",
+        "description": "A focused test verifies page movement, visible content and immediate cancellation.",
+        "file": "extension/tests/section-motion.test.js",
+        "image": "Update_07_Theme_movement_regression_test_Lines_39_47.png",
+        "first_line": 39,
+        "last_line": 47
+      }
+    ],
+    "complete_files": [
+      {
+        "file": "extension/motion.js",
+        "images": [
+          "Current_extension_motion_js_Part_01_Lines_1_42.png",
+          "Current_extension_motion_js_Part_02_Lines_43_57.png"
+        ],
+        "source_sha256": "cc8a9d6730c6e01edeb18c8ac720c872a03aeb6c56d4faf03c2c5edcbde0e65d"
+      },
+      {
+        "file": "extension/futuristic.css",
+        "images": [
+          "Current_extension_futuristic_css_Part_01_Lines_1_19.png",
+          "Current_extension_futuristic_css_Part_02_Lines_20_46.png",
+          "Current_extension_futuristic_css_Part_03_Lines_47_62.png",
+          "Current_extension_futuristic_css_Part_04_Lines_63_64.png"
+        ],
+        "source_sha256": "7b396cd4b68065bb1ef61a09b07be8db5bdb00092c449613377802b40f1b50dc"
+      },
+      {
+        "file": "extension/theme.js",
+        "images": [
+          "Current_extension_theme_js_Part_01_Lines_1_27.png"
+        ],
+        "source_sha256": "0a5edb0d6a3da927e12b2210df30b90d9b40706029fc1a3ddc53e36f569d1a6e"
+      }
+    ],
+    "ui_images": [
+      "Update_UI_01_Futuristic_Dashboard_Dark_v0_8_43.png",
+      "Update_UI_02_Whole_Page_Animation_In_Progress.png"
+    ],
+    "verification": {
+      "javascript_tests": 277,
+      "chromium_checks": 38,
+      "synthetic_account_api_data": true
+    },
+    "frame": {
+      "heading": true,
+      "cards": 4,
+      "time_ms": 20,
+      "transform": "matrix(1, 0, 0, 1, -26.3091, 0)"
+    }
+  }
 }
