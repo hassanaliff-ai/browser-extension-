@@ -14,14 +14,14 @@ async function setup(rtl=false){
 test('Section movement follows navigation order and keeps evidence visible',async()=>{
  const f=await setup();try{
   assert.equal(f.motion.animateSection(f.element,{from:'overview',to:'alerts',order:['overview','alerts']}),true);
-  assert.equal(f.runs[0].frames[0].transform,'translate3d(24px,0,0)');
+  assert.equal(f.runs[0].frames[0].transform,'translate3d(36px,0,0)');
   assert.equal(f.runs[0].frames[0].opacity,.97);
-  assert.equal(f.runs[0].options.fill,'none');assert.equal(f.runs[0].options.duration,320);
+  assert.equal(f.runs[0].options.fill,'none');assert.equal(f.runs[0].options.duration,420);
   f.runs[0].finish();await Promise.resolve();assert.equal(f.attributes['data-section-direction'],undefined);
  }finally{f.restore();}
 });
 test('RTL navigation reverses spatial direction',async()=>{
- const f=await setup(true);try{f.motion.animateSection(f.element,{from:'overview',to:'alerts',order:['overview','alerts']});assert.equal(f.runs[0].frames[0].transform,'translate3d(-24px,0,0)');}finally{f.restore();}
+ const f=await setup(true);try{f.motion.animateSection(f.element,{from:'overview',to:'alerts',order:['overview','alerts']});assert.equal(f.runs[0].frames[0].transform,'translate3d(-36px,0,0)');}finally{f.restore();}
 });
 test('Turning motion off cancels movement already running',async()=>{
  const f=await setup();try{f.motion.animateSection(f.element);f.motion.applyMotion(false);assert.equal(f.runs[0].cancelled,true);assert.equal(f.attributes['data-section-direction'],undefined);assert.equal(f.motion.animateSection(f.element),false);}finally{f.restore();}
@@ -34,4 +34,14 @@ test('Replacing movement does not let an old completion clear the current marker
 });
 test('Missing native animation support and absent targets remain usable',async()=>{
  const f=await setup();try{assert.equal(f.motion.animateSection(null),false);assert.equal(f.motion.animateSection({}),false);}finally{f.restore();}
+});
+
+test('Theme switches animate the existing page without replacing its contents',async()=>{
+ const f=await setup();try{
+  globalThis.document.querySelector=()=>f.element;
+  f.motion.markThemeChange('dark');
+  assert.equal(f.runs.length,1);assert.equal(f.runs[0].frames[0].transform,'translate3d(0,8px,0) scale(.985)');
+  assert.equal(f.runs[0].frames[0].opacity,.99);assert.equal(f.runs[0].options.duration,420);
+  f.motion.applyMotion(false);assert.equal(f.runs[0].cancelled,true);
+ }finally{f.restore();}
 });

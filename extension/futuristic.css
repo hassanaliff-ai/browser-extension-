@@ -59,3 +59,6 @@ html[data-motion=on][data-theme-transition=active]::after{content:"";position:fi
 [data-motion=off] *,[data-motion=off] *::before,[data-motion=off] *::after,[data-motion=off]::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 @media(forced-colors:active){.workspace-body::before,html::after{display:none!important}.console .sidebar,.console .topbar,.console .panel,.console .metric,.console .workflow-card,.popup .popup-header{background:Canvas!important;color:CanvasText!important;box-shadow:none!important;backdrop-filter:none}.console .nav-item.active{background:Highlight!important;color:HighlightText!important;border-color:Highlight!important}.console .btn.primary,.popup .btn.primary{background:ButtonFace!important;color:ButtonText!important;border-color:ButtonText!important}}
+
+/* Keep full-page movement inside its viewport; native review dialogs stay in the top layer. */
+.console .workspace-body{overflow-x:clip}
