@@ -359,7 +359,7 @@ async function account(){return deviceConnection()+`<div class="grid-even"><sect
 
 
 
-function preferencesForm(){const prefs=getPreferences();return form('preferences',`<div class="fields appearance-fields">${select('Appearance','theme',THEMES,prefs.theme)}${select('Table size','tableSize',TABLE_SIZES,prefs.tableSize)}${select('Language','language',LANGUAGES,prefs.language)}${select('Time zone','timeZone',TIME_ZONES,prefs.timeZone)}</div>`,'Save preferences','small');}
+function preferencesForm(){const prefs=getPreferences();return form('preferences',`<div class="fields appearance-fields">${select('Appearance','theme',THEMES,prefs.theme)}${select('Table size','tableSize',TABLE_SIZES,prefs.tableSize)}${select('Language','language',LANGUAGES,prefs.language)}${select('Time zone','timeZone',TIME_ZONES,prefs.timeZone)}</div><div class="motion-setting"><label class="motion-option"><span><strong>Interface animations</strong><span class="meta motion-description">Use gentle page transitions and theme effects.</span></span><span class="motion-switch"><input type="checkbox" role="switch" name="animations" aria-describedby="motion-help" ${prefs.animations?'checked':''}><span aria-hidden="true"></span></span></label><p class="meta" id="motion-help">Saves automatically. Your device’s reduced-motion setting always takes priority.</p></div>`,'Save preferences','small');}
 
 async function settings(){const storage=['head_administrator','administrator'].includes(state.profile?.role)?databasePanel(await api('database/status')):'';return `<section class="panel stack"><h2>Appearance, language and time</h2><p class="muted">Arabic and English are supported. Times follow your selected zone; monthly report boundaries stay in UTC.</p>${preferencesForm()}${notice('These settings apply to the popup, console and blocked-page screen.')}${notice('Recorded evidence and administrator notes keep their original language.')}</section>`+connectionPanel(connectionStatus,connectionResult)+storage;}
 
@@ -460,7 +460,7 @@ app.addEventListener('click',async event=>{
     if(action==='registration-continue'){authUsername=state.registration_receipt?.username??'';await send({type:'REGISTRATION_CONTINUE'});state=await send({type:'STATE'});authMode='login';await renderAuth();return;}
     if(action==='remove-account-logo'){await send({type:'SAVE_ACCOUNT_LOGO',logo:null});state=await send({type:'STATE'});await renderView();toast('Profile logo removed.');return;}
 
-    if(action==='toggle-theme'){const prefs=getPreferences();setPreferences(await savePreferences({...prefs,theme:resolvedTheme()==='dark'?'light':'dark'}));await renderView();return;}
+    if(action==='toggle-theme'){const prefs=getPreferences();setPreferences(await savePreferences({...prefs,theme:resolvedTheme()==='dark'?'light':'dark'}));return;}
 
     if(action==='restart-extension'){toast('Restarting ExtSecure. Reopen it from the Chrome extension icon and sign in.');restartExtension();return;}
 
@@ -572,7 +572,7 @@ app.addEventListener('submit',async event=>{
 
     else if(action==='register-verify'){await send({type:'REGISTER_VERIFY',code:data.code,role:data.role});f.reset();manualSecret='';qr='';state=await send({type:'STATE'});await renderAuth();}
 
-    else if(action==='preferences'){setPreferences(await savePreferences({...getPreferences(),language:data.language,timeZone:data.timeZone,theme:data.theme,tableSize:data.tableSize??getPreferences().tableSize}));await renderView();toast(translate('Preferences saved.'));}
+    else if(action==='preferences'){setPreferences(await savePreferences({...getPreferences(),language:data.language,timeZone:data.timeZone,theme:data.theme,animations:data.animations==='on',tableSize:data.tableSize??getPreferences().tableSize}));await renderView();toast(translate('Preferences saved.'));}
 
     else if(action==='access-request'){const target=privateTarget(data.target,true);const permission=await api('access/check','POST',{target});if(permission.allowed){await renderView();toast(translate('This URL is already approved. No new request is needed.'));}else{await commit('access/requests',{target,reason:data.reason});toast(translate('Access request sent. The website remains blocked until approval.'));}}
 
@@ -636,6 +636,13 @@ app.addEventListener('submit',async event=>{
 app.addEventListener('toggle',event=>{if(event.target.classList.contains('monthly-workspace'))monthlyOpen=event.target.open;},true);
 
 app.addEventListener('change',event=>{
+ if(event.target.name==='animations'){
+  const control=event.target,previous=getPreferences(),next={...previous,animations:control.checked};
+  setPreferences(next);control.disabled=true;
+  void savePreferences(next).then(saved=>{setPreferences(saved);toast(translate(saved.animations?'Animations enabled.':'Animations disabled.'));}).catch(error=>{setPreferences(previous);control.checked=previous.animations;toast(error.message,true);}).finally(()=>{control.disabled=false;});
+  return;
+ }
+
  if(['username','role','operation'].includes(event.target.name)&&event.target.form?.dataset.form==='account-role')resetAccountAccessReview(event.target.form);
  if(event.target.name==='suggestion_status'){if(busy||loading)return;suggestionStatus=event.target.value;suggestionOffset=0;selected='';void renderView();return;}
  if(event.target.name==='feedback_status'){feedbackStatus=event.target.value;feedbackOffset=0;selected='';void renderView();return;}

@@ -154,7 +154,7 @@ test('Failed logout still removes all local session state',async()=>{reset();sto
 const blockedSender={id:'test-extension',frameId:0,tab:{id:7},url:'chrome-extension://test-extension/blocked.html'};
 const signed=()=>{store={session:{token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()},'blocked:7':{url:'https://example.com/private?original=local-only',captured_at:Date.now()}};};
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-test('Settings save only validated preferences and never send them to the backend',async()=>{reset();await handleMessage({type:'SAVE_PREFERENCES',preferences:{language:'ar',timeZone:'Asia/Riyadh',theme:'dark',token:'not-saved'}});assert.deepEqual(localStore,{preferences:{language:'ar',timeZone:'Asia/Riyadh',theme:'dark',tableSize:'standard'}});assert.equal(calls.length,0);await assert.rejects(handleMessage({type:'SAVE_PREFERENCES',preferences:{timeZone:'invalid'}}));});
+test('Settings save only validated preferences and never send them to the backend',async()=>{reset();await handleMessage({type:'SAVE_PREFERENCES',preferences:{language:'ar',timeZone:'Asia/Riyadh',theme:'dark',token:'not-saved'}});assert.deepEqual(localStore,{preferences:{language:'ar',timeZone:'Asia/Riyadh',theme:'dark',tableSize:'standard',animations:true}});assert.equal(calls.length,0);await assert.rejects(handleMessage({type:'SAVE_PREFERENCES',preferences:{timeZone:'invalid'}}));});
 test('Blocked destination metadata is private and only available in its top-level tab',async()=>{reset();signed();responder=()=>({allowed:false});const data=await handleMessage({type:'BLOCKED_STATE'},blockedSender);assert.equal(data.target,'https://example.com/private');assert.equal(JSON.stringify(data).includes('local-only'),false);assert.deepEqual(JSON.parse(calls[0].options.body),{target:'https://example.com/private'});await assert.rejects(handleMessage({type:'BLOCKED_STATE'},{...blockedSender,frameId:1}));await assert.rejects(handleMessage({type:'BLOCKED_STATE'},{...blockedSender,tab:{id:8}}));});
 test('Pending requests never install a rule or navigate',async()=>{reset();signed();responder=()=>({allowed:false});await assert.rejects(handleMessage({type:'OPEN_APPROVED'},blockedSender),/not been approved/);assert.equal(sessionRules.length,0);assert.equal(calls.some(c=>c.tabId===7),false);});
 test('Opening consumes approval before creating a tab-scoped rule and preserves original query locally',async()=>{reset();signed();responder=()=>({allowed:true,kind:'once'});const data=await handleMessage({type:'OPEN_APPROVED'},blockedSender);assert.equal(data.opened,true);assert.equal(calls[0].url.endsWith('/api/access/check'),true);assert.equal(calls[1].url.endsWith('/api/access/consume'),true);assert.equal(sessionRules.length,1);assert.deepEqual(sessionRules[0].condition.tabIds,[7]);assert.equal(calls.at(-1).url,'https://example.com/private?original=local-only');assert.equal(calls.at(-1).tabId,7);});
@@ -464,7 +464,7 @@ test('A changed sign-in cannot save a decoded logo into the previous account',as
 test('Table size choices persist locally and reject unsupported sizes without API requests',async()=>{
  reset();
  for(const tableSize of ['compact','standard','spacious']){
-  const preferences={language:'ar',timeZone:'Asia/Riyadh',theme:'dark',tableSize};
+  const preferences={language:'ar',timeZone:'Asia/Riyadh',theme:'dark',tableSize,animations:true};
   await handleMessage({type:'SAVE_PREFERENCES',preferences});
   assert.deepEqual(await handleMessage({type:'PREFERENCES'}),preferences);
  }
@@ -479,3 +479,12 @@ test('A lower rescan retains the active threat badge and browser block',async()=
  responder=url=>url.endsWith('/admin/me')?{username:'test-head',role:'head_administrator',inventory:{removed:true,linked:false,enrollment_required:true}}:{};
  const result=await handleMessage({type:'STATE'});assert(result.profile.inventory.removed);assert.equal(localStore.deviceCredential,undefined);assert.equal(localStore.pendingDeviceConnection,undefined);assert.equal(localStore.inventoryConnected,undefined);assert.equal(sessionRules.length,0);assert.equal(store.session.token,'test-token');
  });
+
+
+test('Animation preference accepts booleans, persists off and never reaches the backend',async()=>{
+ reset();
+ const saved=await handleMessage({type:'SAVE_PREFERENCES',preferences:{animations:false,theme:'dark'}});
+ assert.equal(saved.animations,false);assert.equal((await handleMessage({type:'PREFERENCES'})).animations,false);
+ await assert.rejects(handleMessage({type:'SAVE_PREFERENCES',preferences:{animations:'false'}}),/animations/);
+ assert.equal(localStore.preferences.animations,false);assert.equal(calls.length,0);
+});

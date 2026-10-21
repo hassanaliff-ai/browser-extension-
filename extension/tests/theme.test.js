@@ -7,7 +7,7 @@ test('Appearance accepts only supported choices and preserves old preference def
  for(const theme of ['light','dark','system'])assert.equal(normalizePreferences({theme},true).theme,theme);
  assert.equal(normalizePreferences({language:'ar'}).theme,'light');
  assert.equal(normalizeTheme('invalid'),'light');assert.throws(()=>normalizeTheme('invalid',true),/supported appearance/);
- assert.deepEqual(normalizePreferences({theme:'dark',token:'private',password:'private'}),{theme:'dark',language:'en',timeZone:'UTC',tableSize:'standard'});
+ assert.deepEqual(normalizePreferences({theme:'dark',token:'private',password:'private'}),{theme:'dark',language:'en',timeZone:'UTC',tableSize:'standard',animations:true});
 });
 test('Device appearance follows OS changes while explicit light or dark choices override them',()=>{
  const oldDocument=globalThis.document,oldMatchMedia=globalThis.matchMedia;

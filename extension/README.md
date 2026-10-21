@@ -249,3 +249,10 @@ Inventory → Extensions first displays a table of registered devices with click
 ### Inventory layout 0.8.22
 
 Extensions opens with a device table. Click a device name to view only its extensions and the existing On, Off, Block, Chrome uninstall, inventory removal and restore controls. Device removal is also available in the device table. Device connection setup is collapsed below the table. Reopening Extensions from another view resets the selection. Recorded status and last sync do not establish that a remote browser is currently online. Validation: 230 extension tests and 19 real Chromium checks passed using disposable test profiles.
+
+
+## Appearance and motion
+
+Open **Settings → Interface animations** to turn motion on or off. The switch saves immediately in this Chrome profile and updates other open ExtSecure windows. Your device's reduced-motion preference always overrides the enabled setting. Turning motion off disables page effects, hover movement, theme transitions and animated loading spinners; loading status text remains visible.
+
+Light, dark and device-controlled appearance use short color transitions. Changing appearance with the top-bar button keeps unfinished forms and does not reload their data. Page-entry effects are subtle and do not delay security actions or hide critical warnings. Modern styling is shared by the console, popup and blocked-page screen. No remote animation library, new permission or database field is needed.

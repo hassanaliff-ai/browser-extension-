@@ -1,0 +1,65 @@
+/* Shared native-extension polish. No external fonts, images or animation libraries. */
+:root{--modern-surface:#fff;--modern-soft:#f4f8f8;--modern-teal:#176970;--modern-ring:#287f87;--modern-shadow:0 4px 18px #233d4e06;--motion-ease:cubic-bezier(.2,.75,.25,1)}
+[data-theme=dark]{--modern-surface:#232a33;--modern-soft:#1d252e;--modern-teal:#91d4ce;--modern-ring:#80d3d0;--modern-shadow:0 4px 18px #00000014}
+body{font-feature-settings:"cv02","cv03","cv04","cv11";-webkit-font-smoothing:antialiased}
+.console .page{max-width:1440px;padding-block:32px}
+.console .page-title{align-items:center;gap:20px;margin-bottom:26px}
+.console .page-title h1{font-size:clamp(25px,2.35vw,32px);font-weight:700;letter-spacing:-.85px;line-height:1.2}
+.console .page-title p{max-width:690px;color:var(--muted);line-height:1.75}
+.console .sidebar{background:linear-gradient(160deg,#b1d6ce,#9bc5c5);border-inline-end-color:#7eaca9}
+.console .topbar{background:linear-gradient(100deg,#a9d0cc,#c2ded6);border-bottom:1px solid #8db6b2;gap:16px}
+.console .breadcrumbs{min-width:0;flex-wrap:wrap;gap:10px}
+.console .nav-item{border-radius:10px;margin-block:2px;gap:11px;letter-spacing:.05px}
+.console .nav-item.active{background:#f0fbf8;color:#164c50;box-shadow:inset 3px 0 #287c7b,0 2px 7px #235b5b09}
+[dir=rtl] .console .nav-item.active{box-shadow:inset -3px 0 #287c7b,0 2px 7px #235b5b09}
+.console .nav-search input{border-radius:10px;background:#f2faf8;border-color:#91b9b4}
+.console .nav-group>summary{font-size:11px;letter-spacing:.45px}
+.console .panel,.console .metric{border-radius:16px;box-shadow:var(--modern-shadow)}
+.console .metric{position:relative;border-top:2px solid #97c6bf;padding:20px}
+.console .metric strong{font-size:32px;letter-spacing:-.9px;font-variant-numeric:tabular-nums}
+.console .panel h2{font-weight:650;letter-spacing:-.25px;line-height:1.4}
+.console .table-wrap{border-radius:12px;border:1px solid var(--line)}
+.console th{font-weight:650;font-size:11px;letter-spacing:.25px}
+.console tbody tr:last-child td{border-bottom:0}
+.console td{vertical-align:middle}
+.btn{border-radius:10px;font-weight:600}
+.btn.primary{box-shadow:0 3px 8px #833d3414}
+.btn:disabled{box-shadow:none;transform:none}
+input,select,textarea{border-radius:10px}
+:where(button,a,input,select,textarea,summary):focus-visible{outline:3px solid var(--modern-ring);outline-offset:3px}
+.popup .popup-header{background:linear-gradient(115deg,#a9d0cc,#c2ded6);border-bottom:1px solid #8db6b2}
+.popup .panel,.popup .hero,.popup details{border-radius:14px}
+.popup .popup-header .brand img{filter:drop-shadow(0 2px 3px #173e3412)}
+.auth-card{border-radius:20px}
+.motion-setting{border:1px solid var(--line);border-radius:14px;background:var(--modern-soft);padding:16px 18px}
+.motion-option{display:flex;align-items:center;justify-content:space-between;gap:24px;cursor:pointer;margin:0;min-height:44px}
+.motion-option strong{font-size:13px;color:var(--ink)}
+.motion-description{display:block;margin-top:5px;font-weight:400;line-height:1.65}
+.motion-setting>p{margin-top:9px;line-height:1.65}
+.motion-switch{position:relative;display:inline-flex;flex-shrink:0;width:46px;height:28px}
+.motion-switch input{position:absolute;inset:0;z-index:1;opacity:0;margin:0;width:46px;height:28px;min-height:0;cursor:pointer}
+.motion-switch>span{width:46px;height:28px;border-radius:99px;background:#75848a;border:1px solid transparent;pointer-events:none}
+.motion-switch>span::after{content:"";display:block;width:20px;height:20px;margin:3px;background:#fff;border-radius:50%;box-shadow:0 1px 4px #0002}
+.motion-switch input:checked+span{background:#216f70}
+.motion-switch input:checked+span::after{transform:translateX(18px)}
+[dir=rtl] .motion-switch input:checked+span::after{transform:translateX(-18px)}
+.motion-switch input:focus-visible+span{outline:3px solid var(--modern-ring);outline-offset:3px}
+.motion-switch input:disabled+span{opacity:.7}
+[data-theme=dark] .console .sidebar{background:linear-gradient(165deg,#183d40,#173236);border-inline-end-color:#365e62}
+[data-theme=dark] .console .topbar,[data-theme=dark] .popup .popup-header{background:linear-gradient(105deg,#21494d,#285458);border-bottom-color:#3a6a6d}
+[data-theme=dark] .console .nav-item.active{background:#2e6265;color:#e4fbf5;box-shadow:inset 3px 0 #85c9bd}
+[dir=rtl][data-theme=dark] .console .nav-item.active{box-shadow:inset -3px 0 #85c9bd}
+[data-theme=dark] .console .nav-search input{background:#142c30;border-color:#426a70}
+[data-theme=dark] .console .metric{border-top-color:#427c79}
+[data-theme=dark] .motion-switch input:checked+span{background:#55a8a0}
+/* Short transitions are enabled explicitly after saved preferences are loaded. */
+[data-motion=on] :where(.btn,.nav-item,.workflow-card,input,select,textarea,.motion-switch>span),[data-motion=on] .motion-switch>span::after,[data-motion=on] .nav-group>summary::after{transition:background-color 160ms var(--motion-ease),border-color 160ms var(--motion-ease),color 160ms var(--motion-ease),box-shadow 160ms var(--motion-ease),transform 160ms var(--motion-ease)}
+[data-motion=on][data-theme-transition=active] :where(body,.sidebar,.topbar,.panel,.metric,.hero,.btn,input,select,textarea,.motion-setting,.popup-header,.blocked-card,th,td){transition:background-color 240ms var(--motion-ease),color 180ms var(--motion-ease),border-color 200ms var(--motion-ease),box-shadow 200ms var(--motion-ease)}
+[data-motion=on] .console #content:not(:has(.pending)),[data-motion=on] .auth-card{animation:workspace-arrive 200ms var(--motion-ease) backwards}
+@keyframes workspace-arrive{from{opacity:.94;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media(hover:hover){[data-motion=on] .btn:not(:disabled):hover,[data-motion=on] .workflow-card:hover{transform:translateY(-1px)}[data-motion=on] .btn:active{transform:translateY(0)}}
+/* Off means all motion, including legacy spinners and CSS effects. Status text remains. */
+[data-motion=off] *,[data-motion=off] *::before,[data-motion=off] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media(max-width:760px){.console .page{padding:24px 18px}.console .page-title{align-items:flex-start}.console .panel{border-radius:14px}.console .metric{padding:16px}.motion-setting{padding:14px}.motion-option{gap:16px}}
+@media(forced-colors:active){.console .sidebar,.console .topbar,.popup .popup-header{background:Canvas}.console .nav-item.active{outline:2px solid Highlight}.motion-switch>span{background:Canvas;border-color:ButtonText}.motion-switch>span::after{background:ButtonText}.motion-switch input:checked+span{background:Highlight}.motion-switch input:checked+span::after{background:HighlightText}}

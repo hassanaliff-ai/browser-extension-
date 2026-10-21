@@ -1,23 +1,32 @@
+import {applyMotion} from './motion.js';
 import {normalizeTheme,applyTheme} from './theme.js';
 export {THEMES} from './theme.js';
 export const TABLE_SIZES=[['compact','Compact'],['standard','Standard'],['spacious','Spacious']];
 export const LANGUAGES=[['en','English'],['ar','العربية']];
 export const TIME_ZONES=[['UTC','UTC'],['Asia/Riyadh','Saudi Arabia / KSA · UTC+3'],['Asia/Dubai','United Arab Emirates · UTC+4'],['Asia/Bahrain','Bahrain · UTC+3'],['Europe/London','United Kingdom'],['Europe/Paris','Central Europe'],['America/New_York','New York'],['Asia/Kolkata','India'],['Asia/Tokyo','Japan']];
-export const DEFAULT_PREFERENCES={language:'en',timeZone:'UTC',theme:'light',tableSize:'standard'};
+export const DEFAULT_PREFERENCES={language:'en',timeZone:'UTC',theme:'light',tableSize:'standard',animations:true};
 export function normalizePreferences(value={},strict=false){
   const language=value?.language??'en',timeZone=value?.timeZone??'UTC';
   const validLanguage=LANGUAGES.some(([v])=>v===language),validZone=TIME_ZONES.some(([v])=>v===timeZone);
   if(strict&&(!validLanguage||!validZone))throw new Error('Choose a supported language and time zone.');
   const tableSize=value?.tableSize??'standard',validSize=TABLE_SIZES.some(([key])=>key===tableSize);
   if(strict&&!validSize)throw new Error('Choose a supported table size.');
-  return {tableSize:validSize?tableSize:'standard',language:validLanguage?language:'en',timeZone:validZone?timeZone:'UTC',theme:normalizeTheme(value?.theme??'light',strict)};
+  const animations=value?.animations??true;
+  if(strict&&typeof animations!=='boolean')throw new Error('Choose whether interface animations are enabled.');
+  return {animations:typeof animations==='boolean'?animations:true,tableSize:validSize?tableSize:'standard',language:validLanguage?language:'en',timeZone:validZone?timeZone:'UTC',theme:normalizeTheme(value?.theme??'light',strict)};
 }
-let preferences={...DEFAULT_PREFERENCES};
-export function setPreferences(value){preferences=normalizePreferences(value);if(typeof document!=='undefined'){document.documentElement.lang=preferences.language;document.documentElement.dir=preferences.language==='ar'?'rtl':'ltr';applyTheme(preferences.theme);document.documentElement.setAttribute?.('data-table-size',preferences.tableSize);}return preferences;}
+let preferences={...DEFAULT_PREFERENCES},observingPreferences=false;
+export function setPreferences(value){preferences=normalizePreferences(value);applyMotion(preferences.animations);if(!observingPreferences&&globalThis.chrome?.storage?.onChanged?.addListener){observingPreferences=true;chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.preferences)setPreferences(changes.preferences.newValue??{});});}if(typeof document!=='undefined'){document.documentElement.lang=preferences.language;document.documentElement.dir=preferences.language==='ar'?'rtl':'ltr';applyTheme(preferences.theme);document.documentElement.setAttribute?.('data-table-size',preferences.tableSize);for(const control of document.querySelectorAll?.('input[name=animations]')??[])control.checked=preferences.animations;}return preferences;}
 export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'Interface animations':'حركات الواجهة',
+ 'Use gentle page transitions and theme effects.':'استخدام انتقالات هادئة بين الأقسام وتأثيرات تغيير المظهر.',
+ 'Saves automatically. Your device’s reduced-motion setting always takes priority.':'يُحفظ تلقائياً. تكون الأولوية دائماً لإعداد تقليل الحركة في جهازك.',
+ 'Motion and appearance':'الحركة والمظهر',
+ 'Animations enabled.':'تم تفعيل حركات الواجهة.',
+ 'Animations disabled.':'تم إيقاف حركات الواجهة.',
  'The threat is blocked. Sign out and reopen ExtSecure to finish clearing earlier approvals.':'تم حظر التهديد. سجّل الخروج وأعد فتح ExtSecure لإكمال مسح الموافقات السابقة.',
  'I understand that Disable denies future sign-in and both actions revoke existing sessions.':'أفهم أن التعطيل يمنع تسجيل الدخول لاحقاً وأن كلا الإجراءين يلغي الجلسات الحالية.',
  'The destination is blocked, but some open tabs could not be redirected. Close those tabs and review the incident.':'تم حظر الوجهة، لكن تعذرت إعادة توجيه بعض علامات التبويب المفتوحة. أغلقها وراجع الحادثة.',

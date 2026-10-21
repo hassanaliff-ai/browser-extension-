@@ -93,8 +93,9 @@ test('The console theme toggle saves appearance through the worker and preserves
  chrome.runtime.sendMessage=async message=>{if(message.type==='SAVE_PREFERENCES'){saved.push(message.preferences);return {ok:true,data:message.preferences};}return original(message);};
  const button={dataset:{action:'toggle-theme'},setAttribute(){},removeAttribute(){},isConnected:true};
  try{
-  await handlers.click({target:{closest:()=>button}});await handlers.click({target:{closest:()=>button}});
-  assert.deepEqual(saved,[{language:'en',timeZone:'UTC',theme:'dark',tableSize:'standard'},{language:'en',timeZone:'UTC',theme:'light',tableSize:'standard'}]);
+  const originalMarkup=app.innerHTML;
+  await handlers.click({target:{closest:()=>button}});assert.equal(app.innerHTML,originalMarkup);await handlers.click({target:{closest:()=>button}});
+  assert.deepEqual(saved,[{language:'en',timeZone:'UTC',theme:'dark',tableSize:'standard',animations:true},{language:'en',timeZone:'UTC',theme:'light',tableSize:'standard',animations:true}]);
  }finally{chrome.runtime.sendMessage=original;}
 });
 
