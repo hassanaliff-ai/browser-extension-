@@ -78,7 +78,7 @@ try{
     phase='register the isolated test device';
     await go('account');
     if(!(await message({type:'STATE'})).profile.inventory.linked){
-    await page.locator('form[data-form="device-connect"] [name="initial_access"]').selectOption('trusted');
+    await page.locator('form[data-form="device-connect"] [name="initial_access"][value="trusted"]').check();
     await page.locator('form[data-form="device-connect"] details summary').click();
     await page.locator('form[data-form="device-connect"] [name="name"]').fill('ExtSecure QA browser '+new Date().toISOString().slice(0,10));
     await page.locator('form[data-form="device-connect"] button[type="submit"]').click();

@@ -128,7 +128,7 @@ def _extension_record(monitor, target, verdict, actor, device_id=None):
     payload = payload.model_copy(update={
         'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
         'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
-        'extension_name': 'ExtSecure', 'extension_version': '0.8.40',
+        'extension_name': 'ExtSecure', 'extension_version': '0.8.41',
     })
     with monitor.state.session_factory() as db:
         from alba_security.inventory import scan_device_fields

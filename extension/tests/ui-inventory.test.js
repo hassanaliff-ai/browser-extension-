@@ -51,7 +51,8 @@ async function clickSync() {
 test('Devices renders the primary device form in the real UI module',()=>{
  assert.match(app.innerHTML,/data-form="device-connect"/);assert.match(app.innerHTML,/Add this device/);
  assert.doesNotMatch(app.innerHTML,/data-action="sync-inventory"/);
- assert.match(app.innerHTML,/<select name="initial_access" required>/);
+ assert.match(app.innerHTML,/type="radio" name="initial_access" value="trusted" required/);
+ assert.match(app.innerHTML,/type="radio" name="initial_access" value="blocked" required/);
  assert.match(app.innerHTML,/Trusted device/);assert.match(app.innerHTML,/Blocked device/);
  assert(app.innerHTML.indexOf('name="initial_access"')<app.innerHTML.indexOf('type="submit"'));
 });

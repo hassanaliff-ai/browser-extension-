@@ -7,6 +7,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const output=process.env.EXTSECURE_TEST_OUTPUT||path.join(root,'../.private/motion-browser');
 const pw=await import(process.env.EXTSECURE_PLAYWRIGHT_MODULE||'playwright');
 const {chromium}=pw.default??pw;
+const version=JSON.parse(await fs.readFile(path.join(root,'manifest.json'),'utf8')).version;
 const checks=[];let context,page;
 const record=name=>{checks.push({name,passed:true});console.log(JSON.stringify(checks.at(-1)));};
 try{
@@ -15,11 +16,11 @@ try{
  const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
  const extensionId=new URL(worker.url()).hostname;
  await worker.evaluate(()=>chrome.storage.local.set({preferences:{theme:'light',language:'en',timeZone:'UTC',tableSize:'standard',animations:true}}));
- await context.addInitScript(()=>{
+ await context.addInitScript(version=>{
   const original=chrome.runtime.sendMessage.bind(chrome.runtime);
   const profile={username:'interface-review',display_name:'Interface review',role:'manager',role_label:'Manager',views:['Overview','Alerts','Devices','Extensions','Reports','My account','Website access'],inventory:{linked:true}};
   chrome.runtime.sendMessage=async message=>{
-   if(message.type==='STATE')return {ok:true,data:{profile,version:'0.8.40',capabilities:['device-enrollment','chrome-inventory','device-access-choice']}};
+   if(message.type==='STATE')return {ok:true,data:{profile,version,capabilities:['device-enrollment','chrome-inventory','device-access-choice']}};
    if(message.type==='HEALTH')return {ok:true,data:{status:'ready',service:'TestAPI'}};
    if(message.type==='BLOCKED_STATE')return {ok:true,data:{signed_in:true,target:'https://example.invalid/',threat_blocked:true,allowed:false,role:'manager'}};
    if(message.type==='ACTIVE_TAB')return {ok:true,data:{host:'example.com',url:'https://example.com/'}};
@@ -29,7 +30,7 @@ try{
    }
    return original(message);
   };
- });
+ },version);
  const errors=[];
  page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
  const base='chrome-extension://'+extensionId;

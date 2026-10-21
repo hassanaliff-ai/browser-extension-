@@ -1,3 +1,4 @@
+import {installFormValidation,clearFormValidation} from './form-validation.js';
 import {escapeHtml as esc} from './core.js';
 import {send,previewNotice} from './transport.js';
 import {LANGUAGES,TIME_ZONES,THEMES,getPreferences,setPreferences,translate,observeLocalization} from './locale.js';
@@ -23,5 +24,7 @@ app.addEventListener('submit',event=>{event.preventDefault();const f=event.targe
    render();const toast=document.querySelector('#toast');toast.textContent=translate('Access request sent. The website remains blocked until approval.');toast.hidden=false;
  }
 });});
+installFormValidation(app);
+app.addEventListener('input',event=>clearFormValidation(event.target));
 observeLocalization();
 try{if(window.top!==window.self)throw new Error('Open the blocked website in its own browser tab.');setPreferences(await send({type:'PREFERENCES'}));await refresh();}catch(error){render(error.message);}

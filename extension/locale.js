@@ -21,6 +21,23 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'Change device access':'تغيير صلاحية الجهاز',
+ 'Allow ExtSecure activity on this device.':'السماح بنشاط ExtSecure على هذا الجهاز.',
+ 'Request administrator approval for this device.':'طلب موافقة المسؤول لهذا الجهاز.',
+ 'Add to inventory with ExtSecure access blocked.':'إضافة الجهاز إلى الجرد مع حظر وصوله إلى ExtSecure.',
+ 'Confirm the selected action before continuing.':'أكد الإجراء المحدد قبل المتابعة.',
+ 'Choose a device access option before continuing.':'اختر صلاحية الجهاز قبل المتابعة.',
+ 'Complete the required field before continuing.':'أكمل الحقل المطلوب قبل المتابعة.',
+ 'Add more detail before continuing.':'أضف مزيداً من التفاصيل قبل المتابعة.',
+ 'Check the highlighted field before continuing.':'راجع الحقل المحدد قبل المتابعة.',
+ 'Selected incident':'الحادثة المحددة', 'Affected device':'الجهاز المتأثر',
+ 'Chrome controls affect the selected device. Removing from Chrome requests uninstall; removing from inventory only archives its record.':'تؤثر أدوات Chrome في الجهاز المحدد. تطلب الإزالة من Chrome إلغاء التثبيت، بينما تؤرشف الإزالة من الجرد السجل فقط.',
+ 'Review change':'مراجعة التغيير', 'Close review':'إغلاق المراجعة', 'Cancel':'إلغاء',
+ 'Remove device':'إزالة الجهاز', 'Remove extension':'إزالة الإضافة',
+ 'Restore device':'استعادة الجهاز', 'Restore extension':'استعادة الإضافة',
+ 'Selected device':'الجهاز المحدد', 'Selected extension':'الإضافة المحددة',
+ 'Restore this record to active inventory. Security history is retained.':'استعادة هذا السجل إلى الجرد النشط مع الاحتفاظ بالسجل الأمني.',
+
  'Interface animations':'حركات الواجهة',
  'Use gentle page transitions and theme effects.':'استخدام انتقالات هادئة بين الأقسام وتأثيرات تغيير المظهر.',
  'Saves automatically. Your device’s reduced-motion setting always takes priority.':'يُحفظ تلقائياً. تكون الأولوية دائماً لإعداد تقليل الحركة في جهازك.',

@@ -256,3 +256,12 @@ Extensions opens with a device table. Click a device name to view only its exten
 Open **Settings → Interface animations** to turn motion on or off. The switch saves immediately in this Chrome profile and updates other open ExtSecure windows. Your device's reduced-motion preference always overrides the enabled setting. Turning motion off disables page effects, hover movement, theme transitions and animated loading spinners; loading status text remains visible.
 
 Light, dark and device-controlled appearance use short color transitions. Changing appearance with the top-bar button keeps unfinished forms and does not reload their data. Page-entry effects are subtle and do not delay security actions or hide critical warnings. Modern styling is shared by the console, popup and blocked-page screen. No remote animation library, new permission or database field is needed.
+
+
+## Add, manage and remove actions
+
+Actions in tables and expandable forms open a focused native review dialog. The dialog keeps the selected target, consequences, fields and confirmation together. For add/remove/manage operations, Cancel, Close and Escape leave the action unapplied and return keyboard focus to its trigger. Labelled automatic appearance preferences continue to save immediately. A prior confirmation or initial trust selection is cleared when cancelling. Pending submissions cannot be dismissed; failures remain visible for review.
+
+Adding this Chrome device uses explicit Trusted/Blocked choice cards with no default choice. Removal uses a distinct destructive treatment, and removed-device history exposes the existing restore action. Extension controls share an Actions column and explain the difference between Chrome uninstall and inventory removal. Incident removal and device protection show their target inside the review. Required fields retain native constraints, with inline accessible errors instead of browser validation balloons.
+
+Review dialogs support dark mode, Arabic/RTL, narrow screens and the Interface animations preference. No new API, database field, permission or approval bypass is introduced.
