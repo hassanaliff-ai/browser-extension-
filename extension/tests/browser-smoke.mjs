@@ -53,7 +53,7 @@ try{
   const initial=await message({type:'STATE'});assert.equal(initial.version,manifest.version);assert(!initial.profile);
   record('Test profile starts signed out without borrowed credentials');
   const health=await message({type:'HEALTH'});assert.equal(health.status,'ready');
-  record('Running SecureScope primary API is reachable through the real worker');
+  record('Running TestAPI is reachable through the real worker');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   record('Sign-in layout fits a desktop viewport');
   let credentials;

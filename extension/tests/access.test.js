@@ -39,8 +39,8 @@ test('Static navigation gate covers main-frame HTTP and HTTPS while worker sleep
  for(const url of ['http://example.com/','https://example.com/private'])assert.equal(regex.test(url),true);
  assert.equal(regex.test('chrome-extension://abc/console.html'),false);
  const exempt=new RegExp(rules.find(r=>r.action.type==='allow').condition.regexFilter);
- assert.equal(exempt.test('http://127.0.0.1:8001/docs'),true);
- for(const url of ['http://localhost:9999/','http://localhost.evil:8001/','http://127.0.0.1:8001.evil/'])assert.equal(exempt.test(url),false);
+ assert.equal(exempt.test('http://127.0.0.1:8765/docs'),true);
+ for(const url of ['http://localhost:9999/','http://localhost.evil:8765/','http://127.0.0.1:8765.evil/'])assert.equal(exempt.test(url),false);
 });
 test('Preference validation keeps session and scoring data out of local settings',()=>{
  assert.deepEqual(normalizePreferences({language:'ar',timeZone:'Asia/Riyadh',token:'private'}),{language:'ar',timeZone:'Asia/Riyadh',theme:'light',tableSize:'standard',animations:true});

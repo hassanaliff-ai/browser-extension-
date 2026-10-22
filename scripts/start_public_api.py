@@ -40,7 +40,7 @@ def package(origin):
                     value=json.loads(data);value['content_security_policy']['extension_pages']=re.sub(r'connect-src [^;]+;',f'connect-src {origin};',value['content_security_policy']['extension_pages']);data=json.dumps(value,indent=2).encode()
                 elif relative.as_posix()=='rules/navigation.json':
                     value=json.loads(data);value=[r for r in value if r['id']!=3];value.append({'id':3,'priority':200,'action':{'type':'allow'},'condition':{'regexFilter':'^'+re.escape(origin)+'/','resourceTypes':['main_frame'],'isUrlFilterCaseSensitive':True}});data=json.dumps(value).encode()
-                elif relative.as_posix()=='workspace-kit.js':data=data.replace(b'http://127.0.0.1:8001',origin.encode())
+                elif relative.as_posix()=='workspace-kit.js':data=data.replace(b'http://127.0.0.1:8765',origin.encode())
                 archive.writestr(relative.as_posix(),data)
             archive.writestr('INSTALL ON ANOTHER DEVICE.txt',f'''ExtSecure temporary public API
     API: {origin}
@@ -66,7 +66,7 @@ def start(wait_for_health=True):
         value=json.loads(state.read_text())
         try:
             with httpx.Client(timeout=8,trust_env=False) as client:
-                if client.get(value['origin']+'/health').json().get('service')=='SecureScope API':package(value['origin']);return value['origin']
+                if client.get(value['origin']+'/health').json().get('service')=='TestAPI':package(value['origin']);return value['origin']
         except (httpx.HTTPError,ValueError):pass
         raise RuntimeError('The previous tunnel is offline. Stop its recorded processes before creating a replacement URL.')
     binary=directory/'cloudflared.exe'
@@ -102,7 +102,7 @@ def start(wait_for_health=True):
         for _ in range(30):
             try:
                 response=client.get(origin+'/health')
-                if response.status_code==200 and response.json().get('service')=='SecureScope API':break
+                if response.status_code==200 and response.json().get('service')=='TestAPI':break
             except (httpx.HTTPError,ValueError):pass
             time.sleep(1)
         else:raise RuntimeError('Public HTTPS did not become reachable. Inspect the private tunnel log.')

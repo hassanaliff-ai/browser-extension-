@@ -10,4 +10,4 @@ for ($attempt=0; $attempt -lt 60; $attempt++) {
 }
 if (-not $stopped) { throw 'Stop was requested. The supervisor has not yet confirmed shutdown; its task was left available for recovery.' }
 Disable-ScheduledTask -TaskName 'ExtSecure API Supervisor' | Out-Null
-Write-Output 'SecureScope API, public access and automatic supervision stopped. PostgreSQL remains running.'
+Write-Output 'TestAPI, public access and automatic supervision stopped. PostgreSQL remains running.'

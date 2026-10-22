@@ -5,4 +5,4 @@ if (-not (Test-Path -LiteralPath $privateFolder)) { throw 'Install the API Super
 '{"enabled":true}' | Set-Content -LiteralPath (Join-Path $privateFolder 'config.json') -Encoding UTF8
 Enable-ScheduledTask -TaskName 'ExtSecure API Supervisor' | Out-Null
 Start-ScheduledTask -TaskName 'ExtSecure API Supervisor'
-Write-Output 'SecureScope API automatic supervision enabled.'
+Write-Output 'TestAPI automatic supervision enabled.'

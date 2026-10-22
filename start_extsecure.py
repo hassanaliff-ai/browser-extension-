@@ -65,12 +65,12 @@ def main():
     if not ensure_local_ai(environment):
         print('Local AI is unavailable. Check the installed runtime and .private/local-ai.log.')
         return 1
-    if not reachable('http://127.0.0.1:8001/health'):
+    if not reachable('http://127.0.0.1:8765/health'):
         environment['PYTHONPATH'] = str(ROOT / 'src')
         environment.update(OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', MKL_NUM_THREADS='1')
-        launch([sys.executable, '-m', 'uvicorn', 'prototypes.securescope.backend.primary:create_app', '--factory', '--host', '127.0.0.1', '--port', '8001'],
+        launch([sys.executable, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8765'],
                environment, ROOT / '.private' / 'api.log')
-        if not wait_until_ready('http://127.0.0.1:8001/health'):
+        if not wait_until_ready('http://127.0.0.1:8765/health'):
             print('API did not start. Check .private/api.log.')
             return 1
     from scripts.start_lan_gateway import start as start_lan

@@ -22,12 +22,12 @@ $mode = 'background_without_sign_in'
 # runtime remains the ordinary user, never SYSTEM running user-writable code.
 if ($Machine) { $taskPrincipal = New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType S4U -RunLevel Limited; $mode = 'machine_startup' }
 try {
-    Register-ScheduledTask -TaskName $taskName -Description 'Keep SecureScope API and its approved public gateway running; recover after crashes. No terminal windows.' -Action $action -Trigger @($boot,$logon,$retry) -Settings $settings -Principal $taskPrincipal -Force -ErrorAction Stop | Out-Null
+    Register-ScheduledTask -TaskName $taskName -Description 'Keep TestAPI and its approved public gateway running; recover after crashes. No terminal windows.' -Action $action -Trigger @($boot,$logon,$retry) -Settings $settings -Principal $taskPrincipal -Force -ErrorAction Stop | Out-Null
 } catch {
     if ($Machine) { throw }
     $mode = 'user_logon'
     $taskPrincipal = New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited
-    Register-ScheduledTask -TaskName $taskName -Description 'Keep SecureScope API running while the user is signed in, including screen lock. Automatic recovery and logon startup.' -Action $action -Trigger @($logon,$retry) -Settings $settings -Principal $taskPrincipal -Force -ErrorAction Stop | Out-Null
+    Register-ScheduledTask -TaskName $taskName -Description 'Keep TestAPI running while the user is signed in, including screen lock. Automatic recovery and logon startup.' -Action $action -Trigger @($logon,$retry) -Settings $settings -Principal $taskPrincipal -Force -ErrorAction Stop | Out-Null
 }
 Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 # Virtual-environment launchers can leave their runtime child alive. End only
@@ -49,7 +49,7 @@ if ($mode -in @('background_without_sign_in','machine_startup') -and (Get-Schedu
     if ($Machine) { throw 'Windows batch startup failed. Verify the account has Log on as a batch job.' }
     $mode = 'user_logon'
     $taskPrincipal = New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited
-    Register-ScheduledTask -TaskName $taskName -Description 'Keep SecureScope API running while signed in; restart at logon and after failure.' -Action $action -Trigger @($logon,$retry) -Settings $settings -Principal $taskPrincipal -Force -ErrorAction Stop | Out-Null
+    Register-ScheduledTask -TaskName $taskName -Description 'Keep TestAPI running while signed in; restart at logon and after failure.' -Action $action -Trigger @($logon,$retry) -Settings $settings -Principal $taskPrincipal -Force -ErrorAction Stop | Out-Null
     Start-ScheduledTask -TaskName $taskName
 }
 $mode | Set-Content -LiteralPath (Join-Path $privateFolder 'startup-mode.txt') -Encoding UTF8

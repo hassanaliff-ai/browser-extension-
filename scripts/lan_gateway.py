@@ -22,7 +22,7 @@ async def app(scope,receive,send):
         await send({'type':'http.response.start','status':status,'headers':[(b'content-type',b'application/json'),(b'cache-control',b'no-store')]})
         await send({'type':'http.response.body','body':body})
     path=scope['path']
-    if scope['method'] not in {'GET','POST'} or not (path in {'/health','/api/v1/check','/api/v1/rdap'} or path.startswith(ALLOWED_PATHS)):
+    if scope['method'] not in {'GET','POST'} or not (path in {'/health','/scan'} or path.startswith(ALLOWED_PATHS)):
         return await reply(404,b'{"detail":"API route unavailable."}')
     peer=scope['client'][0]
     public=os.environ.get('EXTSECURE_PUBLIC_GATEWAY')=='1'
@@ -50,7 +50,7 @@ async def app(scope,receive,send):
         if not event.get('more_body'):break
     headers={k.decode('latin1'):v.decode('latin1') for k,v in scope['headers'] if k.decode('latin1').lower() not in HOP_HEADERS|{'x-forwarded-for','x-forwarded-proto','forwarded'}}
     headers.update({'x-forwarded-for':peer,'x-forwarded-proto':'https'})
-    target='http://127.0.0.1:8001'+path
+    target='http://127.0.0.1:8765'+path
     if scope.get('query_string'):target+='?'+scope['query_string'].decode('ascii')
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(120,connect=5),trust_env=False) as client:
