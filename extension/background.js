@@ -209,7 +209,7 @@ export async function handleMessage(message,sender={}) {
       const response=await fetch(API_ORIGIN+'/health',{method:'GET',headers:{Accept:'application/json'},credentials:'omit',cache:'no-store',redirect:'error',signal:AbortSignal.timeout(12000)});
       if(!response.ok)return {...metadata,status:'offline',reason:'http_error',http_status:response.status};
       let data;try{data=await response.json();}catch{return {...metadata,status:'offline',reason:'invalid_response'};}
-      const ready=data?.status==='ok'&&['TestAPI','ExtSecure API'].includes(data.service);
+      const ready=data?.status==='ok'&&['SecureScope API','ExtSecure API'].includes(data.service);
       return {...metadata,status:ready?'ready':'offline',reason:ready?null:'unexpected_service'};
     } catch(error){return {...metadata,status:'offline',reason:['TimeoutError','AbortError'].includes(error.name)?'timeout':'network_error'};}
   }
@@ -396,7 +396,7 @@ export async function handleMessage(message,sender={}) {
   }
   if (message.type === 'SCAN_URL') {
     const target = privateTarget(message.target,!!message.includePath);
-    const data = await request('/extension/scan','POST',{target},true);
+    const data = await request('/api/v1/check','POST',{url:target,source:'manual',checked_at:Date.now()},true);
     await updateBadge(data);
     data.protection=await containThreat(data,target,gate.clear);
     return data;

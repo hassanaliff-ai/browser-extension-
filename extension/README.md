@@ -1,6 +1,6 @@
 ## Install or update
 
-1. Start the configured backend at `http://127.0.0.1:8765`.
+1. Start the configured backend at `http://127.0.0.1:8001`.
 2. In Chrome, open `chrome://extensions` and enable Developer mode.
 3. Choose **Load unpacked** and select `C:\Users\hassa\browser-extension-\extension`.
    If ExtSecure is already loaded, choose its **Reload** button instead.
@@ -25,7 +25,7 @@ Choose **QR check** in the toolbar popup, or open **Scan a page → QR link safe
 HTTP and HTTPS top-level website navigation redirects to the local blocked screen
 before the network request, using a packaged `declarativeNetRequest` rule. This
 works while the service worker is asleep. The configured backend origin on port
-8765 is exempt; extension/browser pages are outside this HTTP/HTTPS gate. The
+8001 is exempt; extension/browser pages are outside this HTTP/HTTPS gate. The
 gate starts immediately when the extension and its required site access are enabled.
 
 An approved, signed-in account requests access with a business reason. The site
@@ -194,7 +194,7 @@ personal Chrome, borrow its session, or replace Chrome APIs with mocks. This
 provides a test route when desktop browser-control tools cannot inspect an
 extension URL. It does not modify those tools or disable their URL checks.
 
-Install test-only dependencies from this directory, with TestAPI already running:
+Install test-only dependencies from this directory, with the SecureScope primary API already running:
 
 ```powershell
 npm install

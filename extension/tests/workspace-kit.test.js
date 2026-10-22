@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {connectionBadge,connectionMessage,connectionPanel,filterRecords,requestedRole,updateAccountReview,resetDestinationReview,validateReportPeriod,safeActiveTab,accountAccessBody,resetAccountAccessReview} from '../workspace-kit.js';
 
 test('Connection diagnostics distinguish localhost packages from public failures',()=>{
- assert.match(connectionMessage({status:'offline',api_origin:'http://127.0.0.1:8765',reason:'network_error'}),/another device.*public HTTPS ZIP/);
+ assert.match(connectionMessage({status:'offline',api_origin:'http://127.0.0.1:8001',reason:'network_error'}),/another device.*public HTTPS ZIP/);
  const publicResult={status:'offline',api_origin:'https://public.example',reason:'timeout'};
  assert.match(connectionMessage(publicResult),/timed out/);
  assert.match(connectionMessage(publicResult),/https:\/\/public.example/);
- assert.doesNotMatch(connectionMessage(publicResult),/start TestAPI/);
+ assert.doesNotMatch(connectionMessage(publicResult),/start the SecureScope primary API/);
  assert.match(connectionMessage({...publicResult,status:'ready'}),/configured API is reachable/);
  assert.match(connectionMessage({...publicResult,reason:'http_error',http_status:502}),/HTTP 502/);
  const html=connectionPanel('offline',{api_origin:'https://public.example/<script>'});

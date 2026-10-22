@@ -1,21 +1,24 @@
 # ExtSecure browser extension and backend
 
-## Basel's SecureScope proof of concept
+## SecureScope primary API
 
-Basel's Chrome extension, RDAP domain-age module, local FastAPI endpoints, and
-offline reputation adapter are in [`prototypes/securescope/`](prototypes/securescope/README.md).
-For local development, the root FastAPI process can also mount these endpoints
-at `/securescope` by setting `SECURESCOPE_DEV_ENABLED=1`. The prototype Chrome
-extension remains a separate client and its browser-to-backend requests remain
-disabled while authentication and the shared risk contract are unfinished.
+Basel's SecureScope source from GitHub now provides the primary API entry point.
+The production factory combines its URL-check and RDAP contracts with the
+existing ExtSecure authentication, PostgreSQL, inventory, incident and reporting
+services. Existing accounts, authenticator enrollment and security records are
+preserved. The former TestAPI listener on port 8765 is retired.
 
-To run both APIs in one process on loopback, install `requirements.txt` in the
-root `.venv`, configure the root `.env` as described below, and run
-`scripts/start_combined_local.ps1`. The server binds to `127.0.0.1:8765`,
-which the ExtSecure Chrome extension already uses. The ExtSecure API is at
-`/docs`, its monitoring API at `/monitor/docs` when configured, and the
-SecureScope API at `/securescope/docs`. The mounted prototype is for controlled
-local testing only.
+Run `scripts/start_combined_local.ps1`, or start the configured API with:
+
+```bash
+uvicorn prototypes.securescope.backend.primary:create_app --factory --host 127.0.0.1 --port 8001
+```
+
+The local API is `http://127.0.0.1:8001`, with `/docs` and `/monitor/docs`.
+The installed supervisor keeps this same entry point running. Other devices use
+the HTTPS origin embedded in the release ZIP; the tunnel remains temporary.
+The standalone prototype in [`prototypes/securescope/`](prototypes/securescope/README.md)
+is retained for development and should not replace this configured factory.
 
 Version 0.8.18 adds installed-extension inventory by device with audited On, Off, Block and Remove controls. See [Extension inventory controls](docs/Extension%20Inventory%20Controls.md).
 
@@ -25,7 +28,7 @@ Critical results create open alerts, persistent threat blocks and linked inciden
 
 ## PostgreSQL database
 
-Administrators can verify the live database in **Settings → Database connection**. Chrome writes through TestAPI into PostgreSQL; scans and personal history commit together. See [connection and live verification](docs/Database%20Connection%20and%20Verification.md) for the database location, inspection queries and actual test evidence.
+Administrators can verify the live database in **Settings → Database connection**. Chrome writes through the SecureScope primary API into PostgreSQL; scans and personal history commit together. See [connection and live verification](docs/Database%20Connection%20and%20Verification.md) for the database location, inspection queries and actual test evidence.
 
 The local database now uses PostgreSQL with verified migration of the existing
 records. See [database setup, schema, queries and verification](docs/PostgreSQL%20Database.md).
@@ -40,16 +43,13 @@ Database operator tools now provide private scheduled backups and isolated resto
 tests, synthetic performance benchmarks, ordered SQL migrations, and allowlisted JSON/CSV export. See
 [database operations](docs/Database%20Operations.md) for commands and scheduling.
 
-One FastAPI process serves the original ExtSecure VirusTotal lookup API and
-the Alba risk and monitoring service. The existing `POST /scan` contract remains
-at the root. When monitoring is configured, administrator and ingestion routes
-are mounted at `/monitor`. The Manifest V3 Chrome extension in `extension/`
-provides the main user interface: a toolbar popup and an extension-owned
-administrator console. FastAPI remains a separate security backend. The earlier
-Streamlit dashboard is retained for compatibility and is not required to use the
-extension.
+One FastAPI process serves authenticated SecureScope URL and RDAP checks at
+`/api/v1/check` and `/api/v1/rdap`. Administrator and ingestion routes remain
+mounted at `/monitor`. The Manifest V3 extension in `extension/` provides the
+popup and administrator console. The optional Streamlit dashboard uses the
+same protected monitoring API.
 
-## Chrome extension 0.8.45
+## Chrome extension 0.8.46
 
 The extension console uses teal navigation and option bars, with Light, Dark and
 Use device setting appearance choices. Settings saves appearance alongside
@@ -97,7 +97,7 @@ visits are revalidated against the backend, without permanent browser bypass
 rules. Monthly reporting boundaries remain UTC. See `extension/README.md` for
 permission scope, privacy, installation and native Chrome smoke checks.
 
-Start the configured backend on `127.0.0.1:8765`, then open `chrome://extensions`,
+Start the configured backend on `127.0.0.1:8001`, then open `chrome://extensions`,
 enable Developer mode, choose **Load unpacked**, and select this project's
 `extension` folder. Pin ExtSecure to the toolbar. Sign in with your approved
 account and authenticator; **Open console** opens a `chrome-extension://` page.
@@ -255,14 +255,14 @@ Implementation reference: https://scikit-learn.org/stable/modules/generated/skle
 Start the development server with auto-reload:
 
 ```bash
-uvicorn main:app --reload
+uvicorn prototypes.securescope.backend.primary:create_app --factory --host 127.0.0.1 --port 8001 --reload
 ```
 
-The API will be available at http://localhost:8000.
+The API will be available at http://localhost:8001.
 
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- Monitoring health, when enabled: http://localhost:8000/monitor/health
+- Swagger UI: http://localhost:8001/docs
+- ReDoc: http://localhost:8001/redoc
+- Monitoring health, when enabled: http://localhost:8001/monitor/health
 
 To run the administrator dashboard in another terminal:
 
@@ -270,7 +270,7 @@ To run the administrator dashboard in another terminal:
 streamlit run dashboard.py
 ```
 
-The dashboard defaults to `API_BASE_URL=http://localhost:8000/monitor`. Set
+The dashboard defaults to `API_BASE_URL=http://localhost:8001/monitor`. Set
 that environment variable in the dashboard terminal if the API uses a different
 address. Each dashboard viewer signs in with the administrator username and
 password, then a fresh six-digit authenticator code.
@@ -279,102 +279,40 @@ password, then a fresh six-digit authenticator code.
 
 ### `GET /` and `GET /health`
 
-Liveness check. Returns `{"status": "ok", "service": "TestAPI"}`.
+Liveness check. Returns `{"status": "ok", "service": "SecureScope API"}`.
 
-### `POST /scan`
+### `POST /api/v1/check`
 
-Scans a URL, file hash, or IP address with VirusTotal and returns a simplified
-verdict plus the raw engine counts.
-
-**Request body**
-
-| Field       | Type   | Required | Description                                                                 |
-| ----------- | ------ | -------- | --------------------------------------------------------------------------- |
-| `target`    | string | yes      | What to scan (must be non-empty and valid for `scan_type`).                 |
-| `scan_type` | string | no       | `"url"` (default), `"hash"`, or `"ip"`.                                     |
-
-Target formats:
-
-- `url`: an absolute `http://` or `https://` URL.
-- `hash`: an MD5, SHA-1, or SHA-256 hex digest.
-- `ip`: an IPv4 or IPv6 address.
-
-```bash
-curl -X POST http://localhost:8000/scan \
-  -H "Content-Type: application/json" \
-  -d '{"target": "https://example.com", "scan_type": "url"}'
-```
-
-**Response (200)**
+Requires an approved account bearer session. The extension sends a privacy-cleaned
+URL using Basel's request contract:
 
 ```json
-{
-  "target": "https://example.com",
-  "scan_type": "url",
-  "verdict": "harmless",
-  "malicious": 0,
-  "suspicious": 0,
-  "harmless": 62,
-  "undetected": 28,
-  "cached": false
-}
+{"url":"https://example.com/","source":"manual","checked_at":0}
 ```
 
-| Field                                            | Description                                                   |
-| ------------------------------------------------ | ------------------------------------------------------------- |
-| `verdict`                                        | `"malicious"`, `"suspicious"`, or `"harmless"` (see below).   |
-| `malicious`, `suspicious`, `harmless`, `undetected` | Raw engine counts from VirusTotal, unmodified.             |
-| `cached`                                         | `true` if served from the local cache instead of VirusTotal.  |
+The response preserves ExtSecure's scan ID, score, severity, findings, lookup
+status and containment evidence, and adds `api_provider`, `origin`, `reasons`,
+`lookup_status` and `cached`. Missing evidence remains Unknown or partial;
+unavailable providers never produce an invented safe verdict. Critical results
+retain alerts, threat blocks and linked cases in PostgreSQL.
 
-**Verdict thresholds**
+### `POST /api/v1/rdap`
 
-A single stray engine flag is common (even well-known sites get one or two), so
-the verdict requires several engines to agree:
+Accepts `{"origin":"https://example.com/"}` with an approved scanning session.
+Returns bounded registration-age evidence without exposing provider URLs.
+Account/device checks and scan rate limits apply to both native endpoints.
 
-| Verdict      | Rule                                                        |
-| ------------ | ----------------------------------------------------------- |
-| `malicious`  | `malicious >= 3`                                            |
-| `suspicious` | `malicious` is 1 or 2, **or** `suspicious >= 3`             |
-| `harmless`   | anything else                                               |
-
-**Errors**
-
-Errors return `{"detail": "..."}`.
-
-| Status | When                                                                                          |
-| ------ | --------------------------------------------------------------------------------------------- |
-| `422`  | Invalid `scan_type`, missing/empty `target`, or a target that is malformed for its `scan_type`. Validation errors from the request body use FastAPI's standard list-style `detail`. Invalid targets never reach VirusTotal. |
-| `404`  | VirusTotal has no record of the target (unknown hash or IP).                                  |
-| `429`  | VirusTotal rate limit or quota reached. Includes a `Retry-After: 60` header.                  |
-| `502`  | VirusTotal rejected the server's API key, was unreachable, or returned an unexpected response. |
-| `504`  | A newly submitted URL analysis did not finish in time (about 60 seconds).                     |
-
-**Behavior notes**
-
-- **New URLs are submitted and polled.** If VirusTotal has never seen a URL, the
-  API submits it and polls for the result with backoff. This is noticeably
-  slower (often 10-20 seconds) than a lookup of an already-known URL
-  (about 1 second).
-- **Caching.** Results are cached in memory for `CACHE_TTL_SECONDS`, keyed by
-  the exact `(scan_type, target)` pair. A repeat request within the TTL returns
-  the same result with `cached: true` and makes no VirusTotal call. Errors are
-  never cached. The cache is per process and is cleared on restart.
-- **Rate limits.** The VirusTotal free tier allows 4 requests/minute and 500/day.
-  Submit-and-poll uses several requests per new URL.
-- **CORS** currently allows all origins (`*`). Restrict this to the extension's
-  origin before deploying (see the TODO in `main.py`).
+The former `/scan` and `/extension/scan` routes are not served by this primary
+factory. File scanning continues through the existing protected download routes
+under `/monitor/api/`; administrator APIs retain their existing contracts.
 
 ## Monitoring at `/monitor`
 
-Monitoring is mounted in the same FastAPI process when the database and 2FA
-administrator settings described above are configured. The root `/scan` route
-still returns its original response. With monitoring enabled, successful
-VirusTotal verdicts from `/scan` are also recorded in monitoring risk and scan
-history. Failed lookups that reached VirusTotal appear as Unknown events. With
-monitoring enabled, `/scan` requires an approved scanning account session or a
-trusted server-side ingestion token. Managers cannot submit scans. User checks
-are linked to personal ownership. These bridge requests do not trigger external webhook
-notifications. Protected ingestion is the path for device and extension events.
+Monitoring is mounted in the same process when the database and administrator
+2FA settings are configured. SecureScope checks use the existing authorization,
+risk assessment, history and containment services. Managers retain their
+review permissions; scanning requires an approved scanning account. Trusted
+server ingestion remains separate from browser sessions.
 
 The monitoring dashboard shows the overview, devices, extensions, findings,
 risk levels, scan history, alerts, security events, exceptions, and monthly
@@ -406,7 +344,7 @@ $scan = @{
   target = 'https://example.invalid/sample'
   signals = @(@{ code = 'suspicious_url'; status = 'detected' })
 } | ConvertTo-Json -Depth 5
-Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/monitor/api/scans' `
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8001/monitor/api/scans' `
   -Headers @{ 'X-Ingest-Token' = $env:INGEST_TOKEN } `
   -ContentType 'application/json' -Body $scan
 ```
@@ -550,7 +488,7 @@ browser scan API before a provider request.
 PostgreSQL connections use a five-second connection timeout, ten-second pool
 wait limit, fifteen-second statement timeout, five-second lock timeout and
 one-minute idle-transaction timeout. Connections are checked before reuse and
-recycled periodically. These settings apply to TestAPI connections and do not
+recycled periodically. These settings apply to primary API connections and do not
 change server-wide PostgreSQL settings.
 
 The Windows supervisor distinguishes confirmed Cloudflare error 1033 from DNS

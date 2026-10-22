@@ -30,9 +30,9 @@ test('Actual worker listener denies invalid task routes before any network reque
 
 test('Health checks use only the fixed local endpoint without account or device credentials',async()=>{
  reset();store.session={token:'private-account-token',expires_at:new Date(Date.now()+60000).toISOString()};localStore.deviceCredential={token:'private-device-token'};
- responder=()=>({status:'ok',service:'TestAPI',private_value:'not forwarded'});
+ responder=()=>({status:'ok',service:'SecureScope API',private_value:'not forwarded'});
  const result=await handleMessage({type:'HEALTH',url:'https://other.test'});
- assert.equal(result.status,'ready');assert.equal(calls[0].url,'http://127.0.0.1:8765/health');
+ assert.equal(result.status,'ready');assert.equal(calls[0].url,'http://127.0.0.1:8001/health');
  assert.deepEqual(calls[0].options.headers,{Accept:'application/json'});assert.equal(JSON.stringify(result).includes('private'),false);
 });
 test('Health checks remain compatible with the former API name during upgrades',async()=>{
@@ -51,7 +51,7 @@ test('Health diagnostics identify the configured origin, timeout and invalid res
  try{
   globalThis.fetch=async()=>{throw Object.assign(new Error('slow'),{name:'TimeoutError'});};
   let result=await handleMessage({type:'HEALTH'});
-  assert.equal(result.status,'offline');assert.equal(result.reason,'timeout');assert.equal(result.api_origin,'http://127.0.0.1:8765');
+  assert.equal(result.status,'offline');assert.equal(result.reason,'timeout');assert.equal(result.api_origin,'http://127.0.0.1:8001');
   globalThis.fetch=async()=>new Response('Unavailable',{status:503});
   result=await handleMessage({type:'HEALTH'});assert.equal(result.http_status,503);assert.equal(result.reason,'http_error');
   globalThis.fetch=async()=>new Response('<html>proxy</html>',{status:200});
@@ -142,8 +142,8 @@ test('STATE validates profile server-side and never exposes the token',async()=>
 test('Expired sessions are discarded',async()=>{reset();store={session:{token:'expired',expires_at:'2000-01-01T00:00:00Z'}};assert.equal((await handleMessage({type:'STATE'})).profile,undefined);assert.deepEqual(store,{});});
 test('Content scripts and foreign senders cannot request credentials or API actions',()=>{reset();let response;assert.equal(listener({type:'STATE'},{id:'test-extension',url:'https://untrusted.test'},r=>response=r),false);assert.equal(response.ok,false);assert.equal(listener({type:'STATE'},{id:'other',url:'chrome-extension://test-extension/popup.html'},r=>response=r),false);assert.equal(calls.length,0);});
 test('Generic API messages cannot bypass the dedicated sign-in handler',async()=>{reset();await assert.rejects(handleMessage({type:'API',path:'/api/admin/login',method:'POST'}),/dedicated/);});
-test('Logout revokes the backend session and removes local state',async()=>{reset();store={session:{token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()}};await handleMessage({type:'LOGOUT'});assert.equal(calls[0].url,'http://127.0.0.1:8765/monitor/api/admin/logout');assert.deepEqual(store,{});});
-test('Scanning strips query and fragment before transmission and shows Unknown badge',async()=>{reset();store={session:{token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()}};responder=()=>({severity:'Unknown'});await handleMessage({type:'SCAN_URL',target:'https://example.com/private?secret=x#private'});assert.deepEqual(JSON.parse(calls[0].options.body),{target:'https://example.com/'});assert.equal(calls.at(-1).text,'?');});
+test('Logout revokes the backend session and removes local state',async()=>{reset();store={session:{token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()}};await handleMessage({type:'LOGOUT'});assert.equal(calls[0].url,'http://127.0.0.1:8001/monitor/api/admin/logout');assert.deepEqual(store,{});});
+test('Scanning strips query and fragment before transmission and shows Unknown badge',async()=>{reset();store={session:{token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()}};responder=()=>({severity:'Unknown'});await handleMessage({type:'SCAN_URL',target:'https://example.com/private?secret=x#private'});const sent=JSON.parse(calls[0].options.body);assert.equal(calls[0].url,'http://127.0.0.1:8001/api/v1/check');assert.equal(sent.url,'https://example.com/');assert.equal(sent.source,'manual');assert(Number.isInteger(sent.checked_at));assert.equal(calls.at(-1).text,'?');});
 test('Console opens an extension URL, not a website',async()=>{reset();await handleMessage({type:'OPEN_CONSOLE'});assert.equal(calls[0].url,'chrome-extension://test-extension/console.html');});
 test('Network failures remain errors and cannot become a safe verdict',async()=>{reset();store={session:{token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()}};const previous=fetch;globalThis.fetch=async()=>{throw new Error('offline');};try{await assert.rejects(handleMessage({type:'API',path:'/api/overview'}),/No result has been marked safe/);}finally{globalThis.fetch=previous;}});
 test('Manifest has MV3 popup, worker, explicit navigation permissions and bundled scripts',async()=>{const manifest=JSON.parse(await fs.readFile(new URL('../manifest.json',import.meta.url)));assert.equal(manifest.manifest_version,3);assert.equal(manifest.background.type,'module');assert.equal(manifest.action.default_popup,'popup.html');assert.deepEqual(manifest.permissions,['storage','activeTab','declarativeNetRequest','webNavigation','alarms']);assert.equal(manifest.content_security_policy.extension_pages.includes("script-src 'self'"),true);assert.equal(manifest.host_permissions.includes('<all_urls>'),false);assert.deepEqual(manifest.web_accessible_resources[0].resources,['blocked.html']);});

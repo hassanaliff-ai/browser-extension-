@@ -20,7 +20,7 @@ def test_missing_config_does_not_start_services(tmp_path,monkeypatch):
 
 @pytest.fixture
 def recovery(tmp_path,monkeypatch):
-    import activate_postgresql as api
+    import primary_api_runtime as api
     import scripts.start_public_api as public
     import scripts.stop_public_api as stop
     monkeypatch.setattr(supervisor,'ROOT',tmp_path);monkeypatch.setattr(supervisor,'STATE',tmp_path)

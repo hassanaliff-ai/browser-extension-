@@ -11,7 +11,7 @@ async def test_gateway_limits_routes_network_and_request_size(monkeypatch):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=lan_gateway.app,client=('192.168.1.2',123)),base_url='https://test') as client:
         assert (await client.get('/docs')).status_code==404
         assert (await client.delete('/monitor/api/devices')).status_code==404
-        assert (await client.post('/scan',content=b'x'*(lan_gateway.MAX_BODY+1))).status_code==413
+        assert (await client.post('/api/v1/check',content=b'x'*(lan_gateway.MAX_BODY+1))).status_code==413
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=lan_gateway.app,client=('203.0.113.2',123)),base_url='https://test') as client:
         assert (await client.get('/health')).status_code==403
 
@@ -26,7 +26,7 @@ async def test_gateway_forwards_to_fixed_backend_and_replaces_forged_peer(monkey
     async with original(transport=httpx.ASGITransport(app=lan_gateway.app,client=('192.168.1.2',123)),base_url='https://test') as client:
         response=await client.get('/monitor/api/devices',headers={'x-forwarded-for':'8.8.8.8','authorization':'Bearer QA-only'})
     assert response.status_code==401
-    assert str(seen[0].url)=='http://127.0.0.1:8765/monitor/api/devices'
+    assert str(seen[0].url)=='http://127.0.0.1:8001/monitor/api/devices'
     assert seen[0].headers['x-forwarded-for']=='192.168.1.2'
     assert seen[0].headers['authorization']=='Bearer QA-only'
     assert 'connection' not in response.headers

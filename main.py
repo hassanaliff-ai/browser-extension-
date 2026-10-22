@@ -144,7 +144,7 @@ def _extension_record(monitor, target, verdict, actor, device_id=None, domain_ag
     payload = payload.model_copy(update={
         'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
         'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
-        'extension_name': 'ExtSecure', 'extension_version': '0.8.45',
+        'extension_name': 'ExtSecure', 'extension_version': '0.8.46',
     })
     with monitor.state.session_factory() as db:
         from alba_security.inventory import scan_device_fields
@@ -399,4 +399,4 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("prototypes.securescope.backend.primary:create_app", host="127.0.0.1", port=8001, factory=True, reload=False)

@@ -20,7 +20,7 @@ def database_snapshot():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--live', action='store_true', help='Use TestAPI, register a QA browser, and persist benign scan evidence')
+    parser.add_argument('--live', action='store_true', help='Use the SecureScope primary API, register a QA browser, and persist benign scan evidence')
     args = parser.parse_args()
     output = ROOT / '.private/extension-smoke' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8])
     output.mkdir(parents=True)

@@ -13,17 +13,17 @@ def build(root,host,port,public_certificate,output):
             if relative.as_posix()=='core.js':
                 data=re.sub(r"export const API_ORIGIN = '[^']+';",f"export const API_ORIGIN = '{origin}';",data.decode()).encode()
             elif relative.as_posix()=='manifest.json':
-                manifest=json.loads(data);manifest['content_security_policy']['extension_pages']=manifest['content_security_policy']['extension_pages'].replace('connect-src http://127.0.0.1:8765 http://localhost:8765;',f'connect-src {origin};');data=json.dumps(manifest,indent=2).encode()
+                manifest=json.loads(data);manifest['content_security_policy']['extension_pages']=re.sub(r'connect-src [^;]+;',f'connect-src {origin};',manifest['content_security_policy']['extension_pages']);data=json.dumps(manifest,indent=2).encode()
             elif relative.as_posix()=='rules/navigation.json':
                 rules=json.loads(data);rules.append({'id':3,'priority':200,'action':{'type':'allow'},'condition':{'regexFilter':'^'+re.escape(origin)+'/','resourceTypes':['main_frame'],'isUrlFilterCaseSensitive':True}});data=json.dumps(rules).encode()
-            elif relative.as_posix()=='workspace-kit.js':data=data.replace(b'http://127.0.0.1:8765',origin.encode())
+            elif relative.as_posix()=='workspace-kit.js':data=data.replace(b'http://127.0.0.1:8001',origin.encode())
             package.writestr(relative.as_posix(),data)
         package.write(public_certificate,'ExtSecure API Trust Certificate.cer')
         package.writestr('INSTALL ON ANOTHER DEVICE.txt',f'''ExtSecure same-network installation
 API: {origin}
 1. Extract this ZIP into a permanent folder.
 2. Double-click ExtSecure API Trust Certificate.cer. Install Certificate -> Current User -> Place all certificates in the following store -> Trusted Root Certification Authorities. Verify this certificate came from Hasan before trusting it. The ZIP contains only the public certificate, never its private key.
-3. Restart Chrome if it was already open. Visit {origin}/health. It must show TestAPI with no certificate error.
+3. Restart Chrome if it was already open. Visit {origin}/health. It must show SecureScope API with no certificate error.
 4. Open chrome://extensions, enable Developer mode, click Load unpacked and select this folder.
 5. Register/sign in with your own account and complete administrator account approval. Open My account, choose device access and Add this device. Complete device approval where required.
 6. Click Connect Chrome extensions and grant the optional management permission.

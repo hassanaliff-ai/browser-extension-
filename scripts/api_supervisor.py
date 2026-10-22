@@ -1,4 +1,4 @@
-"""Hidden, single-instance supervision of TestAPI and its temporary public gateway."""
+"""Hidden, single-instance supervision of the SecureScope primary API and its temporary public gateway."""
 from pathlib import Path
 import argparse,ctypes,hashlib,json,os,sys,time
 import httpx
@@ -12,7 +12,7 @@ def healthy(url):
     try:
         with httpx.Client(timeout=5,trust_env=False) as client:
             response=client.get(url+'/health')
-            return response.status_code==200 and response.json().get('service')=='TestAPI'
+            return response.status_code==200 and response.json().get('service')=='SecureScope API'
     except (httpx.HTTPError,ValueError):return False
 
 def enabled():
@@ -110,15 +110,15 @@ def publish_package(origin):
     (STATE/'package-revision.txt').write_text(package_revision(origin),encoding='utf-8')
 
 def cycle(failures):
-    from activate_postgresql import api_process,stop_api,start_api
+    from primary_api_runtime import api_process,stop_api,start_api
     from scripts.start_public_api import start
     from scripts.stop_public_api import stop
-    local=healthy('http://127.0.0.1:8765')
+    local=healthy('http://127.0.0.1:8001')
     if not local:
         process=api_process()
         failures=failures+1 if process else 3
         if failures>=3:
-            stop_api(process);start_api(dotenv_values(ROOT/'.env'));local=healthy('http://127.0.0.1:8765');failures=0
+            stop_api(process);start_api(dotenv_values(ROOT/'.env'));local=healthy('http://127.0.0.1:8001');failures=0
     else:failures=0
     if not local:
         checkpoint(state='recovering_api',local_api=False);return failures
@@ -180,7 +180,7 @@ def main():
         if active and not enabled():
             # Stop from the same batch logon that owns the child processes.
             from scripts.stop_public_api import stop
-            from activate_postgresql import api_process,stop_api
+            from primary_api_runtime import api_process,stop_api
             stop();stop_api(api_process());checkpoint(state='stopped')
         lock.close()
 

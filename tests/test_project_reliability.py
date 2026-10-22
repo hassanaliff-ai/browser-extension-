@@ -83,8 +83,8 @@ def test_reputation_deadline_is_recorded_without_inventing_safe_result(extension
 def package_root(tmp_path,monkeypatch):
  monkeypatch.setattr(release,'ROOT',tmp_path)
  extension=tmp_path/'extension';extension.mkdir()
- (extension/'core.js').write_text("export const API_ORIGIN = 'http://127.0.0.1:8765';\nexport const VERSION = 'test';")
- (extension/'manifest.json').write_text(json.dumps({'version':'test','content_security_policy':{'extension_pages':"script-src 'self'; connect-src http://127.0.0.1:8765;"}}))
+ (extension/'core.js').write_text("export const API_ORIGIN = 'http://127.0.0.1:8001';\nexport const VERSION = 'test';")
+ (extension/'manifest.json').write_text(json.dumps({'version':'test','content_security_policy':{'extension_pages':"script-src 'self'; connect-src http://127.0.0.1:8001;"}}))
  return tmp_path
 
 
@@ -121,6 +121,6 @@ def test_package_rejects_unsafe_api_origins(package_root,origin):
 
 def test_mismatched_worker_version_does_not_replace_working_zip(package_root):
  target=package_root/'ExtSecure Chrome Extension.zip';target.write_bytes(b'working release')
- (package_root/'extension/core.js').write_text("export const API_ORIGIN = 'http://127.0.0.1:8765'; export const VERSION = 'different';")
+ (package_root/'extension/core.js').write_text("export const API_ORIGIN = 'http://127.0.0.1:8001'; export const VERSION = 'different';")
  with pytest.raises(ValueError,match='versions do not match'):release.package('https://api.example')
  assert target.read_bytes()==b'working release'

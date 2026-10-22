@@ -48,9 +48,9 @@ export function connectionBadge(status='unchecked') {
 export function connectionMessage(result={}) {
   const origin=result.api_origin??API_ORIGIN;
   if(result.status==='ready')return 'The configured API is reachable: '+origin;
-  const reason={timeout:'The connection timed out.',network_error:'Chrome could not connect to this address.',http_error:'The server returned HTTP '+(result.http_status??'error')+'.',invalid_response:'The server did not return a valid health response.',unexpected_service:'This address did not identify itself as ExtSecure TestAPI.'}[result.reason]??'The API could not be verified.';
+  const reason={timeout:'The connection timed out.',network_error:'Chrome could not connect to this address.',http_error:'The server returned HTTP '+(result.http_status??'error')+'.',invalid_response:'The server did not return a valid health response.',unexpected_service:'This address did not identify itself as SecureScope API.'}[result.reason]??'The API could not be verified.';
   const local=/^http:\/\/(127\.0\.0\.1|localhost)(?::\d+)?$/.test(origin);
-  return reason+' '+origin+' '+(local?'This package uses localhost. On another device, install the public HTTPS ZIP; on the host, start TestAPI.':'Check this address in Chrome using /health. If the temporary URL expired, install the latest public HTTPS ZIP, then reload ExtSecure.');
+  return reason+' '+origin+' '+(local?'This package uses localhost. On another device, install the public HTTPS ZIP; on the host, start the SecureScope primary API.':'Check this address in Chrome using /health. If the temporary URL expired, install the latest public HTTPS ZIP, then reload ExtSecure.');
 }
 
 export function connectionPanel(status='unchecked',result={}) {

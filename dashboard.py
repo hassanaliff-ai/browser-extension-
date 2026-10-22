@@ -1,7 +1,7 @@
 """Admin dashboard for the Browser Extension Security Analyzer.
 
 Run with ``streamlit run dashboard.py``. The backend is expected at
-``API_BASE_URL`` (default: http://localhost:8000/monitor). Each viewer signs in with
+``API_BASE_URL`` (default: http://localhost:8001/monitor). Each viewer signs in with
 an administrator password and an authenticator-app code. The backend issues a
 short-lived bearer session after both steps succeed.
 """
@@ -25,7 +25,7 @@ from dashboard_governance import render as render_governance
 from alba_security.authenticator_qr import authenticator_qr_png
 
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/monitor").strip().rstrip("/")
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8001/monitor").strip().rstrip("/")
 TIMEOUT_SECONDS = 12.0
 SEVERITY_ORDER = ("Critical", "High", "Medium", "Low", "Informational", "Unknown")
 SESSION_TOKEN_KEY = "admin_session_token"

@@ -10,7 +10,7 @@ def start(root):
     context=ssl.create_default_context(cafile=str(directory/'ca.pem'))
     def ready():
         try:
-            with httpx.Client(verify=context,trust_env=False,timeout=2) as client:return client.get(origin+'/health').json().get('service')=='TestAPI'
+            with httpx.Client(verify=context,trust_env=False,timeout=2) as client:return client.get(origin+'/health').json().get('service')=='SecureScope API'
         except (httpx.HTTPError,ValueError):return False
     if ready():return origin
     environment=dict(os.environ);environment['EXTSECURE_LAN_SUBNET']=value['subnet']
