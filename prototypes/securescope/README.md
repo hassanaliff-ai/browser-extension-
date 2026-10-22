@@ -4,7 +4,7 @@ This folder contains Basel's SecureScope proof of concept: a Manifest V3 Chrome
 extension, local URL and on-page link checks, an RDAP domain-age module, a local
 FastAPI service, an offline-tested VirusTotal adapter, and tests. It is kept
 separate from the root `extension/` and backend because those belong to the
-existing ExtSecure application and use different contracts and access controls.
+existing ExtSecure application and use different contracts and access controls. The RDAP domain-age implementation is now shared with ExtSecure browser scans; the prototype Chrome extension remains separate.
 
 ## What works in this prototype
 
@@ -71,3 +71,19 @@ The draft extension/backend contract is in [`docs/API_CONTRACT.md`](docs/API_CON
 The message contract is in [`docs/MESSAGING.md`](docs/MESSAGING.md). Before
 connecting this prototype to the main application, agree on risk-result and
 authentication contracts, permissions, and the data-retention policy.
+
+
+## Domain-age integration with ExtSecure
+
+ExtSecure 0.8.44 calls the shared `alba_security.rdap_lookup` implementation
+through its authenticated `/extension/scan` route. URL scans through the legacy
+`/scan` route also retain domain-age evidence when monitoring is enabled; their
+public response contract is unchanged. Installing this prototype's backend
+requirements now installs the root package to supply that shared implementation.
+
+The operational extension combines this evidence with its existing risk policy.
+A registration age below 30 days activates `new_domain` (15 points under the
+current default policy). Missing age remains Unknown and makes an otherwise
+assessed scan partial. Domain age never subtracts confirmed threat points.
+The development `/securescope` routes remain disabled by default and are not
+required for this integration. No second extension installation is needed.

@@ -38,3 +38,10 @@ def client(monkeypatch):
     )
     with TestClient(main.app) as test_client:
         yield test_client
+
+
+@pytest.fixture(autouse=True)
+def isolated_domain_age(monkeypatch):
+    from alba_security import rdap_lookup
+    monkeypatch.setattr(rdap_lookup, "lookup_domain_age", lambda domain, **_: {
+        "domain": domain, "status": "Unknown", "reason": "Isolated test lookup"})

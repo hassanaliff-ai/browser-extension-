@@ -116,3 +116,25 @@ test('Security events display device, scanner and target with escaped evidence',
   assert.match(app.innerHTML,/URL redacted123/);assert.doesNotMatch(app.innerHTML,/<script>/);
  }finally{chrome.runtime.sendMessage=original;profile.views.pop();}
 });
+
+
+test('URL scan renders persisted SecureScope age in the real result handler',async()=>{
+ profile.views.push('Scan a page');await navigate('scan');
+ result={id:'rdap-scan',target_kind:'url',target_display:'example.com',severity:'Low',score:15,
+ completeness:'complete',findings:[],signals:[{code:'new_domain',status:'detected',detail:'SecureScope RDAP: age 12 days.'}],domain_age:{status:'Known',age_days:12}};
+ await submit('url-scan',{target:'https://example.com/'});
+ assert.match(app.innerHTML,/SecureScope RDAP: age 12 days/);
+ assert.match(app.innerHTML,/aria-label="Risk assessment"/);
+});
+
+test('RDAP evidence stays escaped and Unknown remains visible',async()=>{
+ await navigate('scan');
+ result={id:'rdap-unknown',target_kind:'url',target_display:'example.com',severity:'Unknown',score:null,
+ completeness:'unknown',unknown_codes:['new_domain'],findings:[],domain_age:{status:'Unknown'}};
+ await submit('url-scan',{target:'https://example.com/'});
+ assert.match(app.innerHTML,/domain age unavailable/);
+ result.signals=[{code:'new_domain',status:'unknown',detail:'<script>alert(1)</script>'}];
+ await submit('url-scan',{target:'https://example.com/'});
+ assert(!app.innerHTML.includes('<script>alert(1)</script>'));
+ assert.match(app.innerHTML,/&lt;script&gt;/);
+});

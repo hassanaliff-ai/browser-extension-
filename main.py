@@ -21,6 +21,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from app.config import get_settings
 from app.services.cache import TTLCache
+from alba_security.domain_age import DomainAgeService, age_signal
 from app.services.virustotal import (
     AnalysisTimeoutError,
     InvalidAPIKeyError,
@@ -47,6 +48,7 @@ _MONITOR_REQUIRED = (
 async def lifespan(application: FastAPI):
     application.state.vt = VirusTotalClient(settings.vt_api_key)
     application.state.cache = TTLCache[ScanResult](settings.cache_ttl_seconds)
+    application.state.domain_age = DomainAgeService()
     try:
         async with AsyncExitStack() as stack:
             monitor = application.state.monitoring_app
@@ -98,7 +100,7 @@ def extension_capabilities(request: Request, response: Response) -> Capabilities
     response.headers['Cache-Control'] = 'no-store'
     features = []
     if monitor is not None:
-        features = ["incident_cases", "threat_containment", "evidence_export"]
+        features = ["incident_cases", "threat_containment", "evidence_export", "domain_age"]
     return CapabilitiesResponse(api_version=request.app.version, monitoring_available=monitor is not None,
         monitoring_base='/monitor/api' if monitor is not None else None,
         monitoring_docs='/monitor/docs' if monitor is not None else None, capabilities=features)
@@ -123,17 +125,17 @@ class ExtensionScanRequest(BaseModel):
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path or '/', '', ''))
 
 
-def _extension_record(monitor, target, verdict, actor, device_id=None):
-    payload = _monitoring_payload(ScanRequest(target=target), verdict)
+def _extension_record(monitor, target, verdict, actor, device_id=None, domain_age=None):
+    payload = _monitoring_payload(ScanRequest(target=target), verdict, domain_age)
     payload = payload.model_copy(update={
         'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
         'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
-        'extension_name': 'ExtSecure', 'extension_version': '0.8.41',
+        'extension_name': 'ExtSecure', 'extension_version': '0.8.44',
     })
     with monitor.state.session_factory() as db:
         from alba_security.inventory import scan_device_fields
         payload = payload.model_copy(update=scan_device_fields(db, device_id))
-        result = monitor.state.record_scan(payload, db, notify=True, actor=actor)
+        result = monitor.state.record_scan(payload, db, notify=True, actor=actor, domain_age=domain_age)
         return result
 
 
@@ -150,6 +152,7 @@ async def extension_scan(body: ExtensionScanRequest, request: Request):
     retry_after = request.app.state.extension_scan_limit.retry_after(actor)
     if retry_after:
         raise HTTPException(429, 'Scan limit reached. Try again shortly.', headers={'Retry-After':str(retry_after)})
+    domain_age = await run_in_threadpool(request.app.state.domain_age.lookup, body.target)
     cache = request.app.state.cache
     key = ('url', body.target)
     result = cache.get(key)
@@ -160,11 +163,11 @@ async def extension_scan(body: ExtensionScanRequest, request: Request):
         except VirusTotalError as error:
             if isinstance(error, InvalidTargetError):
                 raise
-            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor, getattr(request.state, 'inventory_device_id', None))
+            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor, getattr(request.state, 'inventory_device_id', None), domain_age)
             record['lookup'] = {'status':'unavailable', 'reason':_ERROR_STATUS.get(type(error),(502,'Lookup unavailable'))[1]}
             return JSONResponse(record, headers={'Cache-Control':'no-store'})
         cache.set(key, result)
-    record = await run_in_threadpool(_extension_record, monitor, body.target, result.verdict, actor, getattr(request.state, 'inventory_device_id', None))
+    record = await run_in_threadpool(_extension_record, monitor, body.target, result.verdict, actor, getattr(request.state, 'inventory_device_id', None), domain_age)
     record['lookup'] = {'status':'complete', 'cached':cached, 'malicious':result.malicious,
                         'suspicious':result.suspicious, 'harmless':result.harmless, 'undetected':result.undetected}
     return JSONResponse(record, status_code=201, headers={'Cache-Control':'no-store'})
@@ -194,7 +197,7 @@ async def health() -> HealthResponse:
     return HealthResponse(status="ok", service="TestAPI")
 
 
-def _monitoring_payload(body: ScanRequest, verdict: str | None):
+def _monitoring_payload(body: ScanRequest, verdict: str | None, domain_age: dict | None = None):
     """Translate a VirusTotal verdict into server-owned risk signals."""
     from alba_security.api import ScanCreate
     from alba_security.risk import SignalInput
@@ -223,7 +226,7 @@ def _monitoring_payload(body: ScanRequest, verdict: str | None):
         signals=[
             SignalInput(code=malicious_code, status=malicious_status),
             SignalInput(code=suspicious_code, status=suspicious_status),
-        ],
+        ] + ([SignalInput(**age_signal(domain_age))] if body.scan_type == "url" and domain_age is not None else []),
     )
 
 
@@ -246,8 +249,8 @@ def _authorize_scan(monitoring_app: FastAPI, request: Request) -> str | None:
         return actor
 
 
-def _record_monitoring_scan(monitoring_app: FastAPI, body: ScanRequest, verdict: str | None, owner: str | None = None, device_id: str | None = None) -> None:
-    payload = _monitoring_payload(body, verdict)
+def _record_monitoring_scan(monitoring_app: FastAPI, body: ScanRequest, verdict: str | None, owner: str | None = None, device_id: str | None = None, domain_age: dict | None = None) -> None:
+    payload = _monitoring_payload(body, verdict, domain_age)
     if owner:
         payload = payload.model_copy(update={'device_id':'user-'+hashlib.sha256(owner.encode()).hexdigest()[:32],
                                               'device_name':'Personal scan checks'})
@@ -256,7 +259,7 @@ def _record_monitoring_scan(monitoring_app: FastAPI, body: ScanRequest, verdict:
         payload = payload.model_copy(update=scan_device_fields(db, device_id))
         # The public endpoint has no verified device identity. Persist the scan
         # for administrators, but do not send webhooks for public calls.
-        result = monitoring_app.state.record_scan(payload, db, notify=False, actor=owner)
+        result = monitoring_app.state.record_scan(payload, db, notify=False, actor=owner, domain_age=domain_age)
 
 
 
@@ -266,6 +269,8 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
     cache: TTLCache[ScanResult] = request.app.state.cache
     monitor: FastAPI | None = request.app.state.monitoring_app
     owner = await run_in_threadpool(_authorize_scan, monitor, request) if monitor is not None else None
+
+    domain_age = await run_in_threadpool(request.app.state.domain_age.lookup, body.target) if monitor is not None and body.scan_type == "url" else None
 
     cache_key = (body.scan_type, body.target)
     result = cache.get(cache_key)
@@ -278,7 +283,7 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
         except VirusTotalError as exc:
             if monitor is not None and not isinstance(exc, InvalidTargetError):
                 try:
-                    await run_in_threadpool(_record_monitoring_scan, monitor, body, None, owner, getattr(request.state, 'inventory_device_id', None))
+                    await run_in_threadpool(_record_monitoring_scan, monitor, body, None, owner, getattr(request.state, 'inventory_device_id', None), domain_age)
                 except Exception:
                     # The upstream error and its existing HTTP mapping take priority.
                     logger.exception("Could not record an unknown monitoring result")
@@ -286,7 +291,7 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
 
     if monitor is not None:
         try:
-            await run_in_threadpool(_record_monitoring_scan, monitor, body, result.verdict, owner, getattr(request.state, 'inventory_device_id', None))
+            await run_in_threadpool(_record_monitoring_scan, monitor, body, result.verdict, owner, getattr(request.state, 'inventory_device_id', None), domain_age)
         except Exception as exc:
             logger.exception("Could not record a successful monitoring result")
             raise HTTPException(status_code=503, detail="Scan result could not be recorded.") from exc

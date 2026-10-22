@@ -441,7 +441,7 @@ def create_app(
         authentication_audit(db, actor, 'signed_out')
         return {"signed_out": True}
 
-    def record_scan(payload: ScanCreate, db: Session, *, notify: bool = True, actor: str | None = None) -> dict:
+    def record_scan(payload: ScanCreate, db: Session, *, notify: bool = True, actor: str | None = None, domain_age: dict | None = None) -> dict:
         existing_device=db.scalar(select(Device).where(Device.id==payload.device_id).with_for_update().execution_options(populate_existing=True))
         if existing_device and existing_device.inventory_removed:
             raise HTTPException(403,'This device was removed. Reconnect through approved device enrollment.')
@@ -461,6 +461,16 @@ def create_app(
         # Caller-supplied detail can contain private URL/file information.
         # Keep only codes and statuses and use fixed, server-owned explanations.
         safe_signals = [SignalInput(code=item.code, status=item.status) for item in payload.signals]
+        # This argument is set only by backend lookups, never HTTP ingestion.
+        stored_age = None
+        if domain_age is not None and payload.target_kind == "url":
+            from alba_security.domain_age import age_signal
+            trusted = SignalInput(**age_signal(domain_age))
+            safe_signals = [item for item in safe_signals if item.code != "new_domain"] + [trusted]
+            # No hostnames are added to evidence when hostname retention is off.
+            stored_age = {k: v for k, v in domain_age.items()
+                          if k in {"status", "registered_at", "age_days", "reason", "cached"}}
+
         try:
             result = assess(safe_signals, policy)
         except ValueError as error:
@@ -506,7 +516,7 @@ def create_app(
             target_kind=payload.target_kind,
             target_fingerprint=fingerprint,
             target_display=display,
-            signals=[item.model_dump(include={"code", "status"}) for item in safe_signals],
+            signals=[item.model_dump(include={"code", "status", "detail"} if stored_age is not None and item.code == "new_domain" else {"code", "status"}) for item in safe_signals],
             score=result.score,
             severity=result.severity,
             completeness=result.completeness,
@@ -546,6 +556,7 @@ def create_app(
                 "completeness": result.completeness,
                 "detected_codes": [item.code for item in result.findings],
                 "unknown_codes": result.unknown_codes,
+                **({"domain_age": stored_age} if stored_age is not None else {}),
                 "override_id": scan.override_id,
             },
             created_at=now,
@@ -627,6 +638,7 @@ def create_app(
             db.commit()
         return {
             "id": scan.id,
+            **({"domain_age": stored_age, "signals": scan.signals} if stored_age is not None else {}),
             "score": result.score,
             "severity": result.severity,
             "completeness": result.completeness,
@@ -890,6 +902,7 @@ def create_app(
             "override_id": item.override_id, "created_at": _iso(item.created_at),
             "risk_policy_version": version or "legacy", "suggested_action": suggested_action(stored_result),
             "signals": item.signals, "unknown_codes": unknown_codes,
+            **next(({"domain_age": event.details["domain_age"]} for event in events if event.event_type == "scan_completed" and "domain_age" in event.details), {}),
             "findings": [{"code": row.signal_code, "title": row.title, "detail": row.detail,
                           "points": row.points, "severity": row.severity} for row in findings],
             "events": _event_records(events, db),
