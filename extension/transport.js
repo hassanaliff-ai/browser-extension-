@@ -57,7 +57,7 @@ export async function send(message) {
     case 'LOGOUT':try{return await previewRequest('/api/admin/logout','POST');}finally{previewSession={};}
     case 'API':return previewRequest(message.path,message.method??'GET',message.body);
     case 'ACTIVE_TAB':return {url:'https://example.com/',host:'example.com'};
-    case 'SCAN_URL':return previewRequest('/extension/scan','POST',{target:privateTarget(message.target,!!message.includePath)},true);
+    case 'SCAN_URL':return previewRequest('/api/v1/check','POST',{url:privateTarget(message.target,!!message.includePath),source:'manual',checked_at:Date.now()},true);
     case 'OPEN_CONSOLE':location.href='console.html'+(message.view?'#'+message.view:'');return {};
     default:throw new Error('Unsupported preview action.');
   }

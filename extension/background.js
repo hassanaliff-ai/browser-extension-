@@ -402,7 +402,7 @@ export async function handleMessage(message,sender={}) {
   }
   if (message.type === 'SCAN_URL') {
     const target = privateTarget(message.target,!!message.includePath);
-    const data = await request('/extension/scan','POST',{target},true);
+    const data = await request('/api/v1/check','POST',{url:target,source:'manual',checked_at:Date.now()},true);
     await updateBadge(data);
     data.protection=await containThreat(data,target,gate.clear);
     return data;

@@ -16,41 +16,18 @@ def powershell(command):
 
 
 def api_process():
-    result=subprocess.run(['netstat.exe','-ano','-p','TCP'],capture_output=True,text=True,check=True,creationflags=subprocess.CREATE_NO_WINDOW)
-    listeners=[]
-    for line in result.stdout.splitlines():
-        fields=line.split()
-        if len(fields)==5 and fields[0]=='TCP' and fields[1].endswith(':8765') and fields[3]=='LISTENING':
-            listeners.append(int(fields[4]))
-    if not listeners:return None
-    if len(set(listeners))!=1:raise RuntimeError('Multiple processes listen on the API port')
-    command='Get-CimInstance Win32_Process -Filter "ProcessId='+str(listeners[0])+'" | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress'
-    result=powershell(command)
-    value=json.loads(result.stdout.strip()) if result.stdout.strip() else None
-    if value and not ('uvicorn' in (value['CommandLine'] or '') and 'main:app' in (value['CommandLine'] or '')):
-        raise RuntimeError('Port 8765 is used by another process; it was not stopped')
-    return value
+    from primary_api_runtime import api_process as current
+    return current()
 
 
 def stop_api(process):
-    if process:
-        powershell('Stop-Process -Id '+str(int(process['ProcessId']))+' -ErrorAction Stop')
+    from primary_api_runtime import stop_api as current
+    return current(process)
 
 
 def start_api(values):
-    environment=dict(os.environ);environment.update({k:v for k,v in values.items() if v is not None})
-    environment.update(PYTHONPATH=str(ROOT/'src'),OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1')
-    with (ROOT/'.private/api.log').open('ab') as output:
-        child=subprocess.Popen([sys.executable,'-m','uvicorn','main:app','--host','127.0.0.1','--port','8765'],cwd=ROOT,
-            env=environment,stdin=subprocess.DEVNULL,stdout=output,stderr=output,creationflags=subprocess.CREATE_NO_WINDOW)
-    with httpx.Client(timeout=2,trust_env=False) as client:
-        for _ in range(50):
-            if child.poll() is not None:break
-            try:
-                if client.get('http://127.0.0.1:8765/health').json().get('service') in {'TestAPI','ExtSecure API'}:return
-            except (httpx.HTTPError,ValueError):pass
-            time.sleep(.5)
-    raise RuntimeError('API failed to become ready; inspect its private log')
+    from primary_api_runtime import start_api as current
+    return current(values)
 
 
 def activate():

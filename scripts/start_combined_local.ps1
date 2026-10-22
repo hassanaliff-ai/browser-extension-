@@ -9,7 +9,7 @@ if (-not (Test-Path -LiteralPath $pythonPath)) {
 $env:TLDEXTRACT_CACHE = Join-Path $env:TEMP 'securescope-tld-cache'
 Push-Location -LiteralPath $projectRoot
 try {
-    & $pythonPath -m uvicorn main:app --host 127.0.0.1 --port 8765
+    & $pythonPath -m uvicorn prototypes.securescope.backend.primary:create_app --factory --host 127.0.0.1 --port 8765
 } finally {
     Pop-Location
 }

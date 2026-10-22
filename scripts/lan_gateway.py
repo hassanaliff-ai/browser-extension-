@@ -22,7 +22,7 @@ async def app(scope,receive,send):
         await send({'type':'http.response.start','status':status,'headers':[(b'content-type',b'application/json'),(b'cache-control',b'no-store')]})
         await send({'type':'http.response.body','body':body})
     path=scope['path']
-    if scope['method'] not in {'GET','POST'} or not (path in {'/health','/scan'} or path.startswith(ALLOWED_PATHS)):
+    if scope['method'] not in {'GET','POST'} or not (path in {'/health','/scan','/api/v1/check','/api/v1/rdap'} or path.startswith(ALLOWED_PATHS)):
         return await reply(404,b'{"detail":"API route unavailable."}')
     peer=scope['client'][0]
     public=os.environ.get('EXTSECURE_PUBLIC_GATEWAY')=='1'

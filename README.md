@@ -1,20 +1,24 @@
 # ExtSecure browser extension and backend
 
-## Primary API: TestAPI
+## Basel SecureScope API integration
 
-ExtSecure uses its existing TestAPI backend at `http://127.0.0.1:8765`.
-The SecureScope primary adapter has been removed from the active configuration.
-Existing PostgreSQL records, accounts, authenticator enrollment, incidents and
-reports are retained. Shared domain-age checks remain available.
+The extension submits URL checks using Basel's `/api/v1/check` contract, and
+`/api/v1/rdap` provides authenticated registration-age evidence. The production
+factory composes these routes with ExtSecure's existing authentication,
+PostgreSQL, inventory, incident and reporting services. All administrator
+contracts and existing records are retained.
 
 ```bash
-uvicorn main:app --host 127.0.0.1 --port 8765
+uvicorn prototypes.securescope.backend.primary:create_app --factory --host 127.0.0.1 --port 8765
 ```
 
-The installed supervisor starts this entry point and maintains the temporary
-public HTTPS gateway. Other devices should install the latest release ZIP.
-Basel's original source remains in `prototypes/securescope/` for reference;
-its optional development routes are not enabled by the normal startup script.
+The local address stays `http://127.0.0.1:8765`. Health retains the `TestAPI`
+service identifier for installed-client compatibility and declares
+`api_provider: SecureScope`. Capabilities identifies the native scan/RDAP routes.
+Legacy `/extension/scan` and `/scan` remain authenticated for older clients.
+The supervisor maintains this integrated entry point and its temporary public
+HTTPS gateway. This is a protected integration of Basel's GitHub prototype,
+not a claim that the standalone prototype implements administrator services.
 
 Version 0.8.18 adds installed-extension inventory by device with audited On, Off, Block and Remove controls. See [Extension inventory controls](docs/Extension%20Inventory%20Controls.md).
 
@@ -48,7 +52,7 @@ administrator console. FastAPI remains a separate security backend. The earlier
 Streamlit dashboard is retained for compatibility and is not required to use the
 extension.
 
-## Chrome extension 0.8.47
+## Chrome extension 0.8.49
 
 The extension console uses teal navigation and option bars, with Light, Dark and
 Use device setting appearance choices. Settings saves appearance alongside
@@ -254,7 +258,7 @@ Implementation reference: https://scikit-learn.org/stable/modules/generated/skle
 Start the development server with auto-reload:
 
 ```bash
-uvicorn main:app --host 127.0.0.1 --port 8765 --reload
+uvicorn prototypes.securescope.backend.primary:create_app --factory --host 127.0.0.1 --port 8765 --reload
 ```
 
 The API will be available at http://localhost:8765.
