@@ -148,7 +148,7 @@ Signed-in sessions expire 24 hours after successful authenticator verification. 
 4. Click **Connect enabled Chrome extensions** and accept Chrome's optional permission prompt to include other enabled extensions. A declined or failed prompt keeps the device connected and shows an error with retry instructions. Use **Refresh devices & extensions** for an immediate refresh. Once permission is granted, inventory also refreshes after extension changes, at sign-in and every 30 minutes while signed in.
 5. To add another computer, load ExtSecure and click **Add this device on that computer**. The computer must reach the configured backend. The default 127.0.0.1 API address reaches only its own local machine; a remote deployment needs a reachable secured API origin configured in the extension and its CSP.
 
-After installing an update, close existing console tabs and reopen the console from the Chrome extension icon. A console left open during reload can lose its worker connection. Check that Chrome shows **ExtSecure 0.8.11** loaded from `C:\Users\hassa\browser-extension-\extension`. A website preview cannot register Chrome devices or enumerate extensions.
+After installing an update, close existing console tabs and reopen the console from the Chrome extension icon. A console left open during reload can lose its worker connection. Check that Chrome shows **ExtSecure 0.8.48** loaded from `C:\Users\hassa\browser-extension-\extension`. A website preview cannot register Chrome devices or enumerate extensions.
 
 **Unknown extension action** means the running worker does not recognize the requested message; that action did not reach the API. The console now checks the running worker's version and inventory capabilities. If they do not match this package, it replaces device connection actions with **Restart ExtSecure**. That button invokes Chrome's runtime reload directly, so it works even when the old worker lacks inventory message handlers. Close the old tab, reopen through the extension icon and sign in after restarting. Saved device identities and backend records are preserved. If Chrome still shows an older version, use **Load unpacked** with the exact folder above and disable the other old copy; do not load the ZIP or its parent folder.
 
@@ -158,7 +158,7 @@ The browser generates a random connection key once and keeps it in Chrome local 
 
 IP is descriptive metadata, not a credential. An optional entered IP is labelled **Entered IP**. When the API sees a non-loopback connection peer, that address is labelled **Connection IP**; it may be shared through NAT. Localhost and unknown connection peers are displayed as **Not provided**, never presented as a computer's LAN address. Chrome does not reliably expose a physical computer's LAN IP in this flow. Name and operating system describe the linked Chrome profile, not an independently attested hardware identity.
 
-Only enabled extension IDs, names and versions are collected through `chrome.management.getAll()`. Inventory does not inspect extension source, permissions, page content or browsing history. Older scan placeholders appear under **Older scan records**. Disabled or removed extensions remain as **Not in latest snapshot**, preserving scan history. Last-sync times disclose stale information. Inventory metadata is not a malware verdict.
+Enabled and disabled extension IDs, names and versions are collected through `chrome.management.getAll()`. Inventory does not inspect extension source, permissions, page content or browsing history. Older scan placeholders appear under **Older scan records**. Disabled or removed extensions remain as **Not in latest snapshot**, preserving scan history. Last-sync times disclose stale information. Inventory metadata is not a malware verdict.
 
 **Existing device connection (advanced)** and **Advanced connection recovery** preserve the older one-time-code workflow for an already registered device; codes are not required for normal setup. Codes expire after 30 minutes. Re-pairing revokes the previous browser credential.
 
@@ -265,3 +265,17 @@ Actions in tables and expandable forms open a focused native review dialog. The 
 Adding this Chrome device uses explicit Trusted/Blocked choice cards with no default choice. Removal uses a distinct destructive treatment, and removed-device history exposes the existing restore action. Extension controls share an Actions column and explain the difference between Chrome uninstall and inventory removal. Incident removal and device protection show their target inside the review. Required fields retain native constraints, with inline accessible errors instead of browser validation balloons.
 
 Review dialogs support dark mode, Arabic/RTL, narrow screens and the Interface animations preference. No new API, database field, permission or approval bypass is introduced.
+
+
+### Inventory connection recovery (0.8.48)
+
+Device registration and Chrome inventory permission are separate states. After
+registering, open **My account**. If Chrome access is missing, click **Connect
+Chrome extensions** and allow Chrome's native management-permission prompt.
+ExtSecure cannot grant this permission for you. If access is already granted,
+click **Sync Chrome extensions** to retry the upload without another prompt.
+A revoked permission is shown even when an older inventory snapshot exists.
+Granting management access also starts an automatic inventory sync for an
+approved, linked device. Pending and blocked devices retain their access rules.
+After updating files, reload ExtSecure at `chrome://extensions`, close the old
+console tab and reopen it. Existing device identities and database records remain.

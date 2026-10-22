@@ -197,3 +197,25 @@ test('Inventory displays live connection status separately from blocking policy'
   assert.match(table,/Offline trusted device/);assert.doesNotMatch(table,/Online but blocked/);
  }finally{chrome.runtime.sendMessage=original;}
 });
+
+
+test('Already allowed inventory shows sync recovery instead of asking for permission again',async()=>{
+ profile.inventory={linked:true,pending:false,blocked:false,management_permission:true,last_sync:null};
+ const button={dataset:{action:'refresh'},setAttribute(){},removeAttribute(){},closest:()=>null};
+ await handlers.click({target:{closest:()=>button}});
+ assert.match(app.innerHTML,/Chrome inventory access is already allowed/);
+ assert.match(app.innerHTML,/Sync Chrome extensions/);
+ assert.doesNotMatch(app.innerHTML,/Device registration is complete. Allow Chrome inventory/);
+ const original=chrome.permissions.request;chrome.permissions.request=()=>{throw new Error('Unexpected repeated permission prompt');};calls.length=0;
+ try{await clickSync();assert(calls.some(call=>call.type==='SYNC_INVENTORY'));assert.match(toast.textContent,/5 installed extensions synced/);}
+ finally{chrome.permissions.request=original;}
+});
+
+test('Revoked inventory access is visible even when historical inventory exists',async()=>{
+ profile.inventory={linked:true,pending:false,blocked:false,management_permission:false,last_sync:'2026-10-22T10:00:00Z'};
+ const button={dataset:{action:'refresh'},setAttribute(){},removeAttribute(){},closest:()=>null};
+ await handlers.click({target:{closest:()=>button}});
+ assert.match(app.innerHTML,/Permission required/);
+ assert.match(app.innerHTML,/Click Connect Chrome extensions, then allow the Chrome permission prompt/);
+ assert.doesNotMatch(app.innerHTML,/Chrome inventory access is already allowed/);
+});

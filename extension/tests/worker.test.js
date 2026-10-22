@@ -7,7 +7,7 @@ let localStore={},sessionRules=[],dynamicRules=[],hooks={};
 const event=name=>({addListener:f=>{const previous=hooks[name];hooks[name]=(...args)=>{previous?.(...args);return f(...args);};}});
 globalThis.chrome={
  storage:{session:{setAccessLevel:async v=>{access=v;},get:async()=>structuredClone(store),set:async value=>{store={...store,...structuredClone(value)};},remove:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])delete store[key];}},local:{setAccessLevel:async v=>{localAccess=v;},get:async()=>structuredClone(localStore),remove:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])delete localStore[key];},set:async v=>{localStore={...localStore,...v};}}},
- permissions:{contains:async()=>true},management:{onEnabled:event('inventory-enabled'),onDisabled:event('inventory-disabled'),onInstalled:event('inventory-installed'),onUninstalled:event('inventory-uninstalled'),getAll:async()=>[{id:'a'.repeat(32),name:'ExtSecure',version:'0.7.0',enabled:true,type:'extension'}]},
+ permissions:{contains:async()=>true,onAdded:event('permission-added')},management:{onEnabled:event('inventory-enabled'),onDisabled:event('inventory-disabled'),onInstalled:event('inventory-installed'),onUninstalled:event('inventory-uninstalled'),getAll:async()=>[{id:'a'.repeat(32),name:'ExtSecure',version:'0.7.0',enabled:true,type:'extension'}]},
  runtime:{id:'test-extension',getManifest:()=>({name:'ExtSecure',version:'0.7.0'}),getPlatformInfo:async()=>({os:'win'}),getURL:path=>'chrome-extension://test-extension/'+path,onMessage:{addListener:f=>listener=f},onStartup:event('startup'),onInstalled:event('installed')},
  tabs:{query:async()=>[{url:'https://example.com/private?token=x'}],create:async v=>calls.push(v),update:async(id,v)=>calls.push({tabId:id,...v}),onRemoved:event('removed')},
  webNavigation:{onBeforeNavigate:event('before'),onCommitted:event('committed'),onErrorOccurred:event('error')},
@@ -241,7 +241,7 @@ test('Chrome permission must be granted before extension metadata is read',async
  reset();signed();localStore.deviceCredential={token:'test-device-token'};
  const contains=chrome.permissions.contains,getAll=chrome.management.getAll;let reads=0;
  chrome.permissions.contains=async()=>false;chrome.management.getAll=async()=>{reads++;return [];};
- try{await assert.rejects(handleMessage({type:'SYNC_INVENTORY'}),/Allow Chrome/);assert.equal(reads,0);assert.equal(calls.some(c=>c.options),false);}
+ try{await assert.rejects(handleMessage({type:'SYNC_INVENTORY'}),/Click Connect Chrome extensions/);assert.equal(reads,0);assert.equal(calls.some(c=>c.options),false);}
  finally{chrome.permissions.contains=contains;chrome.management.getAll=getAll;}
 });
 test('Inventory cannot sync from an unpaired browser',async()=>{
@@ -487,4 +487,29 @@ test('Animation preference accepts booleans, persists off and never reaches the 
  assert.equal(saved.animations,false);assert.equal((await handleMessage({type:'PREFERENCES'})).animations,false);
  await assert.rejects(handleMessage({type:'SAVE_PREFERENCES',preferences:{animations:'false'}}),/animations/);
  assert.equal(localStore.preferences.animations,false);assert.equal(calls.length,0);
+});
+
+
+test('State reports actual Chrome permission independently of the last server sync',async()=>{
+ reset();signed();const original=chrome.permissions.contains;
+ responder=()=>({username:'test-owner',inventory:{linked:true,last_sync:'2026-10-22T10:00:00Z'}});
+ try{
+  chrome.permissions.contains=async()=>false;
+  assert.equal((await handleMessage({type:'STATE'})).profile.inventory.management_permission,false);
+  chrome.permissions.contains=async()=>true;
+  assert.equal((await handleMessage({type:'STATE'})).profile.inventory.management_permission,true);
+  chrome.permissions.contains=async()=>{throw new Error('Chrome permission service unavailable');};
+  const result=await handleMessage({type:'STATE'});
+  assert.equal(result.profile.inventory.management_permission,null);
+  assert.equal(result.profile.username,'test-owner');assert(store.session.token);
+ }finally{chrome.permissions.contains=original;}
+});
+
+test('Granting management access schedules automatic inventory upload for a linked device',async()=>{
+ reset();signed();localStore.deviceCredential={token:'test-device-token'};
+ responder=()=>({installed_count:1,enabled_count:1});
+ hooks['permission-added']({permissions:['management']});
+ for(let i=0;i<20&&!calls.some(call=>call.url?.endsWith('/inventory/sync'));i++)await new Promise(resolve=>setImmediate(resolve));
+ assert(calls.some(call=>call.url?.endsWith('/inventory/sync')));
+ assert.equal(localStore.inventoryConnected,true);
 });

@@ -27,6 +27,13 @@ try{
  const form=page.locator('[data-form="login"]');await form.locator('[name="username"]').fill('feedback-head');await form.locator('[name="password"]').fill(process.env.EXTSECURE_TEST_PASSWORD);await form.locator('[type="submit"]').click();
  const verify=page.locator('[data-form="verify"]');await verify.waitFor();await verify.locator('[name="code"]').fill(otp(process.env.EXTSECURE_TEST_HEAD_SECRET));await verify.locator('[type="submit"]').click();await page.locator('.page-title').waitFor();
  const connected=await message({type:'CONNECT_DEVICE',name:'Isolated Chrome inventory',initial_access:'trusted'});
+ await page.goto('chrome-extension://'+id+'/console.html#account');
+ await page.reload();
+ await page.getByRole('button',{name:'Sync Chrome extensions',exact:true}).waitFor();
+ assert.equal((await message({type:'STATE'})).profile.inventory.management_permission,true);
+ await page.getByRole('button',{name:'Sync Chrome extensions',exact:true}).click();
+ await page.getByText(/installed extensions synced:/).waitFor();
+ record('Actual inventory UI recognizes granted access and syncs from its dedicated button');
  const expected=await page.evaluate(async()=> (await chrome.management.getAll()).filter(x=>x.type==='extension').map(x=>x.id).sort());
  let result=await message({type:'SYNC_INVENTORY'});assert.equal(result.installed_count,expected.length);record('First sync includes every extension reported by the actual Chrome profile');
  let rows=await message({type:'API',path:'/api/extensions'});let own=rows.filter(x=>x.device_id===connected.device_id&&x.installed);

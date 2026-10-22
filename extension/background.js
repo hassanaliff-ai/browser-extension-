@@ -110,7 +110,7 @@ async function syncInventory(interactive=false,controlsOnly=false) {
   // Serialise snapshots so a slow older update cannot overwrite a newer one.
   const operation=syncQueue.catch(()=>{}).then(async()=>{
     const session=await loadSession();
-    if(!await chrome.permissions.contains({permissions:['management']}))throw new Error('Allow Chrome extension inventory access first.');
+    if(!await chrome.permissions.contains({permissions:['management']}))throw new Error('Chrome inventory access is not enabled. Click Connect Chrome extensions and allow the Chrome prompt.');
     registerInventoryEvents();
     const {deviceCredential}=await chrome.storage.local.get('deviceCredential');
     if(!deviceCredential?.token)throw new Error('Link this Chrome profile to a device in My account first.');
@@ -197,6 +197,9 @@ async function startDeviceControlWatch(){
 }
 void startDeviceControlWatch();
 registerInventoryEvents();
+chrome.permissions.onAdded?.addListener(permissions=>{
+  if(permissions.permissions?.includes('management'))void autoSyncInventory().catch(()=>{});
+});
 void autoSyncInventory().catch(()=>{});
 chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='device-control-watch')void startDeviceControlWatch();if(alarm.name==='inventory-sync')void autoSyncInventory().catch(()=>{});if(alarm.name==='extension-controls')void autoSyncInventory(true).catch(()=>{});});
 export async function handleMessage(message,sender={}) {
@@ -316,7 +319,10 @@ export async function handleMessage(message,sender={}) {
       if(profile.inventory?.blocked)await gate.clear({preserveBlocked:true});
       if(session.profile?.inventory?.pending&&profile.inventory?.linked&&!profile.inventory?.blocked&&!profile.inventory?.pending)void autoSyncInventory().catch(()=>{});
     }
-    if(profile?.inventory)profile.inventory.management_permission=await chrome.permissions.contains({permissions:['management']});
+    if(profile?.inventory){
+      try{profile.inventory.management_permission=await chrome.permissions.contains({permissions:['management']});}
+      catch{profile.inventory.management_permission=null;}
+    }
     return {profile:profile?await accountLogo(profile):undefined,registration_receipt:!profile&&receipt?.api_origin===API_ORIGIN?receipt:undefined, expires_at:session.expires_at, challenge:!!session.challenge_token, enrollment:!!session.enrollment_token,version:VERSION,capabilities:[...WORKER_CAPABILITIES]};
   }
   if (message.type === 'LOGIN') {
