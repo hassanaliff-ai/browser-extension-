@@ -6,6 +6,8 @@ strings are forwarded. Age is supporting evidence, never a safety verdict.
 from __future__ import annotations
 
 import copy
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import ipaddress
 import threading
 import time
@@ -42,12 +44,38 @@ def registered_domain(target: str) -> str:
 
 class DomainAgeService:
     def __init__(self, *, clock=time.monotonic, max_entries=1024):
+        if type(max_entries) is not int or max_entries < 1:
+            raise ValueError("Cache capacity must be a positive integer")
         self.clock = clock
         self.max_entries = max_entries
         self.cache = {}
         self.guard = threading.Lock()
+        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="extsecure-rdap")
+        self.capacity = threading.BoundedSemaphore(8)
         # Coalesce concurrent lookups and cap outbound concurrency per process.
         self.locks = [threading.Lock() for _ in range(8)]
+
+    async def async_lookup(self, target: str, *, timeout=2.5) -> dict:
+        """Bound response latency and queued work; late lookups only warm cache."""
+        unavailable = {"status": "Unknown", "reason": "RDAP lookup temporarily unavailable", "cached": False}
+        if not self.capacity.acquire(blocking=False):
+            return unavailable
+        try:
+            pending = self.executor.submit(self.lookup, target)
+        except RuntimeError:
+            self.capacity.release()
+            return unavailable
+        # Release when the actual thread finishes, not when HTTP times out.
+        pending.add_done_callback(lambda _: self.capacity.release())
+        future = asyncio.wrap_future(pending)
+        future.add_done_callback(lambda f: f.exception() if not f.cancelled() else None)
+        try:
+            return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
+        except Exception:
+            return unavailable
+
+    def close(self):
+        self.executor.shutdown(wait=False, cancel_futures=True)
 
     def lookup(self, target: str) -> dict:
         try:

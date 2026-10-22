@@ -30,6 +30,8 @@ def recovery(tmp_path,monkeypatch):
     for name in ['start_api','stop_api','api_process']:monkeypatch.setattr(api,name,mocks[name])
     monkeypatch.setattr(public,'start',mocks['start']);monkeypatch.setattr(stop,'stop',mocks['stop'])
     monkeypatch.setattr(supervisor,'public_processes_alive',lambda _:True)
+    monkeypatch.setattr(supervisor,'route_is_missing',lambda _:False)
+    monkeypatch.setattr(supervisor,'package_revision',lambda _:'test-revision')
     monkeypatch.setattr(supervisor,'checkpoint',mocks['checkpoint']);monkeypatch.setattr(supervisor,'publish_package',mocks['publish'])
     return mocks
 
@@ -84,6 +86,7 @@ def test_missing_tunnel_log_does_not_break_recovery(recovery):
 
 def test_already_packaged_origin_does_not_rebuild_every_poll(recovery,monkeypatch):
     (supervisor.STATE/'package-origin.txt').write_text('https://temporary.example')
+    (supervisor.STATE/'package-revision.txt').write_text('test-revision')
     monkeypatch.setattr(supervisor,'healthy',lambda _:True);supervisor.cycle(0);recovery['publish'].assert_not_called()
 
 def test_disabled_startup_does_not_stop_unrelated_existing_api(recovery,monkeypatch):
@@ -101,3 +104,66 @@ def test_operator_stop_is_completed_by_the_owning_supervisor(recovery,monkeypatc
     monkeypatch.setattr(supervisor.ctypes,'windll',Mock(),raising=False)
     supervisor.main();recovery['stop'].assert_called_once();recovery['stop_api'].assert_called_once()
     assert recovery['checkpoint'].call_args.kwargs['state']=='stopped'
+
+
+def test_confirmed_1033_requires_grace_period_and_respects_cooldown(recovery,monkeypatch):
+    state={'origin':'https://temporary.example'}
+    monkeypatch.setattr(supervisor,'route_is_missing',lambda _:True)
+    assert not supervisor.route_recovery_due(state,now=10000)
+    assert not supervisor.route_recovery_due(state,now=10060)
+    assert supervisor.route_recovery_due(state,now=10121)
+    assert not supervisor.route_recovery_due({'origin':'https://new.example'},now=10130)
+    assert not supervisor.route_recovery_due({'origin':'https://new.example'},now=10300)
+    assert supervisor.route_recovery_due({'origin':'https://new.example'},now=11022)
+
+
+def test_healthy_or_dns_failure_breaks_confirmed_failure_streak(recovery,monkeypatch):
+    state={'origin':'https://temporary.example'}
+    monkeypatch.setattr(supervisor,'route_is_missing',lambda _:True)
+    assert not supervisor.route_recovery_due(state,now=10000)
+    monkeypatch.setattr(supervisor,'route_is_missing',lambda _:False)
+    assert not supervisor.route_recovery_due(state,now=10200)
+    monkeypatch.setattr(supervisor,'route_is_missing',lambda _:True)
+    assert not supervisor.route_recovery_due(state,now=10300)
+
+
+def test_source_changes_rebuild_package_without_rotating_origin(recovery,monkeypatch):
+    (supervisor.STATE/'package-origin.txt').write_text('https://temporary.example')
+    (supervisor.STATE/'package-revision.txt').write_text('older-code')
+    monkeypatch.setattr(supervisor,'healthy',lambda _:True)
+    supervisor.cycle(0)
+    recovery['publish'].assert_called_once_with('https://temporary.example')
+    recovery['stop'].assert_not_called()
+
+
+def test_package_revision_ignores_tests_but_tracks_runtime_files(tmp_path,monkeypatch):
+    monkeypatch.setattr(supervisor,'ROOT',tmp_path)
+    folder=tmp_path/'extension';folder.mkdir();(folder/'ui.js').write_text('first')
+    first=supervisor.package_revision('https://api.example')
+    tests=folder/'tests';tests.mkdir();(tests/'a.js').write_text('test')
+    assert supervisor.package_revision('https://api.example')==first
+    (folder/'ui.js').write_text('second')
+    assert supervisor.package_revision('https://api.example')!=first
+
+
+def test_healthy_interval_clears_stale_1033_failure_streak(recovery,monkeypatch):
+    path=supervisor.STATE/'public-recovery.json'
+    path.write_text(json.dumps({'origin':'https://temporary.example','first_failure':100,'failures':3,'last_recovery':50}))
+    monkeypatch.setattr(supervisor,'healthy',lambda _:True)
+    supervisor.cycle(0)
+    assert json.loads(path.read_text())=={'last_recovery':50}
+
+
+@pytest.mark.parametrize('status,body,expected',[
+    (530,'Cloudflare Tunnel error 1033',True),
+    (200,'Cloudflare 1033',False),
+    (530,'Cloudflare error 1016',False),
+    (503,'Origin temporarily unavailable',False),
+    (530,'Cloudflare '+('x'*65536)+'1033',False),
+],ids=['confirmed-1033','healthy','other-code','origin-down','oversized'])
+def test_only_bounded_confirmed_1033_responses_trigger_recovery(monkeypatch,status,body,expected):
+    import httpx
+    original=httpx.Client
+    transport=httpx.MockTransport(lambda request:httpx.Response(status,text=body))
+    monkeypatch.setattr(supervisor.httpx,'Client',lambda **kwargs:original(transport=transport,**kwargs))
+    assert supervisor.route_is_missing('https://temporary.example') is expected

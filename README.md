@@ -49,7 +49,7 @@ administrator console. FastAPI remains a separate security backend. The earlier
 Streamlit dashboard is retained for compatibility and is not required to use the
 extension.
 
-## Chrome extension 0.8.15
+## Chrome extension 0.8.45
 
 The extension console uses teal navigation and option bars, with Light, Dark and
 Use device setting appearance choices. Settings saves appearance alongside
@@ -535,3 +535,33 @@ Reload the unpacked Chrome extension after updating its files. Migration 0004 re
 ## Remove inventory records (0.8.19)
 
 Every extension row has **Remove from inventory**, including ExtSecure. Device rows have **Remove**, which revokes their connection and archives associated extensions. Administrators can review removed entries through the history filters; retained security evidence is preserved. See [inventory removal](docs/Inventory%20Removal.md).
+
+
+## Runtime safeguards (0.8.45)
+
+Browser scans start RDAP and reputation checks concurrently. RDAP responses have
+an approximately 2.5-second application wait budget; a pool of four workers and
+an eight-job capacity prevent timed-out requests from creating unbounded work.
+Late results may warm the domain cache. Browser reputation lookups have an
+18-second deadline. An unavailable check remains Unknown rather than becoming
+safe. Raw whitespace, backslashes and embedded credentials are rejected by the
+browser scan API before a provider request.
+
+PostgreSQL connections use a five-second connection timeout, ten-second pool
+wait limit, fifteen-second statement timeout, five-second lock timeout and
+one-minute idle-transaction timeout. Connections are checked before reuse and
+recycled periodically. These settings apply to TestAPI connections and do not
+change server-wide PostgreSQL settings.
+
+The Windows supervisor distinguishes confirmed Cloudflare error 1033 from DNS
+and ordinary network failures. Recovery requires at least three confirmations
+over two minutes, with a fifteen-minute cooldown between recoveries. Healthy
+checks clear the failure streak. A recovered temporary tunnel can have a new
+URL; other devices then need the rebuilt ZIP until a stable API is deployed.
+
+Release ZIPs are built in a temporary file, CRC-checked, checked for matching
+manifest/worker versions, and atomically replace the previous working archive.
+The supervisor tracks runtime source revisions as well as the public URL, so a
+source update also refreshes the package when the URL has not changed.
+GitHub uploads do not automatically update unpacked Chrome installations:
+replace files in the existing folder and click Reload in chrome://extensions.

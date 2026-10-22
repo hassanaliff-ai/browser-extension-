@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 import hashlib
 import hmac
 import os
@@ -66,6 +67,7 @@ async def lifespan(application: FastAPI):
                 await stack.enter_async_context(monitor.router.lifespan_context(monitor))
             yield
     finally:
+        application.state.domain_age.close()
         await application.state.vt.aclose()
 
 
@@ -124,10 +126,12 @@ class ExtensionScanRequest(BaseModel):
     @classmethod
     def private_url(cls, value):
         try:
+            if any(ord(c) <= 32 for c in value) or "\\" in value:
+                raise ValueError()
             parsed = urlsplit(value)
             if parsed.scheme not in {'http', 'https'} or not parsed.hostname:
                 raise ValueError()
-            if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            if parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment:
                 raise ValueError()
             parsed.port
         except ValueError:
@@ -140,7 +144,7 @@ def _extension_record(monitor, target, verdict, actor, device_id=None, domain_ag
     payload = payload.model_copy(update={
         'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
         'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
-        'extension_name': 'ExtSecure', 'extension_version': '0.8.44',
+        'extension_name': 'ExtSecure', 'extension_version': '0.8.45',
     })
     with monitor.state.session_factory() as db:
         from alba_security.inventory import scan_device_fields
@@ -162,21 +166,27 @@ async def extension_scan(body: ExtensionScanRequest, request: Request):
     retry_after = request.app.state.extension_scan_limit.retry_after(actor)
     if retry_after:
         raise HTTPException(429, 'Scan limit reached. Try again shortly.', headers={'Retry-After':str(retry_after)})
-    domain_age = await run_in_threadpool(request.app.state.domain_age.lookup, body.target)
+    age_task = asyncio.create_task(request.app.state.domain_age.async_lookup(body.target))
     cache = request.app.state.cache
     key = ('url', body.target)
     result = cache.get(key)
     cached = result is not None
     if result is None:
         try:
-            result = await request.app.state.vt.scan_url(body.target)
+            try:
+                result = await asyncio.wait_for(request.app.state.vt.scan_url(body.target), timeout=18)
+            except asyncio.TimeoutError:
+                raise AnalysisTimeoutError("Browser reputation deadline exceeded") from None
         except VirusTotalError as error:
             if isinstance(error, InvalidTargetError):
+                age_task.cancel()
                 raise
+            domain_age = await age_task
             record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor, getattr(request.state, 'inventory_device_id', None), domain_age)
             record['lookup'] = {'status':'unavailable', 'reason':_ERROR_STATUS.get(type(error),(502,'Lookup unavailable'))[1]}
             return JSONResponse(record, headers={'Cache-Control':'no-store'})
         cache.set(key, result)
+    domain_age = await age_task
     record = await run_in_threadpool(_extension_record, monitor, body.target, result.verdict, actor, getattr(request.state, 'inventory_device_id', None), domain_age)
     record['lookup'] = {'status':'complete', 'cached':cached, 'malicious':result.malicious,
                         'suspicious':result.suspicious, 'harmless':result.harmless, 'undetected':result.undetected}
@@ -280,7 +290,8 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
     monitor: FastAPI | None = request.app.state.monitoring_app
     owner = await run_in_threadpool(_authorize_scan, monitor, request) if monitor is not None else None
 
-    domain_age = await run_in_threadpool(request.app.state.domain_age.lookup, body.target) if monitor is not None and body.scan_type == "url" else None
+    age_task = asyncio.create_task(request.app.state.domain_age.async_lookup(body.target)) if monitor is not None and body.scan_type == "url" else None
+    domain_age = None
 
     cache_key = (body.scan_type, body.target)
     result = cache.get(cache_key)
@@ -291,6 +302,11 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
         try:
             result = await scanners[body.scan_type](body.target)
         except VirusTotalError as exc:
+            if age_task:
+                if isinstance(exc, InvalidTargetError):
+                    age_task.cancel()
+                else:
+                    domain_age = await age_task
             if monitor is not None and not isinstance(exc, InvalidTargetError):
                 try:
                     await run_in_threadpool(_record_monitoring_scan, monitor, body, None, owner, getattr(request.state, 'inventory_device_id', None), domain_age)
@@ -299,6 +315,8 @@ async def scan(body: ScanRequest, request: Request) -> ScanResponse:
                     logger.exception("Could not record an unknown monitoring result")
             raise
 
+    if age_task:
+        domain_age = await age_task
     if monitor is not None:
         try:
             await run_in_threadpool(_record_monitoring_scan, monitor, body, result.verdict, owner, getattr(request.state, 'inventory_device_id', None), domain_age)

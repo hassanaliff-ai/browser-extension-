@@ -1,6 +1,6 @@
 """Hidden, single-instance supervision of TestAPI and its temporary public gateway."""
 from pathlib import Path
-import argparse,ctypes,json,os,sys,time
+import argparse,ctypes,hashlib,json,os,sys,time
 import httpx
 from dotenv import dotenv_values
 
@@ -46,6 +46,57 @@ def public_tunnel_expired(state):
         return b'Unauthorized: Tunnel not found' in recent
     except OSError:return False
 
+def package_revision(origin):
+    """Detect changed runtime files even when the public URL stays the same."""
+    digest=hashlib.sha256(origin.encode())
+    for file in sorted((ROOT/'extension').rglob('*')):
+        relative=file.relative_to(ROOT/'extension')
+        if not file.is_file() or any(p in {'tests','node_modules','_metadata','__pycache__'} or p.startswith('.') for p in relative.parts):continue
+        digest.update(relative.as_posix().encode()+b'\0');digest.update(file.read_bytes())
+    return digest.hexdigest()
+
+
+def route_is_missing(origin):
+    """Recognize a definite Cloudflare 1033 response, never a DNS timeout."""
+    try:
+        with httpx.Client(timeout=5,trust_env=False) as client:
+            with client.stream('GET',origin+'/health') as response:
+                if response.status_code!=530:return False
+                data=bytearray()
+                for chunk in response.iter_bytes():
+                    data.extend(chunk[:65536-len(data)])
+                    if len(data)>=65536:break
+                return b'1033' in data and b'Cloudflare' in data
+    except httpx.HTTPError:return False
+
+
+def clear_route_failure():
+    path=STATE/'public-recovery.json'
+    try:previous=json.loads(path.read_text(encoding='utf-8'))
+    except (OSError,ValueError):return
+    if 'first_failure' in previous:
+        path.write_text(json.dumps({'last_recovery':previous.get('last_recovery',0)}),encoding='utf-8')
+
+
+def route_recovery_due(state, *, now=None):
+    """Require sustained confirmed failure and a cooldown before rotating URL."""
+    now=time.time() if now is None else now
+    path=STATE/'public-recovery.json'
+    try:previous=json.loads(path.read_text(encoding='utf-8'))
+    except (OSError,ValueError):previous={}
+    last=previous.get('last_recovery',0)
+    if not route_is_missing(state['origin']):
+        path.write_text(json.dumps({'last_recovery':last}),encoding='utf-8')
+        return False
+    if previous.get('origin')!=state['origin']:
+        previous={'origin':state['origin'],'first_failure':now,'failures':0,'last_recovery':last}
+    previous['failures']=previous.get('failures',0)+1
+    due=previous['failures']>=3 and now-previous['first_failure']>=120 and now-last>=900
+    if due:previous['last_recovery']=now
+    path.write_text(json.dumps(previous),encoding='utf-8')
+    return due
+
+
 def publish_package(origin):
     from scripts.start_public_api import package
     import shutil
@@ -56,6 +107,7 @@ def publish_package(origin):
     for folder in [mirror,mirror/'SecureScope Integrated']:
         if folder.is_dir():shutil.copy2(archive,folder/archive.name)
     (STATE/'package-origin.txt').write_text(origin,encoding='utf-8')
+    (STATE/'package-revision.txt').write_text(package_revision(origin),encoding='utf-8')
 
 def cycle(failures):
     from activate_postgresql import api_process,stop_api,start_api
@@ -83,8 +135,14 @@ def cycle(failures):
     try:local_ai_ready=ensure_local_ai(environment)
     except Exception:local_ai_ready=False
     public=healthy(state['origin'])
+    if public:clear_route_failure()
+    if not public and route_recovery_due(state):
+        stop();start(wait_for_health=False);state=json.loads(state_path.read_text())
+        public=healthy(state['origin'])
     origin_file=STATE/'package-origin.txt'
-    if public and (not origin_file.exists() or origin_file.read_text(encoding='utf-8')!=state['origin']):publish_package(state['origin'])
+    revision_file=STATE/'package-revision.txt'
+    if public and (not origin_file.exists() or origin_file.read_text(encoding='utf-8')!=state['origin'] or
+                   not revision_file.exists() or revision_file.read_text(encoding='utf-8')!=package_revision(state['origin'])):publish_package(state['origin'])
     checkpoint(state='running' if public else 'waiting_for_public_network',local_api=True,public_api=public,origin=state['origin'],local_ai_ready=local_ai_ready)
     return failures
 

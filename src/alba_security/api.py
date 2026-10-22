@@ -232,6 +232,23 @@ def _event_records(items, db: Session) -> list[dict]:
     return [_event_record(item, db, context) for item in items]
 
 
+def database_engine_options(database_url: str) -> dict:
+    """Bound unavailable connections/locks without changing server-wide settings."""
+    options: dict = {"pool_pre_ping": True}
+    if database_url.startswith('postgresql'):
+        options.update(pool_timeout=10, pool_recycle=1800)
+        options['connect_args']={
+            'application_name':'TestAPI', 'connect_timeout':5,
+            'keepalives':1, 'keepalives_idle':30, 'keepalives_interval':10, 'keepalives_count':3,
+            'options':'-c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=60000',
+        }
+    if database_url.startswith('sqlite'):
+        options['connect_args']={'check_same_thread':False}
+        if database_url in {'sqlite://','sqlite:///:memory:'}:
+            options['poolclass']=StaticPool
+    return options
+
+
 def create_app(
     database_url: str | None = None,
     ingest_token: str | None = None,
@@ -258,13 +275,7 @@ def create_app(
     if not ingest_token:
         raise RuntimeError("INGEST_TOKEN is required")
 
-    engine_options: dict = {"pool_pre_ping": True}
-    if database_url.startswith('postgresql'):
-        engine_options['connect_args']={'application_name':'TestAPI'}
-    if database_url.startswith("sqlite"):
-        engine_options["connect_args"] = {"check_same_thread": False}
-        if database_url in {"sqlite://", "sqlite:///:memory:"}:
-            engine_options["poolclass"] = StaticPool
+    engine_options = database_engine_options(database_url)
     engine = create_engine(database_url, **engine_options)
     if database_url.startswith("sqlite"):
         @event.listens_for(engine, "connect")

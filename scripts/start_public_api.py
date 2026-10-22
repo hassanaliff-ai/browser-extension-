@@ -2,6 +2,9 @@
 from pathlib import Path
 import hashlib,json,os,re,subprocess,sys,time,urllib.request,zipfile,shutil
 import httpx
+import tempfile
+import ipaddress
+from urllib.parse import urlsplit
 
 ROOT=Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
@@ -9,26 +12,52 @@ def hidden(command,log,environment=None):
     with log.open('ab') as output:return subprocess.Popen(command,cwd=ROOT,env=environment,stdin=subprocess.DEVNULL,stdout=output,stderr=output,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
 
 def package(origin):
+    parsed = urlsplit(origin)
+    if (parsed.scheme not in {"https", "http"} or not parsed.hostname or
+            parsed.username is not None or parsed.password is not None or
+            parsed.path or parsed.query or parsed.fragment or
+            any(ord(c) <= 32 for c in origin) or "\\" in origin or
+            (parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"})):
+        raise ValueError("Package API must be a bare HTTPS origin or local HTTP origin")
+    parsed.port
+    try:ipaddress.ip_address(parsed.hostname)
+    except ValueError:
+        if not re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?",parsed.hostname):
+            raise ValueError("Package API hostname is invalid")
     # The generic HTTPS package has no custom certificate requirement.
     output=ROOT/'ExtSecure Chrome Extension.zip'
-    with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
-        for file in sorted((ROOT/'extension').rglob('*')):
-            relative=file.relative_to(ROOT/'extension')
-            if not file.is_file() or any(p in {'tests','node_modules','_metadata','__pycache__'} or p.startswith('.') for p in relative.parts):continue
-            data=file.read_bytes()
-            if relative.as_posix()=='core.js':data=re.sub(r"export const API_ORIGIN = '[^']+';",f"export const API_ORIGIN = '{origin}';",data.decode()).encode()
-            elif relative.as_posix()=='manifest.json':
-                value=json.loads(data);value['content_security_policy']['extension_pages']=re.sub(r'connect-src [^;]+;',f'connect-src {origin};',value['content_security_policy']['extension_pages']);data=json.dumps(value,indent=2).encode()
-            elif relative.as_posix()=='rules/navigation.json':
-                value=json.loads(data);value=[r for r in value if r['id']!=3];value.append({'id':3,'priority':200,'action':{'type':'allow'},'condition':{'regexFilter':'^'+re.escape(origin)+'/','resourceTypes':['main_frame'],'isUrlFilterCaseSensitive':True}});data=json.dumps(value).encode()
-            elif relative.as_posix()=='workspace-kit.js':data=data.replace(b'http://127.0.0.1:8765',origin.encode())
-            archive.writestr(relative.as_posix(),data)
-        archive.writestr('INSTALL ON ANOTHER DEVICE.txt',f'''ExtSecure temporary public API
-API: {origin}
-Extract the ZIP. Open chrome://extensions, enable Developer mode, click Load unpacked and choose this extracted folder. Register/sign in using your own account, complete its approval and authenticator verification, then Add this device and complete device approval. Click Connect Chrome extensions to include installed extensions. No custom certificate installation is needed.
-Updating an existing unpacked copy: replace files in the SAME existing folder, then click Reload on ExtSecure at chrome://extensions. Do not clear its browser data. In My account, click Connect Chrome extensions and allow the inventory permission once. Inventory includes enabled and disabled extensions in this Chrome profile, and refreshes on changes and every minute while Chrome is running. GitHub uploads do not automatically update unpacked extensions; Chrome Web Store distribution is needed for ordinary Chrome-managed automatic updates.
-The host laptop must stay on with its API and tunnel running. This URL is temporary and changes when the tunnel is recreated; obtain a rebuilt ZIP after a change. This is a testing endpoint until Basel supplies the permanent API. Only approved accounts/devices can use protected features.
-''')
+    descriptor, name = tempfile.mkstemp(prefix=".extsecure-package-", suffix=".tmp", dir=ROOT)
+    os.close(descriptor)
+    temporary = Path(name)
+    try:
+        with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED) as archive:
+            for file in sorted((ROOT/'extension').rglob('*')):
+                relative=file.relative_to(ROOT/'extension')
+                if not file.is_file() or any(p in {'tests','node_modules','_metadata','__pycache__'} or p.startswith('.') for p in relative.parts):continue
+                data=file.read_bytes()
+                if relative.as_posix()=='core.js':data=re.sub(r"export const API_ORIGIN = '[^']+';",f"export const API_ORIGIN = '{origin}';",data.decode()).encode()
+                elif relative.as_posix()=='manifest.json':
+                    value=json.loads(data);value['content_security_policy']['extension_pages']=re.sub(r'connect-src [^;]+;',f'connect-src {origin};',value['content_security_policy']['extension_pages']);data=json.dumps(value,indent=2).encode()
+                elif relative.as_posix()=='rules/navigation.json':
+                    value=json.loads(data);value=[r for r in value if r['id']!=3];value.append({'id':3,'priority':200,'action':{'type':'allow'},'condition':{'regexFilter':'^'+re.escape(origin)+'/','resourceTypes':['main_frame'],'isUrlFilterCaseSensitive':True}});data=json.dumps(value).encode()
+                elif relative.as_posix()=='workspace-kit.js':data=data.replace(b'http://127.0.0.1:8765',origin.encode())
+                archive.writestr(relative.as_posix(),data)
+            archive.writestr('INSTALL ON ANOTHER DEVICE.txt',f'''ExtSecure temporary public API
+    API: {origin}
+    Extract the ZIP. Open chrome://extensions, enable Developer mode, click Load unpacked and choose this extracted folder. Register/sign in using your own account, complete its approval and authenticator verification, then Add this device and complete device approval. Click Connect Chrome extensions to include installed extensions. No custom certificate installation is needed.
+    Updating an existing unpacked copy: replace files in the SAME existing folder, then click Reload on ExtSecure at chrome://extensions. Do not clear its browser data. In My account, click Connect Chrome extensions and allow the inventory permission once. Inventory includes enabled and disabled extensions in this Chrome profile, and refreshes on changes and every minute while Chrome is running. GitHub uploads do not automatically update unpacked extensions; Chrome Web Store distribution is needed for ordinary Chrome-managed automatic updates.
+    The host laptop must stay on with its API and tunnel running. This URL is temporary and changes when the tunnel is recreated; obtain a rebuilt ZIP after a change. This is a testing endpoint until Basel supplies the permanent API. Only approved accounts/devices can use protected features.
+    ''')
+        with zipfile.ZipFile(temporary) as check:
+            if check.testzip() is not None:
+                raise ValueError("Release archive validation failed")
+            version=json.loads(check.read('manifest.json'))['version']
+            worker_version=re.search(r"export const VERSION = '([^']+)';",check.read('core.js').decode())
+            if not worker_version or worker_version.group(1)!=version:
+                raise ValueError("Manifest and worker release versions do not match")
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
     return output
 
 def start(wait_for_health=True):
