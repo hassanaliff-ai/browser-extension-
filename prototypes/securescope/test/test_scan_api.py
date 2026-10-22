@@ -6,6 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from backend.app import app
+from backend.request_limits import RequestLimiter
 
 
 class ScanApiTests(unittest.TestCase):
@@ -29,6 +30,57 @@ class ScanApiTests(unittest.TestCase):
             response = self.client.post("/api/v1/check", json=self.request)
             self.assertEqual(response.status_code, 503)
             rdap.assert_not_called()
+
+    def test_only_configured_extension_may_make_cross_origin_manual_checks(self):
+        extension_id = "a" * 32
+        allowed_origin = f"chrome-extension://{extension_id}"
+        with patch.dict("os.environ", {"SECURESCOPE_ALLOWED_EXTENSION_ID": extension_id}), \
+                patch("backend.app._reputation") as reputation:
+            reputation.lookup.return_value = {"status": "Unknown"}
+            preflight = self.client.options("/api/v1/check", headers={
+                "Origin": allowed_origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            })
+            self.assertEqual(preflight.status_code, 204)
+            response = self.client.post("/api/v1/check", json=self.request,
+                                        headers={"Origin": allowed_origin})
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.headers["access-control-allow-origin"], allowed_origin)
+            self.assertEqual(self.client.post("/api/v1/check", json=self.request,
+                headers={"Origin": "chrome-extension://" + "b" * 32}).status_code, 403)
+            self.assertEqual(self.client.post("/api/v1/rdap", json={"origin": self.request["url"]},
+                headers={"Origin": allowed_origin}).status_code, 403)
+            reputation.lookup.assert_called_once_with("example.com")
+
+    def test_request_limits_cover_scan_and_rdap_without_counting_preflight(self):
+        now = [100.0]
+        limiter = RequestLimiter({"check": 2, "rdap": 1}, clock=lambda: now[0])
+        origin = "chrome-extension://" + "a" * 32
+        with patch("backend.app._request_limiter", limiter), \
+                patch.dict("os.environ", {"SECURESCOPE_ALLOWED_EXTENSION_ID": "a" * 32}), \
+                patch("backend.app._reputation") as reputation, \
+                patch("backend.app.lookup_domain_age", return_value={"status": "Unknown"}):
+            reputation.lookup.return_value = {"status": "Unknown"}
+            preflight = self.client.options("/api/v1/check", headers={
+                "Origin": origin, "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            })
+            self.assertEqual(preflight.status_code, 204)
+            headers = {"Origin": origin}
+            self.assertEqual(self.client.post("/api/v1/check", json=self.request,
+                                              headers=headers).status_code, 503)
+            self.assertEqual(self.client.post("/api/v1/check", json=self.request,
+                                              headers=headers).status_code, 503)
+            limited = self.client.post("/api/v1/check", json=self.request, headers=headers)
+            self.assertEqual(limited.status_code, 429)
+            self.assertEqual(limited.headers["retry-after"], "60")
+            self.assertEqual(limited.headers["access-control-allow-origin"], origin)
+            self.assertEqual(self.client.post("/api/v1/rdap", json={"origin": self.request["url"]}).status_code, 200)
+            self.assertEqual(self.client.post("/api/v1/rdap", json={"origin": self.request["url"]}).status_code, 429)
+            now[0] += 60
+            self.assertEqual(self.client.post("/api/v1/check", json=self.request,
+                                              headers=headers).status_code, 503)
 
     def test_rejects_unexpected_request_fields(self):
         with patch("backend.app._reputation") as reputation:

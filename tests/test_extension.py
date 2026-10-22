@@ -61,10 +61,35 @@ def test_extension_real_risk_result_and_personal_history(extension_client):
     assert response.status_code==201 and response.headers['cache-control']=='no-store'
     result=response.json()
     assert result['severity']=='Low' and result['score']==0 and result['lookup']['status']=='complete'
+    assert result['domain_age']['status']=='Unknown' and 'new_domain' in result['unknown_codes']
     assert client.get('/monitor/api/my/scans').json()[0]['id']==result['id']
     with monitor.state.session_factory() as db:
         assert db.scalar(select(PersonalScan)).username=='extension-test-owner'
         assert db.scalar(select(Extension)).name=='ExtSecure'
+
+
+def test_securescope_recent_domain_is_recorded_in_shared_scan(extension_client, monkeypatch):
+    client,monitor,application=extension_client
+    monkeypatch.setattr(application.state.domain_age, 'lookup', lambda _target: {'status':'Known','age_days':12})
+    mock_lookup(application)
+    response=client.post('/extension/scan',json={'target':'https://example.com/private'})
+    assert response.status_code==201
+    result=response.json()
+    assert result['domain_age']=={'status':'Known','age_days':12}
+    assert any(finding['code']=='new_domain' for finding in result['findings'])
+    with monitor.state.session_factory() as db:
+        assert any(signal['code']=='new_domain' and signal['status']=='detected'
+                   for signal in db.scalar(select(Scan)).signals)
+
+
+def test_securescope_rdap_receives_only_registered_domain(monkeypatch):
+    from alba_security import rdap_lookup
+    from alba_security.domain_age import DomainAgeService
+    seen=[]
+    monkeypatch.setattr(rdap_lookup, 'lookup_domain_age', lambda domain: (seen.append(domain) or {'status':'Known','age_days':45}))
+    result=DomainAgeService().lookup('https://sub.example.co.uk/private?secret=value')
+    assert result['status']=='Known' and result['age_days']==45
+    assert seen==['example.co.uk']
 
 def test_unknown_upstream_creates_unknown_evidence(extension_client):
     client,_,application=extension_client

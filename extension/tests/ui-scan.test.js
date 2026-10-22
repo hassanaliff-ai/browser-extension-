@@ -12,7 +12,7 @@ globalThis.document={body:{classList:{contains:()=>false},querySelectorAll:()=>[
  querySelector:selector=>({'#app':app,'#main':{focus(){}},'#toast':{}}[selector]),createTreeWalker:()=>({nextNode:()=>null})};
 globalThis.NodeFilter={SHOW_TEXT:4};globalThis.MutationObserver=class{observe(){}};
 globalThis.setTimeout=()=>0;
-const profile={username:'test-head',display_name:'Test Head',role_label:'Head of Administrator',role:'head_administrator',approvable_roles:['normal_user','manager','administrator'],can_manage_accounts:true,views:['Overview','Downloaded-file checks','Website access','Accounts','Reports'],inventory:{linked:true}};
+const profile={username:'test-head',display_name:'Test Head',role_label:'Head of Administrator',role:'head_administrator',approvable_roles:['normal_user','manager','administrator'],can_manage_accounts:true,views:['Overview','Scan a page','Downloaded-file checks','Website access','Accounts','Reports'],inventory:{linked:true}};
 let result={id:'test-scan',target_kind:'download',target_display:'SHA-256 test',severity:'Unknown',score:null,completeness:'unknown',findings:[],file_lookup:{verdict:'unknown',reason:'not_found',cache_hit:true}};
 const calls=[];
 globalThis.chrome={runtime:{id:'a'.repeat(32),sendMessage:async message=>{
@@ -54,6 +54,15 @@ test('Website failure explanations are escaped and cannot inject active HTML',as
  await submit('url-scan',{target:'https://example.com/'});
  assert.match(app.innerHTML,/&lt;img src=x onerror=alert\(1\)&gt;/);
  assert.doesNotMatch(app.innerHTML,/<img src=x/);
+});
+test('Website result shows SecureScope domain age without implying safety',async()=>{
+ await navigate('scan');
+ result={...result,target_kind:'url',severity:'Low',score:0,completeness:'complete',file_lookup:undefined,lookup:{status:'complete'},domain_age:{status:'Known',age_days:12}};
+ await submit('url-scan',{target:'https://example.com/'});
+ assert.match(app.innerHTML,/SecureScope RDAP: domain registered 12 days ago/);
+ result={...result,domain_age:{status:'Unknown'}};
+ await submit('url-scan',{target:'https://example.com/'});
+ assert.match(app.innerHTML,/domain age unavailable/);
 });
 test('Pending access requests render an initially visible required approval duration',async()=>{
  const original=chrome.runtime.sendMessage;
@@ -119,7 +128,7 @@ test('Security events display device, scanner and target with escaped evidence',
 
 
 test('URL scan renders persisted SecureScope age in the real result handler',async()=>{
- profile.views.push('Scan a page');await navigate('scan');
+ await navigate('scan');
  result={id:'rdap-scan',target_kind:'url',target_display:'example.com',severity:'Low',score:15,
  completeness:'complete',findings:[],signals:[{code:'new_domain',status:'detected',detail:'SecureScope RDAP: age 12 days.'}],domain_age:{status:'Known',age_days:12}};
  await submit('url-scan',{target:'https://example.com/'});

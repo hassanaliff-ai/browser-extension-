@@ -29,12 +29,12 @@ test("only loopback hosts are excluded from public-site scoring", () => {
   }
 });
 
-test("service worker clears legacy full-URL history and makes no network request", async () => {
+test("service worker sends only manual origins to loopback and clears legacy full-URL history", async () => {
   let messageListener;
   let visitListener;
   let alarmListener;
   let cleanupAlarm;
-  let fetchCalls = 0;
+  const fetchCalls = [];
   const state = {
     visitHistory: [{ url: "https://example.com/?token=old-secret", checkedAt: Date.now() }],
   };
@@ -58,7 +58,10 @@ test("service worker clears legacy full-URL history and makes no network request
       async setAccessLevel() {},
     } },
   };
-  globalThis.fetch = async () => { fetchCalls++; throw new Error("network must be disabled"); };
+  globalThis.fetch = async (url, options) => {
+    fetchCalls.push({ url, body: JSON.parse(options.body) });
+    return { ok: false, status: 503 };
+  };
 
   await import("../securescope-extension/background.js");
   assert.equal(typeof visitListener, "function");
@@ -73,8 +76,11 @@ test("service worker clears legacy full-URL history and makes no network request
     assert.equal(keepOpen, true);
   });
   assert.equal(result.url, "https://example.com");
-  assert.equal(result.lookupStatus, "local-only");
-  assert.equal(fetchCalls, 0);
+  assert.equal(result.lookupStatus, "backend-unavailable");
+  assert.deepEqual(fetchCalls[0], {
+    url: "http://127.0.0.1:8001/api/v1/check",
+    body: { url: "https://example.com", source: "manual", checked_at: fetchCalls[0].body.checked_at },
+  });
   assert.equal(state.visitHistory.length, 1);
 
   const local = await new Promise((resolve) => {
@@ -104,7 +110,7 @@ test("service worker clears legacy full-URL history and makes no network request
   assert.equal(inline.lookupStatus, "local-only");
   assert.deepEqual(inline.results.map((item) => item.origin), ["https://paypol.com"]);
   assert.equal(state.visitHistory.length, 1);
-  assert.equal(fetchCalls, 0);
+  assert.equal(fetchCalls.length, 1);
 
   const embeddedBrand = await new Promise((resolve) => {
     messageListener({ type: "SECURESCOPE_CHECK_URL", url: "https://paypal.com.evil.example/login" }, {}, resolve);
@@ -117,7 +123,10 @@ test("service worker clears legacy full-URL history and makes no network request
     messageListener({ type: "SECURESCOPE_CHECK_URL", url: "https://www.paypal.com/help" }, {}, resolve);
   });
   assert.equal(realBrand.severity, "Low");
-  assert.equal(fetchCalls, 0);
+  assert.equal(fetchCalls.length, 3);
+  assert.deepEqual(fetchCalls.map((call) => call.body.url), [
+    "https://example.com", "https://paypal.com.evil.example", "https://www.paypal.com",
+  ]);
 
   // An old entry must be removed by the alarm even if no new site is visited.
   for (const entry of state.visitHistory) {

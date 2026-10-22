@@ -32,6 +32,15 @@ test('Popup results stay compact and offer the full evidence workspace',async()=
  if(process.env.EXTSECURE_UI_QA_OUTPUT){await fs.mkdir(process.env.EXTSECURE_UI_QA_OUTPUT,{recursive:true});await fs.writeFile(path.join(process.env.EXTSECURE_UI_QA_OUTPUT,'popup.html'),app.innerHTML);}
 });
 
+test('Popup shows SecureScope registration evidence when the backend supplies it',async()=>{
+ const original=chrome.runtime.sendMessage;
+ chrome.runtime.sendMessage=async message=>message.type==='SCAN_URL'?{ok:true,data:{id:'test-age',severity:'Low',score:15,completeness:'complete',target_kind:'url',target_display:'example.com',findings:[],lookup:{status:'complete'},domain_age:{status:'Known',age_days:12}}}:original(message);
+ try{
+  await handlers.click({target:{closest:()=>({dataset:{action:'scan-active'},isConnected:true,setAttribute(){},removeAttribute(){},closest:()=>null})}});
+  assert.match(app.innerHTML,/SecureScope RDAP: domain registered 12 days ago/);
+ }finally{chrome.runtime.sendMessage=original;}
+});
+
 test('Compact popup keeps threat findings and the action visible outside optional details',async()=>{
  const original=chrome.runtime.sendMessage;
  chrome.runtime.sendMessage=async message=>message.type==='SCAN_URL'?{ok:true,data:{id:'test-high',severity:'High',score:80,completeness:'complete',target_kind:'url',target_display:'example.com',suggested_action:'Do not proceed. Ask an administrator to investigate.',findings:[{title:'Synthetic malicious verdict',points:80,detail:'Synthetic provider evidence for a UI test.'}],lookup:{status:'complete'}}}:original(message);

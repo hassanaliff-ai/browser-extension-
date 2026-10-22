@@ -1,10 +1,11 @@
 import { parseHttpDestination } from "./url-policy.js";
 import { validateBackendResponse } from "./backend-response.js";
 
-const LOCAL_DEV_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const LOCAL_BACKEND_ORIGIN = "http://127.0.0.1:8001";
+const LOCAL_BACKEND_PREFIX = "/";
 
-// This function is testable with a fake fetch. The service worker currently
-// keeps backend calls disabled until the team's API and privacy rules agree.
+// Manual checks can call only the mounted loopback API. A fake fetch makes the
+// origin minimization and unavailable-result behaviour testable offline.
 export async function checkWithBackend(origin, source, {
   baseUrl,
   timeoutMs = 3000,
@@ -18,13 +19,14 @@ export async function checkWithBackend(origin, source, {
 
   let endpoint;
   try {
-    endpoint = new URL("/api/v1/check", baseUrl);
+    const base = new URL(baseUrl);
+    if (base.origin !== LOCAL_BACKEND_ORIGIN ||
+        base.pathname !== LOCAL_BACKEND_PREFIX ||
+        base.username || base.password || base.search || base.hash) return null;
+    endpoint = new URL("api/v1/check", base);
   } catch {
     return null;
   }
-  const localHttp = endpoint.protocol === "http:" && LOCAL_DEV_HOSTS.has(endpoint.hostname);
-  if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash ||
-      (endpoint.protocol !== "https:" && !localHttp)) return null;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

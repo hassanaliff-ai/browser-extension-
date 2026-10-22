@@ -90,7 +90,7 @@ def test_disabled_startup_does_not_stop_unrelated_existing_api(recovery,monkeypa
     monkeypatch.setattr(sys,'argv',['api_supervisor.py'])
     monkeypatch.setattr(supervisor,'lock_instance',lambda:Mock())
     monkeypatch.setattr(supervisor,'enabled',lambda:False)
-    monkeypatch.setattr(supervisor.ctypes,'windll',Mock())
+    monkeypatch.setattr(supervisor.ctypes,'windll',Mock(),raising=False)
     supervisor.main();recovery['stop_api'].assert_not_called();recovery['stop'].assert_not_called()
 
 def test_operator_stop_is_completed_by_the_owning_supervisor(recovery,monkeypatch):
@@ -98,6 +98,6 @@ def test_operator_stop_is_completed_by_the_owning_supervisor(recovery,monkeypatc
     monkeypatch.setattr(supervisor,'lock_instance',lambda:Mock())
     values=iter([True,False,False]);monkeypatch.setattr(supervisor,'enabled',lambda:next(values))
     monkeypatch.setattr(supervisor,'cycle',lambda _:0)
-    monkeypatch.setattr(supervisor.ctypes,'windll',Mock())
+    monkeypatch.setattr(supervisor.ctypes,'windll',Mock(),raising=False)
     supervisor.main();recovery['stop'].assert_called_once();recovery['stop_api'].assert_called_once()
     assert recovery['checkpoint'].call_args.kwargs['state']=='stopped'

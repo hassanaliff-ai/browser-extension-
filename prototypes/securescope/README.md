@@ -18,13 +18,22 @@ existing ExtSecure application and use different contracts and access controls. 
   FastAPI service exposes local RDAP and scan endpoints.
 - The VirusTotal adapter uses mock reports in tests. No API key is included.
   Without an approved reputation source, the scan endpoint returns 503 rather
-  than treating missing evidence as a safe result.
+  than treating missing evidence as a safe result. Manual checks in the
+  development extension attempt the local scan API and show unavailable
+  backend coverage when it returns 503.
 - Loopback development addresses are excluded from public-site risk scoring.
 
-The extension's backend switch is **off**. The database and administrator
-authentication are not connected to this prototype. The root ExtSecure process
-can mount these API routes at `/securescope` for local testing, but that does
-not merge the two Chrome extensions or their risk policies. Do not run both
+Automatic visits and page-link checks remain local. The database and
+administrator authentication are not connected to this prototype. The shared
+ExtSecure backend already has password and authenticator verification for its
+administrator sessions; future SecureScope administrator routes should use
+those sessions when integrated, without creating separate accounts. The root
+ExtSecure process can mount these API routes at `/securescope` for local testing,
+but that does not merge the two Chrome extensions or their risk policies. Set
+`SECURESCOPE_ALLOWED_EXTENSION_ID` to the unpacked SecureScope extension ID
+before starting the API and testing manual browser requests against it. The
+development extension calls only `http://127.0.0.1:8001/api/v1/check`; port
+8765 belongs to the separate TestAPI. Do not run both
 Chrome extensions in the same test profile:
 ExtSecure can block navigation while SecureScope observes it.
 
@@ -48,12 +57,15 @@ python -m venv .venv
 To inspect the local API documentation, start the service on loopback only:
 
 ```powershell
-& '.\.venv\Scripts\python.exe' -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+& '.\.venv\Scripts\python.exe' -m uvicorn backend.app:app --host 127.0.0.1 --port 8001
 ```
 
-Then open `http://127.0.0.1:8000/docs` and stop the service with Ctrl+C when
-finished. The local API has no administrator authentication or request rate
-limit, so it must not be exposed to a network or used with Alba browsing data.
+Then open `http://127.0.0.1:8001/docs` and stop the service with Ctrl+C when
+finished. The loopback API limits scan requests to 30 per minute and RDAP
+requests to 10 per minute, across this process. It returns HTTP 429 with a
+`Retry-After` header when a limit is reached. Limits reset when the process
+restarts and do not replace authentication. The local API must not be exposed
+to a network or used with Alba browsing data.
 The `/docs` page serves its Swagger UI 5.33.3 CSS and JavaScript from
 `backend/static` instead of a CDN. These files come from `swagger-ui-dist`;
 its Apache 2.0 licence is included as `backend/static/LICENSE`.
@@ -62,7 +74,8 @@ its Apache 2.0 licence is included as `backend/static/LICENSE`.
 
 In a separate, signed-out Chrome profile, open `chrome://extensions`, enable
 Developer mode, choose **Load unpacked**, and select this folder's
-`securescope-extension` directory. The extension version is 0.9.1. On a page
+`securescope-extension` directory. This working-tree extension version is 0.9.2.
+On a page
 with a known URL-shortener link, the local checker may show a Medium label;
 do not open the destination to test the label. Ordinary unlabeled links are
 not certified safe.

@@ -44,6 +44,16 @@ _MONITOR_REQUIRED = (
 )
 
 
+class ExtSecureCORSMiddleware(CORSMiddleware):
+    """Keep the optional SecureScope prototype's narrower CORS policy intact."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith("/securescope/"):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     application.state.vt = VirusTotalClient(settings.vt_api_key)
@@ -327,7 +337,7 @@ def create_app() -> FastAPI:
     # Preserve the legacy extension API's CORS behavior. Restrict origins at
     # the deployment ingress when exposing this service outside localhost.
     application.add_middleware(
-        CORSMiddleware,
+        ExtSecureCORSMiddleware,
         allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],

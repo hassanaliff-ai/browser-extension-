@@ -56,16 +56,16 @@ const entry = await browserAPI.runtime.sendMessage({
 // entry has the same shape as the storage schema above (source: "manual")
 ```
 
-In this build, this runs local heuristics only and returns the resulting entry
-directly. The popup sends this message and displays the result. Backend
-integration is disabled until its contract and data policy are approved.
+In this build, this runs local heuristics and attempts a backend check for
+manual requests only. The popup displays the combined result and explicitly
+marks backend evidence unavailable when that check cannot complete.
 
 ## 4. Backend & API Lead
 
 See `API_CONTRACT.md` in this folder for the request/response shape.
-`BACKEND_BASE_URL` in `background.js` currently points at
-`http://localhost:8000` for local dev — update it (and the matching
-`host_permissions` entry in `manifest.json`) once you have a real URL.
+`BACKEND_BASE_URL` in `background.js` points at the standalone SecureScope API
+on `http://127.0.0.1:8001/`. The matching `host_permissions` entry is in
+`manifest.json`. Automatic visits and inline page links stay local.
 
 ## 5. Inline page links
 

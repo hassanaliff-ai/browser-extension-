@@ -2,7 +2,8 @@
 // Extension Lead — detect site visits, score locally, and hand off to
 // notifyIfRisky() (owned by the Alerts & UI Lead) and to the popup (via
 // chrome.storage + runtime messages).
-// Backend requests remain disabled in this privacy-baseline build.
+// Only a user-initiated manual check calls the local backend. Automatic visits
+// and page links remain local-only.
 //
 // See ../docs/API_CONTRACT.md for the exact backend request/response shape,
 // and ../docs/MESSAGING.md for how the popup and alerts.js are meant to
@@ -17,13 +18,8 @@ const MAX_HISTORY = 50;
 const HISTORY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const HISTORY_CLEANUP_ALARM = "securescope-history-cleanup";
 
-// TODO (Extension Lead / Backend Lead): update once the real backend is
-// deployed. Also update host_permissions in manifest.json to match.
-const BACKEND_BASE_URL = "http://localhost:8000";
+const BACKEND_BASE_URL = "http://127.0.0.1:8001/";
 const BACKEND_TIMEOUT_MS = 3000;
-// Keep network requests off until the team agrees the API, data policy and
-// allowed reputation source. This first build only evaluates URLs locally.
-const BACKEND_ENABLED = false;
 
 const SEVERITY_ORDER = ["Low", "Medium", "High", "Critical"];
 
@@ -98,14 +94,17 @@ async function checkUrl(rawUrl, source, tabId = null) {
     };
   }
   const local = scoreUrlLocally(rawUrl);
-  const backend = BACKEND_ENABLED ? await checkWithBackend(displayUrl, source, {
+  const backendAttempted = source === "manual";
+  const backend = backendAttempted ? await checkWithBackend(displayUrl, source, {
     baseUrl: BACKEND_BASE_URL,
     timeoutMs: BACKEND_TIMEOUT_MS,
   }) : null;
   const merged = mergeVerdicts(local, backend);
+  const lookupStatus = backend?.lookupStatus ??
+    (backendAttempted ? "backend-unavailable" : "local-only");
 
   const reasonText = merged.reasons.length ? ` (${merged.reasons.join("; ")})` : "";
-  const backendNote = backend ? "" : " [local only]";
+  const backendNote = backend ? "" : ` [${lookupStatus}]`;
   console.log(`[SecureScope] ${source}: ${displayUrl} -> ${merged.severity}${reasonText}${backendNote}`);
 
   const entry = {
@@ -114,7 +113,7 @@ async function checkUrl(rawUrl, source, tabId = null) {
     tabId,
     severity: merged.severity,
     reasons: merged.reasons,
-    lookupStatus: backend?.lookupStatus ?? "local-only",
+    lookupStatus,
     checkedAt: Date.now(),
   };
 
@@ -195,10 +194,9 @@ async function appendToHistory(entry) {
   });
 }
 
-// --- Backend integration (planned next phase) ---------------------------
+// --- Local backend integration -------------------------------------------
 // Follows docs/API_CONTRACT.md. If the backend is down/unreachable/slow,
-// we fail soft and keep using the local verdict — a flaky backend should
-// never break the extension's core protection.
+// local warning signs remain available with explicit unavailable coverage.
 
 function mergeVerdicts(local, backend) {
   if (!backend) return { severity: local.severity, reasons: local.reasons };
