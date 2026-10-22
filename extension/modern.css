@@ -55,7 +55,7 @@ input,select,textarea{border-radius:10px}
 /* Short transitions are enabled explicitly after saved preferences are loaded. */
 [data-motion=on] :where(.btn,.nav-item,.workflow-card,input,select,textarea,.motion-switch>span),[data-motion=on] .motion-switch>span::after,[data-motion=on] .nav-group>summary::after{transition:background-color 160ms var(--motion-ease),border-color 160ms var(--motion-ease),color 160ms var(--motion-ease),box-shadow 160ms var(--motion-ease),transform 160ms var(--motion-ease)}
 [data-motion=on][data-theme-transition=active] :where(body,.sidebar,.topbar,.panel,.metric,.hero,.btn,input,select,textarea,.motion-setting,.popup-header,.blocked-card,th,td){transition:background-color 240ms var(--motion-ease),color 180ms var(--motion-ease),border-color 200ms var(--motion-ease),box-shadow 200ms var(--motion-ease)}
-[data-motion=on] .console #content:not(:has(.pending)),[data-motion=on] .auth-card{animation:workspace-arrive 200ms var(--motion-ease) backwards}
+[data-motion=on] .auth-card{animation:workspace-arrive 200ms var(--motion-ease) backwards}
 @keyframes workspace-arrive{from{opacity:.94;transform:translateY(5px)}to{opacity:1;transform:none}}
 @media(hover:hover){[data-motion=on] .btn:not(:disabled):hover,[data-motion=on] .workflow-card:hover{transform:translateY(-1px)}[data-motion=on] .btn:active{transform:translateY(0)}}
 /* Off means all motion, including legacy spinners and CSS effects. Status text remains. */

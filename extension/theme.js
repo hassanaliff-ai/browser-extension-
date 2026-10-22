@@ -9,7 +9,7 @@ export function normalizeTheme(value='light',strict=false){
 function paint(dark){
  if(typeof document!=='undefined'){
   const next=dark?'dark':'light',previous=document.documentElement.getAttribute?.('data-theme');
-  if(previous&&previous!==next)markThemeChange();
+  if(previous&&previous!==next)markThemeChange(next);
   document.documentElement.setAttribute?.('data-theme',next);
   for(const button of document.querySelectorAll?.('[data-theme-toggle]')??[])button.setAttribute('aria-pressed',String(dark));
  }

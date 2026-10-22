@@ -34,7 +34,7 @@ try{
  const errors=[];
  page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
  const base='chrome-extension://'+extensionId;
- await page.goto(base+'/console.html#settings');
+ await page.bringToFront();await page.goto(base+'/console.html#settings');
  await page.locator('input[name=animations]').waitFor();
  assert.equal(await page.locator('html').getAttribute('data-motion'),'on');
  assert(await page.getByRole('switch',{name:/Interface animations/}).isChecked());
@@ -100,9 +100,9 @@ try{
  await page.locator('[data-theme-toggle]').click();await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
  await page.screenshot({path:path.join(output,'overview-dark.png'),fullPage:true,animations:'disabled'});
  await page.locator('[data-view=alerts]').click();await page.getByRole('heading',{name:'Alerts',exact:true}).waitFor();
- assert.equal(await page.locator('#content').evaluate(el=>getComputedStyle(el).animationName),'workspace-arrive');
- await page.waitForTimeout(260);
- assert.equal(await page.locator('#content').evaluate(el=>getComputedStyle(el).transform),'none');
+ assert(await page.locator('#main').evaluate(el=>el.getAnimations().length>0));
+ await page.waitForTimeout(500);
+ assert.equal(await page.locator('#main').evaluate(el=>getComputedStyle(el).transform),'none');
  record('Section entry animation finishes without retaining a transformed container');
  await page.setViewportSize({width:420,height:780});await page.goto(base+'/popup.html');
  await page.getByRole('heading',{name:'Security workspace',exact:true}).waitFor();

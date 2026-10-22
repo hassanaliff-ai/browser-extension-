@@ -15,3 +15,22 @@ __pycache__/
 *.dump
 # Chrome regenerates compiled declarative request rules for its browser build.
 extension/_metadata/
+
+# User documents stay local. Only project-plan documents may be published.
+*.doc
+*.docx
+*.docm
+*.pdf
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+*.odt
+*.ods
+*.mpp
+*.mpt
+!**/*[Pp]roject [Pp]lan.*
+!**/*[Pp]roject_[Pp]lan.*
+!**/*[Pp]roject-[Pp]lan.*
+# Screenshot portfolio, image archive and document index are local artifacts.
+evidence/code-portfolio/

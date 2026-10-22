@@ -1,0 +1,64 @@
+/* Local, native Chrome surfaces. Decorative effects never intercept input. */
+:root{--future-cyan:#187b88;--future-edge:#b7d5d8;--future-surface:#ffffffed;--future-grid:#1b657b06;--future-halo:#008fa514;--future-panel-shadow:0 7px 26px #164e6310;--future-sweep:#51c6cc18}
+:root[data-theme=dark]{--future-cyan:#9ae6df;--future-edge:#315766;--future-surface:#182932ed;--future-grid:#6bcddd06;--future-halo:#30b6c411;--future-panel-shadow:0 10px 30px #00000022;--future-sweep:#69e2d61c}
+body.console,.console{--canvas:#f1f7fa;--paper:#fff;--ink:#173643;--muted:#526a78;--line:#cfdee6;background:var(--canvas);color:var(--ink)}
+:root[data-theme=dark] body.console,:root[data-theme=dark] .console{--canvas:#0d1923;--paper:#182932;--ink:#edf5f8;--muted:#b3c8d3;--line:#314b5b;background:var(--canvas);color:var(--ink)}
+.workspace-body{position:relative;isolation:isolate;background:radial-gradient(ellipse at 95% 0,var(--future-halo),transparent 52%),var(--canvas)}
+.workspace-body::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(var(--future-grid) 1px,transparent 1px),linear-gradient(90deg,var(--future-grid) 1px,transparent 1px);background-size:44px 44px}
+.console .sidebar{background:linear-gradient(155deg,#d0e9e5 0%,#b9dbde 60%,#c7e2e8 100%);border-inline-end:1px solid #91bdc4;box-shadow:5px 0 28px #12435108}
+.console .topbar,.popup .popup-header{background:linear-gradient(110deg,#c6e5e0eF,#c9e1e9f5);border-bottom:1px solid #a2c7ce;backdrop-filter:blur(16px)}
+:root[data-theme=dark] .console .sidebar{background:linear-gradient(160deg,#12333d,#102933 58%,#10232f);border-inline-end-color:#315766;box-shadow:6px 0 35px #00000016}
+:root[data-theme=dark] .console .topbar,:root[data-theme=dark] .popup .popup-header{background:linear-gradient(110deg,#173c48ee,#15313fed);border-bottom-color:#315966}
+.console .brand img,.popup .brand img{filter:drop-shadow(0 3px 7px #17778222)}
+.console .nav-item{position:relative;border:1px solid transparent;border-radius:12px;padding-block:11px}
+.console .nav-item.active{background:#f2fcfa;color:#164d58;border-color:#8bbdc5;box-shadow:inset 3px 0 #207f8b,0 4px 12px #15586e0b}
+[dir=rtl] .console .nav-item.active{box-shadow:inset -3px 0 #207f8b,0 4px 12px #15586e0b}
+:root[data-theme=dark] .console .nav-item.active{background:linear-gradient(100deg,#255a63,#204752);border-color:#45838c;color:#e5fffb;box-shadow:inset 3px 0 #83e1d5,0 3px 16px #4ac8d00b}
+:root[dir=rtl][data-theme=dark] .console .nav-item.active{box-shadow:inset -3px 0 #83e1d5,0 3px 16px #4ac8d00b}
+.console .nav-search input{background:#f1faf9;border-color:#98c0c7}
+:root[data-theme=dark] .console .nav-search input{background:#102a34;border-color:#3b6471}
+.console .page-title h1{letter-spacing:-1px;font-size:clamp(26px,2.6vw,35px)}
+.console .eyebrow{color:#256c7b;font-weight:650;letter-spacing:.9px}
+:root[data-theme=dark] .console .eyebrow{color:#9ddbd9}
+.console .panel,.console .metric{background:var(--future-surface);border:1px solid var(--future-edge);box-shadow:var(--future-panel-shadow);border-radius:18px}
+.console .metric{border-top:2px solid #65b1b7;background-image:linear-gradient(130deg,#21b4bd08,transparent 64%)}
+:root[data-theme=dark] .console .metric{border-top-color:#66bdbf}
+.console .metric strong{font-size:34px;letter-spacing:-1.2px}
+.console .table-wrap{border-radius:13px;border-color:var(--future-edge);background:var(--paper)}
+.console th{background:#eaf3f6;color:#435f6d}
+:root[data-theme=dark] .console th{background:#203744;color:#c1d7e2}
+.console tbody tr:hover{background:#e9f5f7}
+:root[data-theme=dark] .console tbody tr:hover{background:#203b48}
+.console .workflow-card{border-radius:14px;border-color:var(--future-edge);background:linear-gradient(120deg,var(--paper),var(--modern-soft))}
+.console .workflow-card:hover{border-color:#408e9a;box-shadow:0 5px 16px #178d9b12}
+.console .btn,.popup .btn{border-radius:11px}
+.console .btn.primary,.popup .btn.primary{background:linear-gradient(125deg,#e7a58d,#f0ba9f);color:#42291f;border-color:#d89d86;box-shadow:0 4px 12px #cb8d741a}
+:root[data-theme=dark] .console .btn.primary,:root[data-theme=dark] .popup .btn.primary{background:linear-gradient(125deg,#edab92,#f1c2a7);color:#33221d;border-color:#e3ae96}
+.btn[data-theme-toggle]{display:inline-flex;align-items:center;gap:8px}
+.btn[data-theme-toggle]::before{content:"";display:inline-block;width:13px;height:13px;flex-shrink:0;border:1.5px solid currentColor;border-radius:50%;box-shadow:inset -4px -2px currentColor;transform:rotate(-25deg)}
+.btn[data-theme-toggle][aria-pressed=true]::before{box-shadow:inset 0 0 currentColor;transform:rotate(155deg)}
+.console :where(input,select,textarea){border-color:#b8cdd8;background:#ffffff;box-shadow:0 1px 2px #173e4903}
+:root[data-theme=dark] .console :where(input,select,textarea){background:#112430;border-color:#496473;color:#edf5f8}
+.console :where(input,select,textarea):focus{border-color:#248496;box-shadow:0 0 0 3px #208d9d18}
+.console .action-dialog{border-color:var(--future-edge);box-shadow:0 26px 110px #071b3250}
+.action-dialog-header{background:linear-gradient(115deg,var(--modern-soft),var(--modern-surface))}
+.popup .hero{border-radius:18px;border:1px solid var(--future-edge);box-shadow:var(--future-panel-shadow)}
+.popup .panel{border-color:var(--future-edge)}
+.blocked-card{border-radius:20px}
+[data-motion=on] .console :where(.panel,.metric,.workflow-card){transition:border-color 200ms var(--motion-ease),box-shadow 200ms var(--motion-ease),background-color 300ms var(--motion-ease)}
+[data-motion=on] .btn[data-theme-toggle]::before{transition:transform 420ms var(--motion-ease),box-shadow 300ms var(--motion-ease)}
+[data-motion=on][data-theme-transition=active] :where(body,.sidebar,.topbar,.panel,.metric,.hero,.btn,input,select,textarea,.motion-setting,.popup-header,th,td){transition:background-color 420ms var(--motion-ease),color 300ms var(--motion-ease),border-color 360ms var(--motion-ease),box-shadow 360ms var(--motion-ease)}
+html[data-motion=on][data-theme-transition=active]::after{content:"";position:fixed;inset:0;z-index:15;pointer-events:none;background:linear-gradient(110deg,transparent 25%,var(--future-sweep) 48%,transparent 70%);animation:theme-sweep 440ms cubic-bezier(.16,1,.3,1) both}
+@keyframes theme-sweep{0%{opacity:0;transform:translateX(-65%)}35%{opacity:1}100%{opacity:0;transform:translateX(65%)}}
+[dir=rtl][data-motion=on][data-theme-transition=active]::after{animation-name:theme-sweep-rtl}
+@keyframes theme-sweep-rtl{0%{opacity:0;transform:translateX(65%)}35%{opacity:1}100%{opacity:0;transform:translateX(-65%)}}
+[data-motion=on] .console .nav-item.active .icon{animation:nav-settle 300ms var(--motion-ease)}
+@keyframes nav-settle{from{transform:scale(.9)}to{transform:none}}
+@media(max-width:760px){.console .page-title h1{font-size:27px;letter-spacing:-.7px}.console .panel,.console .metric{border-radius:15px}.console .metric strong{font-size:29px}.console .topbar{backdrop-filter:none}}
+/* These rules also cover the decorative theme pseudo-element. Native motion is cancelled by motion.js. */
+[data-motion=off] *,[data-motion=off] *::before,[data-motion=off] *::after,[data-motion=off]::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media(forced-colors:active){.workspace-body::before,html::after{display:none!important}.console .sidebar,.console .topbar,.console .panel,.console .metric,.console .workflow-card,.popup .popup-header{background:Canvas!important;color:CanvasText!important;box-shadow:none!important;backdrop-filter:none}.console .nav-item.active{background:Highlight!important;color:HighlightText!important;border-color:Highlight!important}.console .btn.primary,.popup .btn.primary{background:ButtonFace!important;color:ButtonText!important;border-color:ButtonText!important}}
+
+/* Keep full-page movement inside its viewport; native review dialogs stay in the top layer. */
+.console .workspace-body{overflow-x:clip}
