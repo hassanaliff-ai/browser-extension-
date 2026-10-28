@@ -19,6 +19,11 @@ Legacy `/extension/scan` and `/scan` remain authenticated for older clients.
 The supervisor maintains this integrated entry point and its temporary public
 HTTPS gateway. This is a protected integration of Basel's GitHub prototype,
 not a claim that the standalone prototype implements administrator services.
+For a fixed HTTPS address while the host laptop is on, see
+[Fixed SecureScope HTTPS](docs/Fixed%20SecureScope%20HTTPS.md).
+The shared ZIP currently uses Hasan's SecureScope API at
+`https://ken05ghoul.tail75c8f9.ts.net`; each unpacked installation must replace
+its files and reload after downloading an update.
 
 Version 0.8.18 adds installed-extension inventory by device with audited On, Off, Block and Remove controls. See [Extension inventory controls](docs/Extension%20Inventory%20Controls.md).
 
