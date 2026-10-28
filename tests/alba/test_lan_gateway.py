@@ -43,3 +43,32 @@ async def test_public_gateway_trusts_only_loopback_connector_and_limits_login(mo
     assert seen[0].headers['x-forwarded-for']=='203.0.113.20'
     async with original(transport=httpx.ASGITransport(app=lan_gateway.app,client=('192.168.1.20',123)),base_url='https://test') as client:
         assert (await client.get('/health')).status_code==403
+
+
+@pytest.mark.anyio
+async def test_tailscale_gateway_ignores_forged_client_identity(monkeypatch):
+    monkeypatch.setenv('EXTSECURE_PUBLIC_GATEWAY','tailscale')
+    lan_gateway.PUBLIC_REQUESTS.clear()
+    original=httpx.AsyncClient
+    seen=[]
+    def respond(request):
+        seen.append(request)
+        return httpx.Response(200,json={'status':'ok'})
+    monkeypatch.setattr(lan_gateway.httpx,'AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(respond),**kwargs))
+    async with original(transport=httpx.ASGITransport(app=lan_gateway.app,client=('127.0.0.1',123)),base_url='https://test') as client:
+        for index in range(10):
+            response=await client.post('/monitor/api/admin/login',headers={
+                'cf-connecting-ip':f'203.0.113.{index+1}',
+                'x-real-ip':'198.51.100.1',
+                'true-client-ip':'198.51.100.2',
+                'x-forwarded-for':'198.51.100.3',
+            },json={})
+            assert response.status_code==200
+        assert (await client.post('/monitor/api/admin/login',headers={'cf-connecting-ip':'203.0.113.200'},json={})).status_code==429
+    assert seen[0].headers['x-forwarded-for']=='127.0.0.1'
+    assert seen[0].headers['x-forwarded-proto']=='https'
+    assert 'cf-connecting-ip' not in seen[0].headers
+    assert 'x-real-ip' not in seen[0].headers
+    assert 'true-client-ip' not in seen[0].headers
+    async with original(transport=httpx.ASGITransport(app=lan_gateway.app,client=('192.168.1.20',123)),base_url='https://test') as client:
+        assert (await client.get('/health')).status_code==403
