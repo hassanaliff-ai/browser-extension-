@@ -9,6 +9,7 @@ import httpx
 ALLOWED_PATHS=('/monitor/api/','/extension/')
 MAX_BODY=2*1024*1024
 HOP_HEADERS={'host','connection','keep-alive','transfer-encoding','upgrade','proxy-authorization','proxy-authenticate','trailer','te'}
+IDENTITY_HEADERS={'x-forwarded-for','x-forwarded-proto','forwarded','x-real-ip','cf-connecting-ip','true-client-ip'}
 PUBLIC_REQUESTS=OrderedDict()
 
 async def app(scope,receive,send):
@@ -25,12 +26,16 @@ async def app(scope,receive,send):
     if scope['method'] not in {'GET','POST'} or not (path in {'/health','/scan','/api/v1/check','/api/v1/rdap'} or path.startswith(ALLOWED_PATHS)):
         return await reply(404,b'{"detail":"API route unavailable."}')
     peer=scope['client'][0]
-    public=os.environ.get('EXTSECURE_PUBLIC_GATEWAY')=='1'
+    public_mode=os.environ.get('EXTSECURE_PUBLIC_GATEWAY')
+    public=public_mode in {'1','tailscale'}
     if public:
         if not ipaddress.ip_address(peer).is_loopback:return await reply(403,b'{"detail":"Use the public HTTPS endpoint."}')
-        incoming={k.decode().lower():v.decode('latin1') for k,v in scope['headers']}
-        try:peer=str(ipaddress.ip_address(incoming.get('cf-connecting-ip',peer)))
-        except ValueError:return await reply(400,b'{"detail":"Invalid connection address."}')
+        if public_mode=='1':
+            incoming={k.decode().lower():v.decode('latin1') for k,v in scope['headers']}
+            try:peer=str(ipaddress.ip_address(incoming.get('cf-connecting-ip',peer)))
+            except ValueError:return await reply(400,b'{"detail":"Invalid connection address."}')
+        # Funnel does not supply an authenticated client-IP header. Use the
+        # connector's loopback address for one shared public rate limit.
         now=time.monotonic();key=(peer,'auth' if path in {'/monitor/api/admin/login','/monitor/api/admin/register'} else 'api')
         bucket=PUBLIC_REQUESTS.setdefault(key,deque());PUBLIC_REQUESTS.move_to_end(key)
         while bucket and bucket[0]<=now-60:bucket.popleft()
@@ -48,7 +53,7 @@ async def app(scope,receive,send):
         body.extend(event.get('body',b''))
         if len(body)>MAX_BODY:return await reply(413,b'{"detail":"Request is too large."}')
         if not event.get('more_body'):break
-    headers={k.decode('latin1'):v.decode('latin1') for k,v in scope['headers'] if k.decode('latin1').lower() not in HOP_HEADERS|{'x-forwarded-for','x-forwarded-proto','forwarded'}}
+    headers={k.decode('latin1'):v.decode('latin1') for k,v in scope['headers'] if k.decode('latin1').lower() not in HOP_HEADERS|IDENTITY_HEADERS}
     headers.update({'x-forwarded-for':peer,'x-forwarded-proto':'https'})
     target='http://127.0.0.1:8765'+path
     if scope.get('query_string'):target+='?'+scope['query_string'].decode('ascii')

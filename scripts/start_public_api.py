@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
 def hidden(command,log,environment=None):
     with log.open('ab') as output:return subprocess.Popen(command,cwd=ROOT,env=environment,stdin=subprocess.DEVNULL,stdout=output,stderr=output,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
 
-def package(origin):
+def package(origin, *, fixed=False):
     parsed = urlsplit(origin)
     if (parsed.scheme not in {"https", "http"} or not parsed.hostname or
             parsed.username is not None or parsed.password is not None or
@@ -42,11 +42,14 @@ def package(origin):
                     value=json.loads(data);value=[r for r in value if r['id']!=3];value.append({'id':3,'priority':200,'action':{'type':'allow'},'condition':{'regexFilter':'^'+re.escape(origin)+'/','resourceTypes':['main_frame'],'isUrlFilterCaseSensitive':True}});data=json.dumps(value).encode()
                 elif relative.as_posix()=='workspace-kit.js':data=data.replace(b'http://127.0.0.1:8765',origin.encode())
                 archive.writestr(relative.as_posix(),data)
-            archive.writestr('INSTALL ON ANOTHER DEVICE.txt',f'''ExtSecure temporary public API
+            link_note = ('This device has a fixed ts.net hostname while the host laptop, API, gateway and Tailscale remain running.'
+                         if fixed else
+                         'This URL is temporary and changes when the tunnel is recreated; obtain a rebuilt ZIP after a change.')
+            archive.writestr('INSTALL ON ANOTHER DEVICE.txt',f'''ExtSecure {'fixed' if fixed else 'temporary'} public API
     API: {origin}
     Extract the ZIP. Open chrome://extensions, enable Developer mode, click Load unpacked and choose this extracted folder. Register/sign in using your own account, complete its approval and authenticator verification, then Add this device and complete device approval. Click Connect Chrome extensions to include installed extensions. No custom certificate installation is needed.
     Updating an existing unpacked copy: replace files in the SAME existing folder, then click Reload on ExtSecure at chrome://extensions. Do not clear its browser data. In My account, click Connect Chrome extensions and allow the inventory permission once. Inventory includes enabled and disabled extensions in this Chrome profile, and refreshes on changes and every minute while Chrome is running. GitHub uploads do not automatically update unpacked extensions; Chrome Web Store distribution is needed for ordinary Chrome-managed automatic updates.
-    The host laptop must stay on with its API and tunnel running. This URL is temporary and changes when the tunnel is recreated; obtain a rebuilt ZIP after a change. This is a testing endpoint until Basel supplies the permanent API. Only approved accounts/devices can use protected features.
+    The host laptop must stay on with its API and tunnel running. {link_note} Only approved accounts/devices can use protected features.
     ''')
         with zipfile.ZipFile(temporary) as check:
             if check.testzip() is not None:
