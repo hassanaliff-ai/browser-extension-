@@ -52,6 +52,44 @@ def test_managers_cannot_approve_their_own_request(roles):
     assert review(client, headers['manager'], request).status_code == 403
     assert review(client, headers['administrator'], request).status_code == 200
 
+
+@pytest.mark.parametrize('decision', ['temporary', 'whitelist', 'reject'])
+def test_administrator_self_review_is_confirmed_audited_and_enforced(roles, decision):
+    client, app, headers, _ = roles
+    h = headers['administrator']
+    target = 'https://example.com/admin-self/' + decision
+    request = create(client, h, target)
+    queue = client.get('/api/access/requests', headers=h).json()
+    assert next(r for r in queue if r['id'] == request['id'])['can_review'] is True
+    body = {'decision':decision, 'expected_revision':request['revision'], 'reason':REASON,
+            'confirmed':False, 'duration_hours':24, 'whitelist_forever':decision == 'whitelist'}
+    path = '/api/access/requests/' + request['id'] + '/review'
+    assert client.post(path, headers=h, json=body).status_code == 422
+    body['confirmed'] = True
+    result = client.post(path, headers=h, json=body)
+    assert result.status_code == 200, result.text
+    assert result.json()['reviewer'] == 'administrator'
+    allowed = client.post('/api/access/check', headers=h, json={'target':target}).json()['allowed']
+    assert allowed is (decision != 'reject')
+    assert client.post(path, headers=h, json=body).status_code == 409
+    with app.state.session_factory() as db:
+        event = db.scalar(select(GovernanceAudit).where(
+            GovernanceAudit.reference == request['id'],
+            GovernanceAudit.action == ('rejected' if decision == 'reject' else 'approved')))
+        assert event.actor == 'administrator'
+        assert event.details['self_review'] is True
+        assert event.details['confirmed'] is True
+
+
+def test_administrator_can_review_another_administrators_request(roles, system):
+    client, _, headers, _ = system
+    admin = roles[2]['administrator']
+    request = create(client, admin, 'https://example.com/peer-review')
+    # The configured reviewer is a distinct approved administrator.
+    assert client.get('/api/admin/me', headers=headers['reviewer']).json()['role'] == 'administrator'
+    assert review(client, headers['reviewer'], request, 'temporary').status_code == 200
+    assert client.post('/api/access/check', headers=admin, json={'target':request['target']}).json()['allowed'] is True
+
 def test_pending_and_rejected_destinations_stay_blocked(roles):
     client, _, h, _ = roles
     request = create(client, h['normal_user'])

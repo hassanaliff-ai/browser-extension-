@@ -15,6 +15,18 @@ def can_approve_role(reviewer_role, requester_role, *, own=False):
         return reviewer_role == requester_role == 'head_administrator'
     return ROLE_LEVELS[reviewer_role] > ROLE_LEVELS[requester_role]
 
+
+def can_review_website_request(reviewer_role, requester_role, *, own=False):
+    """Website decisions allow administrators to review any active role, including self.
+
+    Account approval continues to use the separate, stricter role hierarchy.
+    """
+    if reviewer_role not in ROLE_LEVELS or requester_role not in ROLE_LEVELS:
+        return False
+    if reviewer_role in {'head_administrator', 'administrator'}:
+        return True
+    return can_approve_role(reviewer_role, requester_role, own=own)
+
 ACCESS_READS = {'/api/access/requests', '/api/access/whitelist'}
 ACCESS_WRITES = {'/api/access/requests', '/api/access/check', '/api/access/consume'}
 ACCESS_REVIEWS = {'/api/access/requests/{request_id}/review', '/api/access/whitelist/{entry_id}/revoke'}

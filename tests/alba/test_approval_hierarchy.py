@@ -15,7 +15,7 @@ def test_website_approval_role_matrix_and_queue_flags(roles):
             request = create(client, headers[requester], f'https://example.com/{requester}/{reviewer}')
             queue = client.get('/api/access/requests', headers=headers[reviewer]).json()
             visible = next((r for r in queue if r['id'] == request['id']), None)
-            allowed = can_approve_role(reviewer, requester, own=reviewer == requester)
+            allowed = reviewer in {'head_administrator', 'administrator'} or (reviewer == 'manager' and requester == 'normal_user')
             if visible:
                 assert visible['can_review'] == allowed
                 assert visible['requester_role'] == requester

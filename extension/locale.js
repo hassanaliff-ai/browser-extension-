@@ -263,7 +263,7 @@ const AR={
  'You may review your own request. Submit it, then open the approval queue.':'يمكنك مراجعة طلبك الخاص. أرسله ثم افتح قائمة طلبات الموافقة.',
  'Waiting for approval by a higher role.':'بانتظار موافقة الدور الأعلى.',
  'Requested role':'الدور المطلوب',
- 'Users need a manager, managers need an administrator, and administrators need the head. The head may review their own requests.':'يحتاج المستخدم إلى موافقة مدير، والمدير إلى مسؤول، والمسؤول إلى رئيس المسؤولين. يمكن للرئيس مراجعة طلباته الخاصة.',
+ 'Administrators can review their own and all other website requests. Managers can review normal-user requests.':'يمكن للمسؤولين مراجعة طلباتهم وجميع طلبات الوصول إلى المواقع الأخرى. يمكن للمديرين مراجعة طلبات المستخدمين العاديين.',
  'Approval pyramid: normal users → managers → administrators → head administrator. Higher roles may approve lower roles. Only the head changes existing account privileges. Every account requires 2FA.':'تسلسل الموافقة: المستخدمون ← المديرون ← المسؤولون ← رئيس المسؤولين. يمكن للدور الأعلى اعتماد الأدوار الأقل. يغير الرئيس وحده صلاحيات الحسابات الحالية. المصادقة الثنائية مطلوبة للجميع.',
  'Access requires approval by a higher role.':'يتطلب الوصول موافقة دور أعلى.',
  'Account verified. A higher role must approve access before you can sign in.':'تم التحقق من الحساب. يجب أن يعتمد دور أعلى وصولك قبل تسجيل الدخول.',

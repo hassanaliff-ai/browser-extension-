@@ -33,6 +33,7 @@ def package(origin, *, fixed=False):
         with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED) as archive:
             for file in sorted((ROOT/'extension').rglob('*')):
                 relative=file.relative_to(ROOT/'extension')
+                if relative.as_posix() == 'INSTALL ON ANOTHER DEVICE.txt':continue  # Generated below for this package's API.
                 if not file.is_file() or any(p in {'tests','node_modules','_metadata','__pycache__'} or p.startswith('.') for p in relative.parts):continue
                 data=file.read_bytes()
                 if relative.as_posix()=='core.js':data=re.sub(r"export const API_ORIGIN = '[^']+';",f"export const API_ORIGIN = '{origin}';",data.decode()).encode()

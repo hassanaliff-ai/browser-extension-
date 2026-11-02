@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from alba_security.governance import audit
 from alba_security.models import Base, new_id, utc_now
-from alba_security.permissions import can_approve_role
+from alba_security.permissions import can_review_website_request
 
 # A reserved database timestamp keeps existing non-null expiry columns compatible.
 # Public responses expose permanent grants as permanent=true, expires_at=null.
@@ -110,7 +110,7 @@ def install_website_access(app, session_scope, require_actor, directory):
     def request_record(db, item, actor):
         requester_role = role(db, item.requester)
         return record(item) | {'requester_role': requester_role,
-            'can_review': can_approve_role(role(db, actor), requester_role, own=item.requester == actor)}
+            'can_review': can_review_website_request(role(db, actor), requester_role, own=item.requester == actor)}
 
     def reject_threat(db, target):
         from alba_security.threat_blocks import active_block
@@ -164,8 +164,8 @@ def install_website_access(app, session_scope, require_actor, directory):
         item = db.get(WebsiteRequest, request_id)
         if not item:
             raise HTTPException(404, 'Website request not found')
-        if not can_approve_role(role(db, actor), role(db, item.requester), own=item.requester == actor):
-            raise HTTPException(403, 'Approval requires a higher role; only the head administrator may review their own request')
+        if not can_review_website_request(role(db, actor), role(db, item.requester), own=item.requester == actor):
+            raise HTTPException(403, 'Administrators may review any website request; managers may review normal-user requests only')
         if payload.decision != "reject":
             reject_threat(db, item.target)
         now = utc_now()
