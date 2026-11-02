@@ -57,7 +57,19 @@ administrator console. FastAPI remains a separate security backend. The earlier
 Streamlit dashboard is retained for compatibility and is not required to use the
 extension.
 
-## Chrome extension 0.8.49
+## Chrome extension 0.8.50
+
+SecureScope inline link warnings are now included in the shared extension.
+While an account session is present, the top-level content script checks page
+link origins using local URL indicators. It handles added and changed links,
+reuses origin results, and limits work to 2000 anchors and 500 origins per page
+in batches of 50. Hover over a warning for its local reasons. These warnings
+do not query the API, send paths or page text, record history, or change any
+website approval or containment rule. No warning does not establish safety.
+The existing authenticated manual check still provides backend evidence.
+
+See [inline verification](docs/Inline Link Verification.md) for the checks and
+the remaining real-browser demonstration.
 
 The extension console uses teal navigation and option bars, with Light, Dark and
 Use device setting appearance choices. Settings saves appearance alongside

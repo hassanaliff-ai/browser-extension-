@@ -20,6 +20,24 @@ const {handleMessage}=await import('../background.js');
 const {VERSION,WORKER_CAPABILITIES}=await import('../core.js');
 const reset=()=>{store={};calls=[];localStore={};sessionRules=[];dynamicRules=[];responder=()=>({});};
 
+test('Content-script inline checks are local, signed-in and cannot dispatch administrator actions',async()=>{
+ reset();
+ const sender={id:chrome.runtime.id,frameId:0,tab:{id:7},url:'https://example.com/private?token=secret'};
+ const message={type:'SECURESCOPE_CHECK_LINK_ORIGINS',origins:['https://paypal.com.evil.example']};
+ let result=await new Promise(resolve=>listener(message,sender,resolve));
+ assert.equal(result.lookupStatus,'sign-in-required');assert.deepEqual(result.results,[]);
+ store.session={token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()};
+ result=await new Promise(resolve=>listener(message,sender,resolve));
+ assert.equal(result.lookupStatus,'local-only');assert.equal(result.results[0].severity,'High');
+ assert.equal(calls.length,0);assert.deepEqual(localStore,{});
+ result=await new Promise(resolve=>listener({...message,origins:['https://example.com/private?token=x']},sender,resolve));
+ assert.equal(result.lookupStatus,'unavailable');
+ result=await new Promise(resolve=>listener(message,{...sender,frameId:1},resolve));
+ assert.equal(result.lookupStatus,'unavailable');
+ result=await new Promise(resolve=>listener({type:'API',path:'/api/admin/registrations'},sender,resolve));
+ assert.equal(result.ok,false);assert.match(result.error,/Only trusted/);assert.equal(calls.length,0);
+});
+
 test('Actual worker listener denies invalid task routes before any network request',async()=>{
  for(const [method,path] of [['GET','/api/workflow/unknown'],['DELETE','/api/workflow/rules'],['GET','/api/controls/effectiveness?days=30&token=x'],['POST','/api/workflow/rules/not-an-id/update'],['GET','https://other.test/api/workflow/rules']]){
   reset();store.session={token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()};
