@@ -8,6 +8,7 @@ import {containThreat,reconcileThreatHost,restoreThreatRules} from './threat-con
 import {normalizePreferences} from './locale.js';
 import {installedExtensions,platformName} from './inventory.js';
 import {safeActiveTab} from './workspace-kit.js';
+import {INLINE_CHECK,inlineSender,checkInlineOrigins} from './inline-checks.js';
 
 const storageReady = Promise.all([
   chrome.storage.session.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}),
@@ -205,6 +206,12 @@ chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='device-control-watch'
 export async function handleMessage(message,sender={}) {
   await storageReady;
   if (!message || typeof message.type !== 'string') throw new Error('Invalid extension request.');
+  if(message.type===INLINE_CHECK) {
+    if(!inlineSender(sender,chrome.runtime))throw new Error('Only a top-level ExtSecure content script can check page links.');
+    const session=await loadSession();
+    if(!session.token)return {results:[],lookupStatus:'sign-in-required'};
+    return checkInlineOrigins(message.origins);
+  }
   if(message.type==='HEALTH') {
     // Use this package's configured endpoint, never a caller-supplied URL.
     const metadata={api_origin:API_ORIGIN,checked_at:new Date().toISOString()};
@@ -414,6 +421,10 @@ export async function handleMessage(message,sender={}) {
   throw new Error('Unknown extension action.');
 }
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
+  if(message?.type===INLINE_CHECK) {
+    handleMessage(message,sender).then(sendResponse).catch(()=>sendResponse({results:[],lookupStatus:'unavailable'}));
+    return true;
+  }
   if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(''))) { sendResponse({ok:false,error:'Only trusted ExtSecure pages can perform this action.'}); return false; }
   handleMessage(message,sender).then(data=>sendResponse({ok:true,data})).catch(error=>sendResponse({ok:false,error:error.message,status:error.status}));
   return true;

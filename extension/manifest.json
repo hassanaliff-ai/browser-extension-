@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ExtSecure",
-  "version": "0.8.49",
+  "version": "0.8.50",
   "description": "Browser security checks, explainable risk findings and controlled administrator workflows.",
   "minimum_chrome_version": "120",
   "permissions": [
@@ -42,6 +42,15 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["inline-links.js"],
+      "css": ["inline-links.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
   "action": {
     "default_title": "ExtSecure \u00b7 Browser security",
     "default_popup": "popup.html",
