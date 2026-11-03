@@ -19,13 +19,28 @@ was activated. The extension now distinguishes a reachable older backend with
 an **API update required** state, and Website Access explains the mismatch.
 Refreshing Chrome alone cannot replace code already loaded by a Python worker.
 
-## Keep the running API under operator control
+## Running API deployment
 
-The running API is left unchanged at the operator's request. The supervisor
-reports older website permissions as `backend_update_required`, without
-automatically restarting a healthy API. Network supervision continues. When
-the operator later deploys the backend update, startup verifies the expected
-policy rather than accepting an old process already answering the port.
+The updated worker runs on loopback port 8769 and the existing fixed HTTPS
+hostname proxies to it. It shares the existing PostgreSQL database, account
+configuration and authenticator settings. The protected legacy worker on 8765
+is left in place for compatibility. Legacy URLs still targeting that worker
+need the current fixed-HTTPS extension package to use the updated API.
+
+`scripts/current_api_supervisor.py` monitors the updated worker and starts it
+again after failure, without terminating unrecognized processes. The existing
+Windows task **ExtSecure API Supervisor** delegates to this controller when
+the updated port is selected. Its existing limited S4U identity and startup,
+sign-in and retry triggers are retained, so the API can start before sign-in.
+The temporary sign-in-only migration task was removed after confirming the
+existing background task owns supervision. The host must remain powered on
+and connected for public access.
+
+With `EXTSECURE_ACTIVE_API_PORT=8769`, the ordinary Start ExtSecure launcher
+uses this worker and supervisor. The legacy supervisor still reports older
+website permissions without automatically restarting a healthy API. Startup
+verifies the expected policy rather than accepting any process answering the
+port.
 
 The extension displays administrator self and peer review controls consistently,
 including when an older queue response marks those requests as non-reviewable.
@@ -60,8 +75,9 @@ approved; website approval alone does not dismiss a detected threat.
   maintenance changes.
 - Four isolated Chromium checks passed for MV3 loading, a clean signed-out
   profile, visible outdated-backend detection and the desktop sign-in layout.
-  These checks explicitly reported that the production policy was not current;
-  they do not claim a successful live administrator self-approval.
+  Before deployment they reported an outdated policy; after deployment the
+  real extension worker reported the current policy through the fixed HTTPS
+  address. Role-session tests verify the review decisions separately.
 - The wider initial backend run had 956 passes, 18 skips and three import
   errors caused by loading pre-edit modules during the ongoing edit. The three
   affected activation tests passed in a fresh process and in the final

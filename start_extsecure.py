@@ -65,6 +65,15 @@ def main():
     if not ensure_local_ai(environment):
         print('Local AI is unavailable. Check the installed runtime and .private/local-ai.log.')
         return 1
+    if environment.get('EXTSECURE_ACTIVE_API_PORT') == '8769':
+        from scripts import current_api_supervisor as current
+        current.STATE.mkdir(parents=True,exist_ok=True)
+        (current.STATE/'config.json').write_text('{"enabled":true}')
+        current.ensure_worker()
+        launch([sys.executable,str(ROOT/'scripts/current_api_supervisor.py')],environment,
+               current.STATE/'supervisor.log')
+        print('Updated ExtSecure API is running at '+environment.get('EXTSECURE_RELEASE_ORIGIN','http://127.0.0.1:8769'))
+        return 0
     if not reachable('http://127.0.0.1:8765/health'):
         environment['PYTHONPATH'] = str(ROOT / 'src')
         environment.update(OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', MKL_NUM_THREADS='1')

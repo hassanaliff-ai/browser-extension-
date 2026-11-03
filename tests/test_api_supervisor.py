@@ -18,6 +18,15 @@ def test_bom_config_can_be_disabled(tmp_path,monkeypatch):
 def test_missing_config_does_not_start_services(tmp_path,monkeypatch):
     monkeypatch.setattr(supervisor,'STATE',tmp_path);assert not supervisor.enabled()
 
+
+def test_selected_updated_worker_reuses_existing_startup_entrypoint(tmp_path,monkeypatch):
+    from scripts import current_api_supervisor as updated
+    monkeypatch.setattr(supervisor,'ROOT',tmp_path)
+    (tmp_path/'.env').write_text('EXTSECURE_ACTIVE_API_PORT=8769\n')
+    monkeypatch.setattr(sys,'argv',['api_supervisor.py'])
+    run=Mock();monkeypatch.setattr(updated,'main',run)
+    supervisor.main();run.assert_called_once()
+
 @pytest.fixture
 def recovery(tmp_path,monkeypatch):
     import activate_postgresql as api

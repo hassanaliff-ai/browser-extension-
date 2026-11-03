@@ -177,6 +177,12 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--once',action='store_true');parser.add_argument('--stop',action='store_true');args=parser.parse_args()
     if args.stop:
         STATE.mkdir(parents=True,exist_ok=True);(STATE/'config.json').write_text('{"enabled":false}')
+        updated=ROOT/'.private/current-api/config.json'
+        if updated.exists():updated.write_text('{"enabled":false}')
+        return
+    if dotenv_values(ROOT/'.env').get('EXTSECURE_ACTIVE_API_PORT')=='8769':
+        from scripts.current_api_supervisor import main as supervise_updated
+        supervise_updated()
         return
     lock=lock_instance()
     if lock is None:return
