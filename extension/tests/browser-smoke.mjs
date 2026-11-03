@@ -52,8 +52,13 @@ try{
   record('Actual MV3 service worker and console loaded',{version:manifest.version});
   const initial=await message({type:'STATE'});assert.equal(initial.version,manifest.version);assert(!initial.profile);
   record('Test profile starts signed out without borrowed credentials');
-  const health=await message({type:'HEALTH'});assert.equal(health.status,'ready');
-  record('Running TestAPI is reachable through the real worker');
+  const health=await message({type:'HEALTH'});assert(['ready','update_required'].includes(health.status));
+  if(health.status==='update_required'){
+    assert(!live,'Live workflow checks require the updated backend; restart the API first');
+    await page.locator('[data-action="check-connection"]').first().click();
+    await page.getByText(/still uses older website approval permissions/).first().waitFor();
+    record('Real worker and sign-in UI explicitly detect outdated backend permissions',{backend_policy_current:false});
+  }else record('Running TestAPI is reachable with the current website approval policy',{backend_policy_current:true});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   record('Sign-in layout fits a desktop viewport');
   let credentials;
@@ -104,7 +109,7 @@ try{
     record('Harmless local file is hashed and its risk result is displayed');
     await page.screenshot({path:path.join(output,'file-result.png'),fullPage:true});
     phase='console workflows';
-    for(const view of ['history','events','devices','extensions','workflow','controls','reports']){
+    for(const view of ['history','events','devices','extensions','access','cases','reports']){
       await go(view);await page.waitForTimeout(300);
       const text=await page.locator('body').innerText();
       assert(!text.includes('This API action is not supported.')&&!text.includes('Unknown extension action.')&&!text.includes('Cannot reach the ExtSecure backend.'));

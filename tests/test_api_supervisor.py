@@ -30,6 +30,7 @@ def recovery(tmp_path,monkeypatch):
     for name in ['start_api','stop_api','api_process']:monkeypatch.setattr(api,name,mocks[name])
     monkeypatch.setattr(public,'start',mocks['start']);monkeypatch.setattr(stop,'stop',mocks['stop'])
     monkeypatch.setattr(supervisor,'public_processes_alive',lambda _:True)
+    monkeypatch.setattr(supervisor,'backend_needs_update',lambda:False)
     monkeypatch.setattr(supervisor,'route_is_missing',lambda _:False)
     monkeypatch.setattr(supervisor,'package_revision',lambda _:'test-revision')
     monkeypatch.setattr(supervisor,'checkpoint',mocks['checkpoint']);monkeypatch.setattr(supervisor,'publish_package',mocks['publish'])
@@ -39,6 +40,24 @@ def test_healthy_api_preserves_tunnel_and_packages(recovery,monkeypatch):
     monkeypatch.setattr(supervisor,'healthy',lambda _:True);assert supervisor.cycle(0)==0
     recovery['start_api'].assert_not_called();recovery['stop'].assert_not_called();recovery['start'].assert_not_called()
     recovery['publish'].assert_called_once_with('https://temporary.example')
+
+
+def test_healthy_but_outdated_api_is_reported_without_restarting_any_service(recovery,monkeypatch):
+    monkeypatch.setattr(supervisor,'healthy',lambda _:True)
+    monkeypatch.setattr(supervisor,'backend_needs_update',lambda:True)
+    supervisor.cycle(0)
+    recovery['stop_api'].assert_not_called();recovery['start_api'].assert_not_called()
+    recovery['stop'].assert_not_called();recovery['start'].assert_not_called()
+    assert recovery['checkpoint'].call_args.kwargs['state']=='backend_update_required'
+
+
+def test_outdated_backend_does_not_interrupt_network_supervision(recovery,monkeypatch):
+    monkeypatch.setattr(supervisor,'healthy',lambda _:True)
+    monkeypatch.setattr(supervisor,'backend_needs_update',lambda:True)
+    supervisor.cycle(0)
+    assert recovery['checkpoint'].call_args.kwargs['state']=='backend_update_required'
+    recovery['start_api'].assert_not_called();recovery['stop'].assert_not_called()
+    recovery['publish'].assert_called_once()
 
 def test_transient_dns_failure_does_not_rotate_live_tunnel(recovery,monkeypatch):
     monkeypatch.setattr(supervisor,'healthy',lambda url:'127.0.0.1' in url);supervisor.cycle(0)
@@ -144,6 +163,37 @@ def test_package_revision_ignores_tests_but_tracks_runtime_files(tmp_path,monkey
     assert supervisor.package_revision('https://api.example')==first
     (folder/'ui.js').write_text('second')
     assert supervisor.package_revision('https://api.example')!=first
+
+
+def test_configured_release_origin_changes_package_revision(tmp_path,monkeypatch):
+    monkeypatch.setattr(supervisor,'ROOT',tmp_path)
+    (tmp_path/'extension').mkdir()
+    first=supervisor.package_revision('https://temporary.example')
+    (tmp_path/'.env').write_text('EXTSECURE_RELEASE_ORIGIN=https://fixed.example\n')
+    assert supervisor.package_revision('https://temporary.example')!=first
+
+
+def test_publisher_preserves_configured_stable_origin(tmp_path,monkeypatch):
+    import scripts.start_public_api as release
+    monkeypatch.setattr(supervisor,'ROOT',tmp_path);monkeypatch.setattr(supervisor,'STATE',tmp_path)
+    (tmp_path/'.env').write_text('EXTSECURE_RELEASE_ORIGIN=https://stable.example.ts.net\n')
+    archive=tmp_path/'release.zip';archive.write_bytes(b'test archive')
+    packaged=Mock(return_value=archive);monkeypatch.setattr(release,'package',packaged)
+    monkeypatch.setattr(supervisor,'healthy',lambda _:True)
+    monkeypatch.setattr(supervisor,'package_revision',lambda _:'revision')
+    supervisor.publish_package('https://temporary.example')
+    packaged.assert_called_once_with('https://stable.example.ts.net',fixed=True)
+    assert (tmp_path/'package-origin.txt').read_text()=='https://temporary.example'
+
+
+def test_publisher_never_silently_replaces_unavailable_fixed_origin(tmp_path,monkeypatch):
+    import scripts.start_public_api as release
+    monkeypatch.setattr(supervisor,'ROOT',tmp_path)
+    (tmp_path/'.env').write_text('EXTSECURE_RELEASE_ORIGIN=https://fixed.example\n')
+    packaged=Mock();monkeypatch.setattr(release,'package',packaged)
+    monkeypatch.setattr(supervisor,'healthy',lambda _:False)
+    with pytest.raises(RuntimeError,match='not replaced'):supervisor.publish_package('https://temporary.example')
+    packaged.assert_not_called()
 
 
 def test_healthy_interval_clears_stale_1033_failure_streak(recovery,monkeypatch):

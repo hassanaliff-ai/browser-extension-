@@ -12,6 +12,7 @@ a,.workflow-icon{color:var(--accent)}
 .attention-strip,.notice.warning{background:#f8ebe5;border-color:#dec4bc;color:#76382f}
 .tag.medium,.tag.pending,.tag.pending_review,.tag.blocked,.tag.queued,.tag.acknowledged{background:#f8e9e0;color:#814431}
 .connection-chip.checking{background:#f8e9e0;border-color:#dec4bc;color:#814431}
+.connection-chip.update_required{background:#f8e9e0;border-color:#dec4bc;color:#814431}
 .popup{background:var(--canvas)}
 .chart .mainline{stroke:var(--accent)}
 .chart .riskline{stroke-dasharray:4 3}
@@ -54,6 +55,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 [data-theme=dark] .connection-chip.ready{background:#253f34;border-color:#486958;color:#bfe8cf}
 [data-theme=dark] .connection-chip.offline{background:#472c39;border-color:#805464;color:#ffc1cd}
 [data-theme=dark] .connection-chip.checking{background:#47332a;border-color:#785348;color:#ffd0b7}
+[data-theme=dark] .connection-chip.update_required{background:#47332a;border-color:#785348;color:#ffd0b7}
 [data-theme=dark] .chart text{fill:#b1bdc9}
 [data-theme=dark] .chart .gridline{stroke:#414652}
 [data-theme=dark] .chart .riskline{stroke:#f395a6}

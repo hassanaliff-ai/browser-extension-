@@ -71,6 +71,21 @@ test('Pending access requests render an initially visible required approval dura
  finally{chrome.runtime.sendMessage=original;}
 });
 
+test('Website access explains an outdated running backend instead of hiding self-review failure',async()=>{
+ const original=chrome.runtime.sendMessage;
+ chrome.runtime.sendMessage=async message=>message.type==='HEALTH'?{ok:true,data:{status:'update_required',api_origin:'https://public.example'}}:original(message);
+ try{await navigate('access');assert.match(app.innerHTML,/older website approval permissions/);assert.match(app.innerHTML,/Reloading Chrome alone/);}
+ finally{chrome.runtime.sendMessage=original;}
+});
+
+test('Administrator website review form includes self and peer requests with old API queue flags',async()=>{
+ const original=chrome.runtime.sendMessage,originalRole=profile.role;
+ profile.role='administrator';
+ chrome.runtime.sendMessage=async message=>message.path==='/api/access/requests'?{ok:true,data:['test-head','another-admin'].map((requester,i)=>({id:'admin-'+i,target:'https://example.com/'+i,requester,requester_role:'administrator',status:'pending',can_review:false,expires_at:new Date(Date.now()+86400000).toISOString()}))}:original(message);
+ try{await navigate('access');assert.match(app.innerHTML,/value="admin-0"/);assert.match(app.innerHTML,/value="admin-1"/);assert.match(app.innerHTML,/Approve request/);assert.match(app.innerHTML,/Reject request/);}
+ finally{profile.role=originalRole;chrome.runtime.sendMessage=original;}
+});
+
 test('Account review renders the requested role as the initial assignment',async()=>{
  const original=chrome.runtime.sendMessage;
  chrome.runtime.sendMessage=async message=>message.path==='/api/admin/registrations'?{ok:true,data:[{username:'test-manager',role:'manager',status:'pending_review'}]}:original(message);

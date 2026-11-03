@@ -21,6 +21,7 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'API update required':'يلزم تحديث واجهة API',
  'Change device access':'تغيير صلاحية الجهاز',
  'Allow ExtSecure activity on this device.':'السماح بنشاط ExtSecure على هذا الجهاز.',
  'Request administrator approval for this device.':'طلب موافقة المسؤول لهذا الجهاز.',

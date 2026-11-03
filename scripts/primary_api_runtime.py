@@ -3,6 +3,7 @@ from pathlib import Path
 import json,os,subprocess,sys,time
 import httpx
 from activate_postgresql import powershell
+from alba_security.permissions import WEBSITE_ACCESS_POLICY
 
 ROOT=Path(__file__).resolve().parents[1]
 PORT=8765
@@ -48,7 +49,14 @@ def start_api(values):
         for _ in range(50):
             if child.poll() is not None:break
             try:
-                if client.get(ORIGIN+'/health').json().get('service')==SERVICE_NAME:return
+                response=client.get(ORIGIN+'/health')
+                data=response.json()
+                if response.status_code==200 and data.get('service')==SERVICE_NAME and data.get('website_access_policy')==WEBSITE_ACCESS_POLICY:return
             except (httpx.HTTPError,ValueError):pass
             time.sleep(.5)
-    raise RuntimeError('Primary API did not become ready; inspect its private log')
+    # Retire only the child this function just created when readiness fails.
+    if child.poll() is None:
+        child.terminate()
+        try:child.wait(timeout=5)
+        except subprocess.TimeoutExpired:child.kill();child.wait(timeout=5)
+    raise RuntimeError('Primary API did not load the current website-access policy; inspect its private log')

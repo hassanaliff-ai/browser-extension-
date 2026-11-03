@@ -373,17 +373,18 @@ async function settings(){const storage=['head_administrator','administrator'].i
 
 async function access(){
 
- const [rows,whitelist]=await Promise.all([api('access/requests'),api('access/whitelist')]);pageData={rows,whitelist};
+ const [rows,whitelist,health]=await Promise.all([api('access/requests'),api('access/whitelist'),send({type:'HEALTH'}).catch(()=>({status:'offline'}))]);pageData={rows,whitelist};
+ const deploymentNotice=health?.status==='update_required'?notice(connectionMessage(health),'warning'):'';
 
- const pending=reviewableAccessRequests(rows);
+ const pending=reviewableAccessRequests(rows,Date.now(),state.profile);
 
  const request=`<section class="panel"><h2>Request access</h2>${form('access-request',field('Destination','target','url','','required maxlength="2048" placeholder="https://example.com/approved-path"')+textarea('Request reason','reason','','required minlength="8" maxlength="1000"'),'Request access')}</section>`;
 
  const review=`<section class="panel"><div class="section-head"><h2>Review request</h2><span class="meta"><bdi>${number(pending.length)}</bdi> <span>Awaiting review</span></span></div>${pending.length?form('access-review',select('Select request','request_id',pending.map(r=>[r.id,r.target+' · '+r.requester]))+select('Decision','decision',[['approve','Approve request'],['reject','Reject request']])+select('Approval duration','duration',[['24','24 hours'],['168','7 days'],['forever','Forever (whitelist)']],'','required')+reason()+check('Confirm you have reviewed the destination and the business need.','confirmed',false,true),'Submit decision'):empty('No pending requests','Administrators can review their own and all other website requests. Managers can review normal-user requests.')}</section>`;
 
- const help=`<section class="panel help-copy"><h2>How access works</h2><p><strong>Website stays blocked until approval.</strong></p><p>Temporary approval allows repeat visits for 24 hours or 7 days. After expiry, request access again. Forever adds the URL to the shared whitelist until revoked.</p><p>The exact scheme, host, port and path are approved. Query strings and fragments are not stored in approval requests.</p><p>Managing website approval does not change risk scores or suppress threat alerts.</p></section>`;
+ const help=`<section class="panel help-copy"><h2>How access works</h2><p><strong>Website stays blocked until approval.</strong></p><p>Administrators can review their own and all other website requests. Managers can review normal-user requests.</p><p>Temporary approval allows repeat visits for 24 hours or 7 days. After expiry, request access again. Forever adds the URL to the shared whitelist until revoked.</p><p>The exact scheme, host, port and path are approved. Query strings and fragments are not stored in approval requests.</p><p>Managing website approval does not change risk scores or suppress threat alerts.</p></section>`;
 
- return `<div class="task-grid">${can('access')?review:request}<div class="task-aside">${can('access')?request:''}${help}</div></div><section class="panel"><h2>Access requests</h2>${table(rows,[['Destination',r=>`<bdi class="code">${esc(r.target)}</bdi>`],['Requester',r=>`${evidence(r.requester)}<div class="meta">${esc(translate(({normal_user:'Normal user',manager:'Manager',administrator:'Administrator',head_administrator:'Head of Administrator'})[r.requester_role]??r.requester_role))}</div>`],['Status',r=>tag(r.status)+(r.decision?`<div class="meta">${esc(translate(r.decision))}</div>`:'')],['Reason','reason'],['Requested',r=>esc(date(r.created_at))],['Expires',r=>r.permanent?esc(translate('Forever')):esc(date(r.expires_at))]])}</section>${websiteWhitelistPanel(whitelist)}`;
+ return deploymentNotice+`<div class="task-grid">${can('access')?review:request}<div class="task-aside">${can('access')?request:''}${help}</div></div><section class="panel"><h2>Access requests</h2>${table(rows,[['Destination',r=>`<bdi class="code">${esc(r.target)}</bdi>`],['Requester',r=>`${evidence(r.requester)}<div class="meta">${esc(translate(({normal_user:'Normal user',manager:'Manager',administrator:'Administrator',head_administrator:'Head of Administrator'})[r.requester_role]??r.requester_role))}</div>`],['Status',r=>tag(r.status)+(r.decision?`<div class="meta">${esc(translate(r.decision))}</div>`:'')],['Reason','reason'],['Requested',r=>esc(date(r.created_at))],['Expires',r=>r.permanent?esc(translate('Forever')):esc(date(r.expires_at))]])}</section>${websiteWhitelistPanel(whitelist)}`;
 
 }
 
@@ -587,7 +588,7 @@ app.addEventListener('submit',async event=>{
 
     else if(action==='access-request'){const target=privateTarget(data.target,true);const permission=await api('access/check','POST',{target});if(permission.allowed){await renderView();toast(translate('This URL is already approved. No new request is needed.'));}else{await commit('access/requests',{target,reason:data.reason});toast(translate('Access request sent. The website remains blocked until approval.'));}}
 
-    else if(action==='access-review'){if(!data.confirmed)throw new Error('Confirm you have reviewed the destination and the business need.');const row=pageData.rows.find(r=>r.id===data.request_id);if(!row)throw new Error('Refresh the request list first.');await commit('access/requests/'+row.id+'/review',accessReviewBody(row,data));}
+    else if(action==='access-review'){if(!data.confirmed)throw new Error('Confirm you have reviewed the destination and the business need.');const row=pageData.rows.find(r=>r.id===data.request_id);if(!row)throw new Error('Refresh the request list first.');try{await commit('access/requests/'+row.id+'/review',accessReviewBody(row,data));}catch(error){if(error.status===403&&row.can_review!==true&&['head_administrator','administrator'].includes(state.profile?.role))throw new Error('The running API still requires a higher-role reviewer for this request. Your decision was not saved. The website approval policy must be updated on the API before administrator self-review works.');throw error;}}
 
     else if(action==='access-revoke')await commit('access/whitelist/'+data.entry_id+'/revoke',{reason:data.reason});
 

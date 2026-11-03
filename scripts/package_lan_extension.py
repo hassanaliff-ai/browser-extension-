@@ -8,14 +8,15 @@ def build(root,host,port,public_certificate,output):
     with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as package:
         for file in sorted((root/'extension').rglob('*')):
             relative=file.relative_to(root/'extension')
+            if relative.as_posix()=='INSTALL ON ANOTHER DEVICE.txt':continue
             if not file.is_file() or any(part in {'tests','node_modules','_metadata','__pycache__'} or part.startswith('.') for part in relative.parts):continue
             data=file.read_bytes()
             if relative.as_posix()=='core.js':
                 data=re.sub(r"export const API_ORIGIN = '[^']+';",f"export const API_ORIGIN = '{origin}';",data.decode()).encode()
             elif relative.as_posix()=='manifest.json':
-                manifest=json.loads(data);manifest['content_security_policy']['extension_pages']=manifest['content_security_policy']['extension_pages'].replace('connect-src http://127.0.0.1:8765 http://localhost:8765;',f'connect-src {origin};');data=json.dumps(manifest,indent=2).encode()
+                manifest=json.loads(data);manifest['content_security_policy']['extension_pages']=re.sub(r'connect-src [^;]+;',f'connect-src {origin};',manifest['content_security_policy']['extension_pages']);data=json.dumps(manifest,indent=2).encode()
             elif relative.as_posix()=='rules/navigation.json':
-                rules=json.loads(data);rules.append({'id':3,'priority':200,'action':{'type':'allow'},'condition':{'regexFilter':'^'+re.escape(origin)+'/','resourceTypes':['main_frame'],'isUrlFilterCaseSensitive':True}});data=json.dumps(rules).encode()
+                rules=[r for r in json.loads(data) if r['id']!=3];rules.append({'id':3,'priority':200,'action':{'type':'allow'},'condition':{'regexFilter':'^'+re.escape(origin)+'/','resourceTypes':['main_frame'],'isUrlFilterCaseSensitive':True}});data=json.dumps(rules).encode()
             elif relative.as_posix()=='workspace-kit.js':data=data.replace(b'http://127.0.0.1:8765',origin.encode())
             package.writestr(relative.as_posix(),data)
         package.write(public_certificate,'ExtSecure API Trust Certificate.cer')

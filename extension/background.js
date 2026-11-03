@@ -1,7 +1,7 @@
 import {deviceControlRequest,executeDeviceCommands} from './device-controls.js';
 import {applyExtensionControls} from './extension-controls.js';
 import {validateLogo,logoKey} from './account-logo.js';
-import {API_ORIGIN, VERSION, WORKER_CAPABILITIES, privateTarget, safeApiPath, apiError} from './core.js';
+import {API_ORIGIN, VERSION, WEBSITE_ACCESS_POLICY, WORKER_CAPABILITIES, privateTarget, safeApiPath, apiError} from './core.js';
 import {registrationReceipt} from './registration-flow.js';
 import {registerNavigationGate} from './access.js';
 import {containThreat,reconcileThreatHost,restoreThreatRules} from './threat-containment.js';
@@ -220,6 +220,8 @@ export async function handleMessage(message,sender={}) {
       if(!response.ok)return {...metadata,status:'offline',reason:'http_error',http_status:response.status};
       let data;try{data=await response.json();}catch{return {...metadata,status:'offline',reason:'invalid_response'};}
       const ready=data?.status==='ok'&&['TestAPI','ExtSecure API'].includes(data.service);
+      if(ready&&data.website_access_policy!==WEBSITE_ACCESS_POLICY)
+        return {...metadata,status:'update_required',reason:'website_access_policy_outdated'};
       return {...metadata,status:ready?'ready':'offline',reason:ready?null:'unexpected_service'};
     } catch(error){return {...metadata,status:'offline',reason:['TimeoutError','AbortError'].includes(error.name)?'timeout':'network_error'};}
   }

@@ -81,14 +81,15 @@ def test_administrator_self_review_is_confirmed_audited_and_enforced(roles, deci
         assert event.details['confirmed'] is True
 
 
-def test_administrator_can_review_another_administrators_request(roles, system):
+@pytest.mark.parametrize('decision', ['temporary', 'reject', 'whitelist'])
+def test_administrator_can_review_another_administrators_request(roles, system, decision):
     client, _, headers, _ = system
     admin = roles[2]['administrator']
     request = create(client, admin, 'https://example.com/peer-review')
     # The configured reviewer is a distinct approved administrator.
     assert client.get('/api/admin/me', headers=headers['reviewer']).json()['role'] == 'administrator'
-    assert review(client, headers['reviewer'], request, 'temporary').status_code == 200
-    assert client.post('/api/access/check', headers=admin, json={'target':request['target']}).json()['allowed'] is True
+    assert review(client, headers['reviewer'], request, decision).status_code == 200
+    assert client.post('/api/access/check', headers=admin, json={'target':request['target']}).json()['allowed'] is (decision != 'reject')
 
 def test_pending_and_rejected_destinations_stay_blocked(roles):
     client, _, h, _ = roles
@@ -217,3 +218,18 @@ def test_requests_are_audited_and_throttled(roles):
     assert client.post('/api/access/requests',headers=h['normal_user'],json={'target':URL,'reason':REASON}).status_code == 429
     with app.state.session_factory() as db:
         assert len(list(db.scalars(select(GovernanceAudit).where(GovernanceAudit.area == 'website_access')))) == 20
+
+
+def test_pending_self_request_stays_visible_before_newer_completed_history(roles):
+    client, app, h, _ = roles
+    own = create(client, h['administrator'], 'https://example.com/needs-admin-review')
+    with app.state.session_factory() as db:
+        for i in range(205):
+            db.add(WebsiteRequest(requester='normal_user', target=f'https://example.com/history/{i}',
+                reason=REASON, status='rejected', decision='reject', reviewer='administrator',
+                expires_at=utc_now()+timedelta(days=1)))
+        db.commit()
+    rows = client.get('/api/access/requests', headers=h['administrator']).json()
+    assert len(rows) == 200
+    assert rows[0]['id'] == own['id'] and rows[0]['can_review'] is True
+    assert review(client, h['administrator'], own, 'reject').status_code == 200

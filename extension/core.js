@@ -1,7 +1,12 @@
 export const API_ORIGIN = 'http://127.0.0.1:8765';
+export const WEBSITE_ACCESS_POLICY = 'administrator-self-review-v1';
 
-export function reviewableAccessRequests(rows, now=Date.now()) {
-  return rows.filter(r=>r.status==='pending' && r.can_review===true && Date.parse(r.expires_at)>now);
+export function reviewableAccessRequests(rows, now=Date.now(), profile=null) {
+  // Display administrator controls consistently across backend upgrades. This
+  // is presentation only: every submitted decision is authorized by the API.
+  const administrator=['head_administrator','administrator'].includes(profile?.role);
+  return rows.filter(r=>r.status==='pending' && Date.parse(r.expires_at)>now &&
+    (r.can_review===true || (administrator && ['head_administrator','administrator','manager','normal_user'].includes(r.requester_role))));
 }
 export function accessReviewBody(request, form) {
   if(form.confirmed!==true && form.confirmed!=='on')throw new Error('Confirm you have reviewed the destination and the business need.');
@@ -12,7 +17,7 @@ export function accessReviewBody(request, form) {
   if(!['24','168'].includes(form.duration))throw new Error('Choose 24 hours, 7 days or Forever.');
   return {...body,decision:'temporary',duration_hours:Number(form.duration)};
 }
-export const VERSION = '0.8.51';
+export const VERSION = '0.8.52';
 export const WORKER_CAPABILITIES = Object.freeze(['device-enrollment','chrome-inventory','device-access-choice','local-inline-warnings']);
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;
 export const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Unknown'];

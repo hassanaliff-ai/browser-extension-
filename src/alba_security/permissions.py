@@ -7,6 +7,7 @@ ROLE_LABELS = {
 }
 
 ROLE_LEVELS = {'normal_user': 0, 'manager': 1, 'administrator': 2, 'head_administrator': 3}
+WEBSITE_ACCESS_POLICY = 'administrator-self-review-v1'
 
 def can_approve_role(reviewer_role, requester_role, *, own=False):
     if reviewer_role not in ROLE_LEVELS or requester_role not in ROLE_LEVELS:

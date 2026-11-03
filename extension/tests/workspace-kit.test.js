@@ -2,6 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {connectionBadge,connectionMessage,connectionPanel,filterRecords,requestedRole,updateAccountReview,resetDestinationReview,validateReportPeriod,safeActiveTab,accountAccessBody,resetAccountAccessReview} from '../workspace-kit.js';
 
+test('Outdated backend permissions have a distinct deployment warning',()=>{
+ assert.match(connectionBadge('update_required'),/API update required/);
+ assert.match(connectionMessage({status:'update_required',api_origin:'https://public.example'}),/Restart the API on the host/);
+ assert.match(connectionMessage({status:'update_required'}),/Reloading Chrome alone does not update/);
+});
+
 test('Connection diagnostics distinguish localhost packages from public failures',()=>{
  assert.match(connectionMessage({status:'offline',api_origin:'http://127.0.0.1:8765',reason:'network_error'}),/another device.*public HTTPS ZIP/);
  const publicResult={status:'offline',api_origin:'https://public.example',reason:'timeout'};

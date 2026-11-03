@@ -6,7 +6,7 @@ from urllib.parse import urlsplit, urlunsplit
 import idna
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import DateTime, Integer, String, Text, func, select, update
+from sqlalchemy import DateTime, Integer, String, Text, case, func, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from alba_security.governance import audit
@@ -126,7 +126,9 @@ def install_website_access(app, session_scope, require_actor, directory):
         query = select(WebsiteRequest)
         if role(db, actor) == 'normal_user':
             query = query.where(WebsiteRequest.requester == actor)
-        return [request_record(db, r, actor) for r in db.scalars(query.order_by(WebsiteRequest.created_at.desc()).limit(200))]
+        # Actionable requests must not disappear behind newer completed history.
+        priority = case(((WebsiteRequest.status == 'pending') & (WebsiteRequest.expires_at > utc_now()), 0), else_=1)
+        return [request_record(db, r, actor) for r in db.scalars(query.order_by(priority, WebsiteRequest.created_at.desc(), WebsiteRequest.id).limit(200))]
 
     @app.post('/api/access/requests', status_code=201)
     def request_access(payload: Create, actor: str = Actor, db: Session = DB):

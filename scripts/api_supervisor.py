@@ -8,6 +8,16 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT/'src')]
 STATE=ROOT/'.private/api-supervisor'
 
+def backend_needs_update():
+    """A reachable old process must not masquerade as a successfully deployed API."""
+    from alba_security.permissions import WEBSITE_ACCESS_POLICY
+    try:
+        with httpx.Client(timeout=3,trust_env=False) as client:
+            response=client.get('http://127.0.0.1:8765/health')
+        data=response.json()
+        return response.status_code==200 and data.get('service')=='TestAPI' and data.get('website_access_policy')!=WEBSITE_ACCESS_POLICY
+    except (httpx.HTTPError,ValueError):return False
+
 def healthy(url):
     try:
         with httpx.Client(timeout=5,trust_env=False) as client:
@@ -49,6 +59,7 @@ def public_tunnel_expired(state):
 def package_revision(origin):
     """Detect changed runtime files even when the public URL stays the same."""
     digest=hashlib.sha256(origin.encode())
+    digest.update((dotenv_values(ROOT/'.env').get('EXTSECURE_RELEASE_ORIGIN') or '').encode())
     for file in sorted((ROOT/'extension').rglob('*')):
         relative=file.relative_to(ROOT/'extension')
         if not file.is_file() or any(p in {'tests','node_modules','_metadata','__pycache__'} or p.startswith('.') for p in relative.parts):continue
@@ -100,7 +111,10 @@ def route_recovery_due(state, *, now=None):
 def publish_package(origin):
     from scripts.start_public_api import package
     import shutil
-    archive=package(origin)
+    release_origin=(dotenv_values(ROOT/'.env').get('EXTSECURE_RELEASE_ORIGIN') or origin).rstrip('/')
+    if release_origin!=origin and not healthy(release_origin):
+        raise RuntimeError('Configured release API is unavailable; the published address was not replaced')
+    archive=package(release_origin,fixed=release_origin.endswith('.ts.net'))
     # This host's workspace mirror is optional; it contains no runtime credentials.
     configured=dotenv_values(ROOT/'.env').get('EXTSECURE_WORKSPACE_MIRROR')
     mirror=Path(configured) if configured else ROOT.parent/'OneDrive/Documents/ChatGPT/Alba Project'
@@ -114,6 +128,9 @@ def cycle(failures):
     from scripts.start_public_api import start
     from scripts.stop_public_api import stop
     local=healthy('http://127.0.0.1:8765')
+    # Report older permissions without interrupting a reachable API. The operator
+    # explicitly controls when backend updates are activated.
+    update_required=local and backend_needs_update()
     if not local:
         process=api_process()
         failures=failures+1 if process else 3
@@ -143,7 +160,9 @@ def cycle(failures):
     revision_file=STATE/'package-revision.txt'
     if public and (not origin_file.exists() or origin_file.read_text(encoding='utf-8')!=state['origin'] or
                    not revision_file.exists() or revision_file.read_text(encoding='utf-8')!=package_revision(state['origin'])):publish_package(state['origin'])
-    checkpoint(state='running' if public else 'waiting_for_public_network',local_api=True,public_api=public,origin=state['origin'],local_ai_ready=local_ai_ready)
+    checkpoint(state='backend_update_required' if update_required else 'running' if public else 'waiting_for_public_network',
+               local_api=True,public_api=public,origin=state['origin'],local_ai_ready=local_ai_ready,
+               update_required=update_required)
     return failures
 
 def lock_instance():

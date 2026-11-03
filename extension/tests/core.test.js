@@ -41,6 +41,15 @@ test('Approval controls include authorized head self requests and exclude unauth
  assert.deepEqual(reviewableAccessRequests(rows,now).map(r=>r.id),['self']);
 });
 
+test('Administrator self and peer controls remain visible across API permission upgrades',()=>{
+ const now=Date.parse('2026-11-03T12:00:00Z');
+ const base={status:'pending',expires_at:'2026-11-04T00:00:00Z',can_review:false,requester_role:'administrator'};
+ const rows=[{...base,id:'self',requester:'basel'},{...base,id:'peer',requester:'another-admin'},
+   {...base,id:'inactive',requester_role:null},{...base,id:'expired',expires_at:'2026-11-02T00:00:00Z'}];
+ for(const role of ['administrator','head_administrator'])assert.deepEqual(reviewableAccessRequests(rows,now,{role,username:'basel'}).map(r=>r.id),['self','peer']);
+ for(const role of ['manager','normal_user'])assert.deepEqual(reviewableAccessRequests(rows,now,{role}),[]);
+});
+
 const {accessReviewBody}=await import('../core.js');
 test('Approval options send 24-hour and 7-day reusable grants or an explicit permanent whitelist',()=>{
  const row={revision:3},reason='Verified website and business need';

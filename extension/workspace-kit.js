@@ -41,12 +41,13 @@ export function filterRecords(container,query) {
 }
 
 export function connectionBadge(status='unchecked') {
-  const label={ready:'API connected',offline:'API unavailable',checking:'Checking API…',unchecked:'Check API connection'}[status]??'Check API connection';
+  const label={ready:'API connected',update_required:'API update required',offline:'API unavailable',checking:'Checking API…',unchecked:'Check API connection'}[status]??'Check API connection';
   return `<button type="button" class="connection-chip ${esc(status)}" data-action="check-connection" aria-label="Check API connection"><span class="dot" aria-hidden="true"></span><span>${esc(label)}</span></button>`;
 }
 
 export function connectionMessage(result={}) {
   const origin=result.api_origin??API_ORIGIN;
+  if(result.status==='update_required')return 'The API is reachable but still uses older website approval permissions. Restart the API on the host, then refresh Website Access. Reloading Chrome alone does not update the backend. '+origin;
   if(result.status==='ready')return 'The configured API is reachable: '+origin;
   const reason={timeout:'The connection timed out.',network_error:'Chrome could not connect to this address.',http_error:'The server returned HTTP '+(result.http_status??'error')+'.',invalid_response:'The server did not return a valid health response.',unexpected_service:'This address did not identify itself as ExtSecure TestAPI.'}[result.reason]??'The API could not be verified.';
   const local=/^http:\/\/(127\.0\.0\.1|localhost)(?::\d+)?$/.test(origin);

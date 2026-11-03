@@ -11,6 +11,7 @@ from fastapi import HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import Field, field_validator
+from alba_security.permissions import WEBSITE_ACCESS_POLICY
 
 import main as services
 from .app import CheckRequest, RdapRequest, registered_domain_from_origin
@@ -47,7 +48,8 @@ def install_primary_routes(application):
 
     @application.get('/',tags=['Health'])
     @application.get('/health',tags=['Health'])
-    def health():return {'status':'ok','service':SERVICE_NAME,'api_provider':'SecureScope'}
+    def health():return {'status':'ok','service':SERVICE_NAME,'api_provider':'SecureScope',
+                        'website_access_policy':WEBSITE_ACCESS_POLICY}
 
     @application.get('/extension/capabilities',tags=['Integration'])
     def capabilities(request:Request,response:Response):

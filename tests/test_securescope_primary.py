@@ -19,7 +19,8 @@ def stage(application):
 
 def test_secure_scope_is_primary_and_older_clients_remain_compatible(extension_client):
  client,monitor,application=extension_client;stage(application)
- assert client.get('/health').json()=={'status':'ok','service':'TestAPI','api_provider':'SecureScope'}
+ assert client.get('/health').json()=={'status':'ok','service':'TestAPI','api_provider':'SecureScope',
+                                      'website_access_policy':'administrator-self-review-v1'}
  caps=client.get('/extension/capabilities').json()
  assert caps['api_provider']=='SecureScope' and caps['scan_endpoint']=='/api/v1/check'
  assert caps['monitoring_available']
