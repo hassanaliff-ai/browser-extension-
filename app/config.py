@@ -1,6 +1,7 @@
 """Application settings loaded from environment variables / .env."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=Path(__file__).resolve().parents[1] / '.env', env_file_encoding="utf-8", extra="ignore"
     )
 
     vt_api_key: str = Field(..., min_length=1, validation_alias="VT_API_KEY")
