@@ -1,4 +1,5 @@
 import {deviceControlRequest,executeDeviceCommands} from './device-controls.js';
+import {probeApi} from './api-health.js';
 import {applyExtensionControls} from './extension-controls.js';
 import {validateLogo,logoKey} from './account-logo.js';
 import {API_ORIGIN, VERSION, WEBSITE_ACCESS_POLICY, WORKER_CAPABILITIES, privateTarget, safeApiPath, apiError} from './core.js';
@@ -96,6 +97,7 @@ const gate = registerNavigationGate(request,loadSession,{reconcileThreatHost});
 chrome.runtime.onStartup.addListener(()=>void restoreThreatRules().catch(()=>{}));
 chrome.runtime.onInstalled.addListener(()=>void restoreThreatRules().catch(()=>{}));
 let syncQueue=Promise.resolve();
+let healthCheck=null;
 let connectQueue=Promise.resolve();
 const inventoryEventsRegistered=new Set();
 function registerInventoryEvents() {
@@ -214,16 +216,8 @@ export async function handleMessage(message,sender={}) {
   }
   if(message.type==='HEALTH') {
     // Use this package's configured endpoint, never a caller-supplied URL.
-    const metadata={api_origin:API_ORIGIN,checked_at:new Date().toISOString()};
-    try {
-      const response=await fetch(API_ORIGIN+'/health',{method:'GET',headers:{Accept:'application/json'},credentials:'omit',cache:'no-store',redirect:'error',signal:AbortSignal.timeout(12000)});
-      if(!response.ok)return {...metadata,status:'offline',reason:'http_error',http_status:response.status};
-      let data;try{data=await response.json();}catch{return {...metadata,status:'offline',reason:'invalid_response'};}
-      const ready=data?.status==='ok'&&['TestAPI','ExtSecure API'].includes(data.service);
-      if(ready&&data.website_access_policy!==WEBSITE_ACCESS_POLICY)
-        return {...metadata,status:'update_required',reason:'website_access_policy_outdated'};
-      return {...metadata,status:ready?'ready':'offline',reason:ready?null:'unexpected_service'};
-    } catch(error){return {...metadata,status:'offline',reason:['TimeoutError','AbortError'].includes(error.name)?'timeout':'network_error'};}
+    if(!healthCheck)healthCheck=probeApi(API_ORIGIN,WEBSITE_ACCESS_POLICY).finally(()=>{healthCheck=null;});
+    return healthCheck;
   }
   if (message.type === 'PREFERENCES') return normalizePreferences((await chrome.storage.local.get('preferences')).preferences);
   if (message.type === 'SAVE_PREFERENCES') {

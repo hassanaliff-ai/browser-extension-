@@ -1,7 +1,7 @@
 {
   "name": "extsecure-extension",
   "private": true,
-  "version": "0.8.52",
+  "version": "0.8.53",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",

@@ -14,6 +14,8 @@ test('Connection diagnostics distinguish localhost packages from public failures
  assert.match(connectionMessage(publicResult),/timed out/);
  assert.match(connectionMessage(publicResult),/https:\/\/public.example/);
  assert.doesNotMatch(connectionMessage(publicResult),/start TestAPI/);
+ assert.doesNotMatch(connectionMessage({...publicResult,api_origin:'https://ken05ghoul.tail75c8f9.ts.net'}),/temporary URL expired/);
+ assert.match(connectionMessage(publicResult),/does not mean your account expired/);
  assert.match(connectionMessage({...publicResult,status:'ready'}),/configured API is reachable/);
  assert.match(connectionMessage({...publicResult,reason:'http_error',http_status:502}),/HTTP 502/);
  const html=connectionPanel('offline',{api_origin:'https://public.example/<script>'});
