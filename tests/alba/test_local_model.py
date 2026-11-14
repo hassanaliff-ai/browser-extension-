@@ -104,6 +104,45 @@ def test_invented_local_evidence_is_rejected(local, monkeypatch):
         write_narrative({}, evidence_codes=())
 
 
+def test_offline_service_has_actionable_private_error(local, monkeypatch):
+    def offline(**kwargs):
+        raise httpx.ConnectError('private connection diagnostics')
+    monkeypatch.setattr('alba_security.model_provider.httpx.Client', offline)
+    with pytest.raises(ReportGenerationError, match='local AI service is offline') as error:
+        write_narrative({})
+    assert 'private connection diagnostics' not in str(error.value)
+
+
+def test_invalid_local_output_retries_once_without_changing_evidence(local):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    client=Mock(provider_name='ollama')
+    client.responses.create.side_effect=[
+        SimpleNamespace(status='completed',output_text='invalid-json'),
+        SimpleNamespace(status='completed',output_text=json.dumps({
+            'summary':'The recorded URL evidence needs investigation; no specific malicious behavior is confirmed.',
+            'evidence_codes':['url_malicious'],'recommendation_codes':['investigate']}))]
+    data={'scan':{'score':80,'severity':'Critical','target_kind':'url','completeness':'partial'}}
+    result=write_narrative(data,client=client,model='local',evidence_codes=['url_malicious'])
+    assert result['source']=='ollama' and client.responses.create.call_count==2
+    assert client.responses.create.call_args_list[0]==client.responses.create.call_args_list[1]
+    assert data['scan']['score']==80 and data['scan']['severity']=='Critical'
+
+
+def test_local_cannot_omit_required_evidence_codes(local, monkeypatch):
+    transport(monkeypatch)
+    with pytest.raises(ReportGenerationError):
+        write_narrative({},evidence_codes=['url_malicious'])
+
+
+@pytest.mark.parametrize('status,message',[(404,'not installed'),(503,'could not complete')])
+def test_service_errors_are_not_retried_or_misreported_as_bad_evidence(local,monkeypatch,status,message):
+    calls=transport(monkeypatch,status=status)
+    with pytest.raises(ReportGenerationError,match=message):
+        write_narrative({})
+    assert len(calls)==1
+
+
 @pytest.mark.parametrize('invalid', [False, True])
 def test_monthly_ml_workflow_uses_local_structured_validation_and_source(system, local, monkeypatch, invalid):
     from alba_security.reports import generate_monthly_report

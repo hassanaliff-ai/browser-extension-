@@ -167,7 +167,7 @@ def test_period_archive_includes_all_alerts_and_summaries_without_raw_targets(sy
         assert totals['alerts_total']==1 and totals['explanations_total']==1
         assert 'PRIVATE' not in json.dumps(archive) and len(archive['alerts'])==1
         payload=PeriodRequest(kind='weekly',period='2026-09-28')
-        model=model_fixture();report=prepare_period_report(db,payload,client=model,model='test-model',now=end)
+        model=model_fixture(codes=['malicious_url']);report=prepare_period_report(db,payload,client=model,model='test-model',now=end)
         assert report.stats['archive']['alerts']==archive['alerts']
         assert prepare_period_report(db,payload,client=model,model='test-model',now=end).id==report.id
         assert model.responses.create.call_count==1

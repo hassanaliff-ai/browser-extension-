@@ -81,7 +81,8 @@ async function request(path, method = 'GET', body, direct = false) {
     if(current.token!==session.token)throw failure('Your sign-in changed. Refresh the extension.',409);
   }
   if(aiGeneration&&response.status===202&&/^[a-f0-9-]{36}$/.test(data.job_id??'')) {
-    for(let poll=0;poll<90;poll++) {
+    // Two bounded local inference attempts can each take up to 150 seconds.
+    for(let poll=0;poll<180;poll++) {
       if((await loadSession()).token!==session.token)throw failure('Your sign-in changed. Refresh the extension.',409);
       const job=await request('/api/ai-jobs/'+data.job_id);
       if(job.state==='completed')return job.result;

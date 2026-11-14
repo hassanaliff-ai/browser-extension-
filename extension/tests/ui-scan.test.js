@@ -44,7 +44,8 @@ test('A submitted file check renders the real not-found explanation and cache st
 test('The same result card displays a completed known file assessment',async()=>{
  result={...result,severity:'Low',score:0,completeness:'complete',file_lookup:{verdict:'clear'},provider_evidence:{provider:'VirusTotal',status:'available',counts:{malicious:0,suspicious:0,harmless:60,undetected:5}}};
  await submit('file-scan',{sha256:'b'.repeat(64)});
- assert.match(app.innerHTML,/No detections reported/);assert.match(app.innerHTML,/tag low/);
+ assert.match(app.innerHTML,/Low risk/);assert.match(app.innerHTML,/tag low/);
+ assert.match(app.innerHTML,/does not guarantee safety/);
  assert.doesNotMatch(app.innerHTML,/class="score"|ExtSecure policy score/);
  assert.doesNotMatch(app.innerHTML,/VirusTotal has no report/);
  await snapshot('known-file');

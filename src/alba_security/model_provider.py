@@ -4,6 +4,7 @@ import threading
 from types import SimpleNamespace
 
 import httpx
+from alba_security.reports import ReportGenerationError
 
 _LOCAL_SLOT = threading.BoundedSemaphore(1)
 LOCAL_ORIGIN = "http://127.0.0.1:11434"
@@ -32,7 +33,7 @@ class LocalModelClient:
         if text is not None:
             payload["format"] = text["format"]["schema"]
         if not _LOCAL_SLOT.acquire(timeout=2):
-            raise RuntimeError("The local reporting model is busy; retry shortly")
+            raise ReportGenerationError("The local AI model is busy. Retry shortly; no result was saved.")
         try:
             # Ignore proxy environment settings: prompts only go to this fixed loopback endpoint.
             with httpx.Client(timeout=httpx.Timeout(150, connect=3), trust_env=False, follow_redirects=False) as client:
@@ -51,6 +52,16 @@ class LocalModelClient:
                 raise ValueError("Model tools are prohibited")
             completed = result.get("done") is True and result.get("done_reason") == "stop"
             return SimpleNamespace(status="completed" if completed else "incomplete", output_text=message.get("content"))
+        except httpx.ConnectError:
+            raise ReportGenerationError("The local AI service is offline. Start the configured local AI runtime and retry; no result was saved.") from None
+        except httpx.TimeoutException:
+            raise ReportGenerationError("The local AI model timed out. Retry when it is ready; no result was saved.") from None
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise ReportGenerationError("The configured local AI model is not installed. Restore it on the API computer and retry; no result was saved.") from None
+            raise ReportGenerationError("The local AI service could not complete the request. Retry shortly; no result was saved.") from None
+        except httpx.HTTPError:
+            raise ReportGenerationError("The local AI connection was interrupted. Retry shortly; no result was saved.") from None
         finally:
             _LOCAL_SLOT.release()
 

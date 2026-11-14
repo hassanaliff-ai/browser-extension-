@@ -39,6 +39,7 @@ try{
  await form.locator('[name="target"]').fill(target+'?secret=not-sent#local');await form.locator('[type="submit"]').click();
  await page.locator('.provider-ratio strong').waitFor();
  assert.equal(await page.locator('.provider-ratio strong').innerText(),'12 / 93');
+ assert.equal(await page.locator('[aria-label="ExtSecure risk classification"]').innerText(),'Critical');
  assert.equal(await page.locator('.results > p.code').innerText(),target);
  assert.equal(await worker.evaluate(()=>pageChecks.at(-1)),target);
  record('Manual detector checks the actual page and shows 12 / 93 with its full checked address');
@@ -50,6 +51,7 @@ try{
  await page.setViewportSize({width:560,height:900});await page.goto('chrome-extension://'+id+'/popup.html');
  await page.locator('[data-action="scan-active"]').click();await page.locator('.provider-ratio strong').waitFor();
  assert.equal(await page.locator('.provider-ratio strong').innerText(),'12 / 93');
+ assert.equal(await page.locator('[aria-label="ExtSecure risk classification"]').innerText(),'Critical');
  assert.equal(await worker.evaluate(()=>pageChecks.at(-1)),target);
  record('Popup current-page checks preserve the page path');
  await page.goto('chrome-extension://'+id+'/console.html#scan');

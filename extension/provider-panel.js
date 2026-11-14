@@ -1,5 +1,12 @@
 import {escapeHtml as esc} from './core.js';
 
+export function policySummary(result={}) {
+ const provider=providerSummary(result);
+ const severity=['Low','Medium','High','Critical'].includes(result.severity)?result.severity:'Unknown';
+ if(provider.tone==='unknown'||severity==='Unknown')return {label:'Unknown',tone:'unknown'};
+ return {label:severity==='Low'?'Low risk':severity,tone:severity.toLowerCase()};
+}
+
 export function providerSummary(result={}) {
  const evidence=result.provider_evidence,counts=evidence?.counts;
  if(evidence?.provider!=='VirusTotal'||evidence.status!=='available')return {label:'Unknown',tone:'unknown',message:'No usable VirusTotal report is available. Unknown is not a safe result.'};

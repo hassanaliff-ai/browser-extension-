@@ -127,6 +127,21 @@ test('An AI job failure never becomes a successful report',async()=>{
  globalThis.fetch=async(url,options)=>options.method==='POST'?new Response(JSON.stringify({job_id:'12345678-1234-1234-1234-123456789abc'}),{status:202}):new Response(JSON.stringify({state:'failed',status_code:502,detail:'Model generation failed'}));
  try{await assert.rejects(handleMessage({type:'API',path:'/api/reports/monthly/generate',method:'POST',body:{year:2026,month:9}}),error=>error.status===502);}finally{globalThis.fetch=previous;}
 });
+
+test('A slower validated AI retry completes without resubmitting the generation',async()=>{
+ reset();store.session={token:'synthetic-ai-token',expires_at:new Date(Date.now()+600000).toISOString()};
+ const previous=fetch,previousTimeout=setTimeout;let posts=0,gets=0;
+ globalThis.setTimeout=(callback,delay,...args)=>previousTimeout(callback,delay===2000?0:delay,...args);
+ globalThis.fetch=async(url,options)=>{
+  assert.equal(options.headers.Authorization,'Bearer synthetic-ai-token');
+  if(options.method==='POST'){posts++;return new Response(JSON.stringify({job_id:'12345678-1234-1234-1234-123456789abc'}),{status:202});}
+  gets++;return new Response(JSON.stringify(gets<=100?{state:'running'}:{state:'completed',result:{narrative:{summary:'Validated retry result'}}}));
+ };
+ try{
+  const result=await handleMessage({type:'API',path:'/api/intelligence/scans/test/explain',method:'POST',body:{}});
+  assert.equal(result.narrative.summary,'Validated retry result');assert.equal(posts,1);assert.equal(gets,101);
+ }finally{globalThis.fetch=previous;globalThis.setTimeout=previousTimeout;}
+});
 test('An expired session during AI polling clears authentication',async()=>{
  reset();store.session={token:'synthetic-ai-token',expires_at:new Date(Date.now()+60000).toISOString()};const previous=fetch;
  globalThis.fetch=async(url,options)=>options.method==='POST'?new Response(JSON.stringify({job_id:'12345678-1234-1234-1234-123456789abc'}),{status:202}):new Response('{}',{status:401});
