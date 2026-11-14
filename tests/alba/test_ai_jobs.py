@@ -72,13 +72,14 @@ def test_only_one_generation_is_queued_at_a_time(system):
 def test_explanation_keeps_consent_and_ownership_checks(system):
     client, app, headers, _ = system
     record = scan(client)
-    app.state.intelligence_llm_client = model_fixture(); app.state.intelligence_model = 'test-model'
+    app.state.intelligence_llm_client = model_fixture(codes=['malicious_url']); app.state.intelligence_model = 'test-model'
     url = '/api/intelligence/scans/' + record['id'] + '/explain'
     rejected = client.post(url, headers={**headers['hasan'], 'Prefer': 'respond-async'}, json={'page_url': 'https://example.com/'})
     assert rejected.status_code == 422
     result = client.post(url, headers={**headers['hasan'], 'Prefer': 'respond-async'}, json={})
     done = finish(client, headers['hasan'], result.json()['job_id'])
     assert done['state'] == 'completed' and done['result']['scan_id'] == record['id']
+    assert done['result']['evidence_codes'] == ['malicious_url']
 
 
 def test_unknown_jobs_are_not_exposed(system):
