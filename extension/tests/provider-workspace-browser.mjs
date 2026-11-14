@@ -20,7 +20,7 @@ try {
   chrome.runtime.sendMessage=async m=>{
    let data={};
    if(m.type==='PREFERENCES')data={language:'en',timeZone:'UTC',animations:false};
-   if(m.type==='STATE')data={version:'0.8.55',capabilities:['device-enrollment','chrome-inventory','device-access-choice'],profile:{username:'fixture-head',role:'head_administrator',role_label:'Head administrator',inventory:{linked:true},views:['Overview','Scan a page','Incident cases']}};
+   if(m.type==='STATE')data={version:'0.8.56',capabilities:['device-enrollment','chrome-inventory','device-access-choice'],profile:{username:'fixture-head',role:'head_administrator',role_label:'Head administrator',inventory:{linked:true},views:['Overview','Scan a page','Incident cases']}};
    if(m.type==='HEALTH')data={status:'ready',api_origin:'https://api.example'};
    if(m.type==='ACTIVE_TAB')data={url:'https://reserved.example/',host:'reserved.example'};
    if(m.type==='SCAN_URL')data=scan;
@@ -52,13 +52,14 @@ try {
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
  checks.push('Incident workspace fits a narrow viewport');
+ await page.setViewportSize({width:560,height:844});
  await page.goto('chrome-extension://'+id+'/popup.html');
  await page.locator('[data-action="scan-active"]').click();
  await page.getByRole('heading',{name:'VirusTotal report'}).waitFor();
  assert.equal(await page.locator('.provider-evidence strong').first().innerText(),'3');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
  await page.screenshot({path:path.join(output,'popup-provider-evidence.png'),fullPage:true});
- checks.push('Compact popup keeps exact provider evidence and risk result visible without overflow');
+ checks.push('Wide popup keeps exact provider evidence and result visible without overflow');
  assert.deepEqual(errors,[]);checks.push('No page JavaScript errors');
  await fs.writeFile(path.join(output,'results.json'),JSON.stringify({passed:true,checks,scope:'Real Chrome UI with fixture transport; not a live provider or authentication test'},null,2));
  console.log(JSON.stringify({passed:true,checks}));
