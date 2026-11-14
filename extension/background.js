@@ -404,8 +404,9 @@ export async function handleMessage(message,sender={}) {
     return safeActiveTab({url});
   }
   if (message.type === 'SCAN_URL') {
-    const target = privateTarget(message.target,!!message.includePath);
+    const target = privateTarget(message.target,message.includePath!==false);
     const data = await request('/api/v1/check','POST',{url:target,source:'manual',checked_at:Date.now()},true);
+    data.checked_url=target;
     await updateBadge(data);
     data.protection=await containThreat(data,target,gate.clear);
     return data;

@@ -21,6 +21,10 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'Check this page path. Uncheck to scan the home page only.':'افحص مسار هذه الصفحة. ألغِ التحديد لفحص الصفحة الرئيسية فقط.',
+ 'The page path is included. Query strings and fragments are removed.':'يشمل الفحص مسار الصفحة. تُحذف معلمات الاستعلام وأجزاء الرابط.',
+ 'Engines reporting malicious results / all engine results':'محركات أبلغت عن نتائج خبيثة / جميع نتائج المحركات',
+ 'The entered page path is checked by default. Query strings and fragments are removed. The displayed address is sent to VirusTotal; SecureScope RDAP receives only the registered domain.':'يُفحص مسار الصفحة المُدخل افتراضياً. تُحذف معلمات الرابط وأجزاؤه. يُرسل العنوان المعروض إلى VirusTotal، ولا يتلقى SecureScope RDAP سوى النطاق المسجل.',
  'This website redirected to a different address. Review and approve the destination shown below.':'أعاد الموقع توجيهك إلى عنوان مختلف. راجع الوجهة المعروضة أدناه ووافق عليها.',
  'Automatic reopening stopped because this website keeps redirecting. Review the destination, then open it manually.':'توقف الفتح التلقائي لأن الموقع يكرر إعادة التوجيه. راجع الوجهة ثم افتحها يدوياً.',
  'VirusTotal result':'نتيجة VirusTotal','VirusTotal report':'تقرير VirusTotal',

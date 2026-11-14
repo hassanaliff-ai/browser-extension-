@@ -107,6 +107,38 @@ def test_manual_native_checks_query_virustotal_each_time(extension_client):
         assert response.json()['provider_evidence']['cached'] is False
     assert lookup.await_count==2
 
+def test_full_page_provider_report_is_not_replaced_with_home_page_report(extension_client):
+    from datetime import datetime
+    target='https://www.amtso.org/check-desktop-phishing-page/'
+    report_id='f19761934518c3993f38ec9968a19b8d4d48f3ae7b1d9d3c4c6eb2b6e578607f'
+    stats={'malicious':12,'suspicious':0,'harmless':48,'undetected':33,'timeout':0}
+    stamp=int(datetime.fromisoformat('2026-11-11T05:24:43+00:00').timestamp())
+    result=_build_result(target,'url',stats,{'last_analysis_date':stamp},report_id)
+    client,monitor,application=extension_client;install_primary_routes(application)
+    application.state.vt.scan_url=AsyncMock(return_value=result)
+    response=client.post('/api/v1/check',json={'url':target,'source':'manual','checked_at':0})
+    assert response.status_code==201
+    application.state.vt.scan_url.assert_awaited_once_with(target)
+    evidence=response.json()['provider_evidence']
+    assert evidence['engine_total']==93 and evidence['counts']['malicious']==12
+    assert evidence['report_id']==report_id and evidence['analysis_at']=='2026-11-11T05:24:43+00:00'
+
+@pytest.mark.anyio
+async def test_provider_client_keeps_full_page_report_identity(respx_mock):
+    import httpx
+    from app.services.virustotal import VirusTotalClient
+    from alba_security.reputation_evidence import scan_provider_evidence
+    from tests.helpers import VT_BASE,url_id
+    target='https://www.amtso.org/check-desktop-phishing-page/'
+    report_id='f19761934518c3993f38ec9968a19b8d4d48f3ae7b1d9d3c4c6eb2b6e578607f'
+    route=respx_mock.get(VT_BASE+'/urls/'+url_id(target)).mock(return_value=httpx.Response(200,json={'data':{'id':report_id,'attributes':{'last_analysis_stats':{'malicious':12,'suspicious':0,'harmless':48,'undetected':33,'timeout':0}}}}))
+    client=VirusTotalClient('test-key')
+    try:
+        result=await client.scan_url(target)
+        assert route.call_count==1 and result.report_id==report_id
+        assert scan_provider_evidence(result)['engine_total']==93
+    finally:await client.aclose()
+
 def test_manual_file_checks_query_provider_and_never_hide_rate_limit_with_cached_result(tmp_path):
     import httpx
     from tests.alba.test_file_lookup import _app,_admin_headers,_body

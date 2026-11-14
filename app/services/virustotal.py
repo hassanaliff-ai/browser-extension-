@@ -55,6 +55,7 @@ class ScanResult:
     engine_stats: dict | None = None
     analysis_date: int | None = None
     categories: tuple[str, ...] = ()
+    report_id: str | None = None
 
 
 MALICIOUS_THRESHOLD = 3
@@ -70,7 +71,7 @@ def verdict_from_stats(stats: dict[str, int]) -> str:
     return "harmless"
 
 
-def _build_result(target: str, scan_type: str, stats: dict[str, int], attributes=None) -> ScanResult:
+def _build_result(target: str, scan_type: str, stats: dict[str, int], attributes=None, report_id=None) -> ScanResult:
     if not isinstance(stats, dict) or any(type(v) is not int or not 0 <= v <= 2_147_483_647 for v in stats.values()):
         raise UpstreamError('Invalid VirusTotal engine counts')
     attributes=attributes or {}
@@ -91,6 +92,7 @@ def _build_result(target: str, scan_type: str, stats: dict[str, int], attributes
         harmless=stats.get("harmless", 0),
         undetected=stats.get("undetected", 0),
         engine_stats=dict(stats), analysis_date=attributes.get('last_analysis_date'), categories=tuple(sorted(categories)),
+        report_id=report_id if isinstance(report_id,str) and re.fullmatch(r'[a-f0-9]{64}',report_id) else None,
     )
 
 
@@ -154,13 +156,15 @@ class VirusTotalClient:
 
         url_id = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
         attributes={}
+        report_id=None
         try:
             payload = await self._request("GET", f"/urls/{url_id}")
             stats = self._stats_from(payload, "last_analysis_stats")
             attributes=payload['data']['attributes']
+            report_id=payload['data'].get('id')
         except NotFoundError:
             stats = await self._submit_and_wait(url)
-        return _build_result(url, "url", stats, attributes)
+        return _build_result(url, "url", stats, attributes,report_id)
 
     async def _submit_and_wait(self, url: str) -> dict[str, int]:
         submitted = await self._request("POST", "/urls", data={"url": url})

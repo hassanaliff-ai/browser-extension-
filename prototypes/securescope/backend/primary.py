@@ -56,7 +56,7 @@ def install_primary_routes(application):
         data=services.extension_capabilities(request,response).model_dump()
         return {**data,'api_provider':'SecureScope','scan_endpoint':'/api/v1/check','rdap_endpoint':'/api/v1/rdap',
                 'reputation_evidence_version':'extsecure-provider-evidence-v1','incident_rules_version':1,
-                'detector_report_mode':'virustotal-direct-v1'}
+                'detector_report_mode':'virustotal-direct-v1','detector_url_scope':'page-path-default-v1'}
 
     @application.post('/api/v1/check',tags=['SecureScope'])
     async def check(payload:BrowserCheckRequest,request:Request):

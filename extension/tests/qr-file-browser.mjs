@@ -23,7 +23,7 @@ try {
    let data=[];
    if(url.endsWith('/api/admin/me'))data=profile;
    if(options.body)qrRequests.push({url,body:JSON.parse(options.body)});
-   if(url.endsWith('/extension/scan'))data={id:'qr-test',target_kind:'url',target_display:'example.com',severity:'Low',score:0,findings:[],completeness:'complete'};
+   if(url.endsWith('/api/v1/check'))data={id:'qr-test',target_kind:'url',target_display:'example.com',severity:'Low',score:0,findings:[],completeness:'complete'};
    if(url.endsWith('/downloads/scan'))data={id:'file-test',target_kind:'download',target_display:'Synthetic hash lookup',severity:'Low',score:0,findings:[],completeness:'complete',file_lookup:{verdict:'clear'}};
    return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
   };
@@ -40,12 +40,12 @@ try {
  assert.equal((await worker.evaluate(()=>qrRequests)).length,0);record('Real PNG QR decoded locally with private URL parameters removed and no API call');
  await page.getByRole('button',{name:'Check QR destination',exact:true}).click();
  await page.getByRole('heading',{name:'VirusTotal result',exact:true}).waitFor();
- let requests=await worker.evaluate(()=>qrRequests);assert.equal(requests.length,1);assert.equal(requests[0].body.target,'https://example.com/');record('Explicit QR check uses real worker and existing URL scanner with origin privacy');
+ let requests=await worker.evaluate(()=>qrRequests);assert.equal(requests.length,1);assert.equal(requests[0].body.url,'https://example.com/invoice');record('QR checking includes the reviewed page path by default');
  assert.equal(context.pages().length,initialPages);assert(context.pages().every(p=>!p.url().startsWith('https://example.com')));record('QR reading and checking never open the destination');
  await page.screenshot({path:path.join(output,'qr-check.png'),fullPage:true});
- await page.locator('[data-form="qr-scan"] [name="includePath"]').check();await page.getByRole('button',{name:'Check QR destination',exact:true}).click();
+ await page.locator('[data-form="qr-scan"] [name="includePath"]').uncheck();await page.getByRole('button',{name:'Check QR destination',exact:true}).click();
  await page.waitForFunction(()=>!document.querySelector('#app [aria-busy="true"]'));
- requests=await worker.evaluate(()=>qrRequests);assert.equal(requests.at(-1).body.target,'https://example.com/invoice');record('Explicit path lookup sends only the reviewed path without private parameters');
+ requests=await worker.evaluate(()=>qrRequests);assert.equal(requests.at(-1).body.url,'https://example.com/');record('Home-page-only QR checking requires an explicit selection');
  await page.locator('[name="qrImage"]').setInputFiles(path.join(root,'tests/fixtures/qr-javascript.png'));
  assert.equal(await page.locator('[data-form="qr-scan"]').count(),0);
  await page.getByRole('button',{name:'Read QR destination',exact:true}).click();

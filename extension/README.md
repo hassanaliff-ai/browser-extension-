@@ -95,8 +95,12 @@ send the cleaned scheme/host/port/path and reason to the backend. Approval histo
 is retained for audit; expiry ends access without deleting the decision history.
 The privacy inventory documents this separate data category.
 
-Reputation scanning remains explicit. URL scans default to origin only; optional
-paths exclude query/fragment/credentials. Files up to 32 MiB are SHA-256 hashed
+Reputation scanning remains explicit. Manual URL, current-page and QR checks
+include the page path by default; uncheck the path option for a home-page-only
+check. Queries/fragments are removed and credentials are rejected. The immediate
+result displays the exact cleaned address checked, plus the provider report's
+engine total, analysis time and report reference when available. Automatic inline
+checks remain origin-only/local. Files up to 32 MiB are SHA-256 hashed
 locally and only the digest is sent. VirusTotal, LLM and webhook credentials
 stay on the backend. Registration needs higher-role approval and TOTP verification.
 

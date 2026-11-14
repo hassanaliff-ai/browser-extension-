@@ -13,6 +13,11 @@ test('Detector verdict follows provider counts rather than the policy score',()=
  assert.equal(providerSummary(report({malicious:0,suspicious:1})).label,'Suspicious detections');
  assert.equal(providerSummary({score:0,severity:'Low'}).label,'Unknown');
 });
+test('The same AMTSO page report displays its original 12 of 93 engine count',()=>{
+ const html=providerPanel({provider_evidence:{provider:'VirusTotal',status:'available',engine_total:93,counts:{malicious:12,suspicious:0,harmless:48,undetected:33},analysis_at:'2026-11-11T05:24:43+00:00',report_id:'f19761934518c3993f38ec9968a19b8d4d48f3ae7b1d9d3c4c6eb2b6e578607f'}},true);
+ assert.match(html,/12 \/ 93/);assert.match(html,/2026-11-11T05:24:43/);
+ assert.doesNotMatch(html,/class="score"|0-100/);
+});
 test('Missing or invalid engine counts are never invented as zero',()=>{
  const html=providerPanel({provider_evidence:{provider:'VirusTotal',status:'unavailable',counts:{malicious:null,suspicious:'4',harmless:-1,undetected:true}}});
  assert.equal((html.match(/<strong data-no-translate>Unavailable/g)??[]).length,4);

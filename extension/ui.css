@@ -18,4 +18,4 @@
 .provider-evidence .risk-pill{display:flex;flex-direction:column;gap:6px;min-width:0;margin:0;padding:12px}
 .provider-evidence .risk-pill span{font-size:12px;line-height:1.4}
 .provider-evidence .risk-pill strong{font-size:20px;line-height:1.2;overflow-wrap:anywhere}
-
+.provider-ratio{display:flex;flex-direction:column;gap:6px}.provider-ratio strong{font-size:32px;line-height:1.2}

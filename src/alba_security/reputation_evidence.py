@@ -13,7 +13,7 @@ CATEGORIES = {
     'manual_review': ('Manual evidence review', 'Investigate the linked scan; unavailable evidence is not a safe result.'),
 }
 
-def provider_evidence(stats, *, cached=False, analysis_date=None, categories=()):
+def provider_evidence(stats, *, cached=False, analysis_date=None, categories=(), report_id=None):
     if not isinstance(stats, dict) or any(type(v) is not int or not 0 <= v <= 2_147_483_647 for v in stats.values()):
         raise ValueError('Invalid provider engine counts')
     # A missing category is not a reported zero. Preserve missing evidence.
@@ -24,13 +24,15 @@ def provider_evidence(stats, *, cached=False, analysis_date=None, categories=())
         date = datetime.fromtimestamp(analysis_date, timezone.utc).isoformat()
     return {'provider':'VirusTotal', 'status':'available' if usable else 'unavailable',
             'counts':counts, 'cached':bool(cached), 'analysis_at':date,
+            'engine_total':sum(stats.values()),
+            'report_id':report_id if isinstance(report_id,str) and len(report_id)==64 and all(c in '0123456789abcdef' for c in report_id) else None,
             'categories':[v for v in ('phishing', 'malware', 'ransomware') if v in categories],
             'mapping':'extsecure-provider-evidence-v1',
             'explanation':'VirusTotal engine counts are evidence. ExtSecure calculates its own policy score; neither is a probability of safety.'}
 
 def scan_provider_evidence(result, *, cached=False):
     stats = result.engine_stats or {name:getattr(result, name) for name in COUNTS}
-    return provider_evidence(stats, cached=cached, analysis_date=result.analysis_date, categories=result.categories)
+    return provider_evidence(stats, cached=cached, analysis_date=result.analysis_date, categories=result.categories,report_id=result.report_id)
 
 def unavailable_provider(reason='unavailable'):
     return {**provider_evidence({}),'reason':reason if reason in {'not_found','rate_limited','provider_auth_failed','lookup_failed','invalid_response','not_configured'} else 'unavailable'}

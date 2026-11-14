@@ -1,4 +1,4 @@
-# SecureScope reputation evidence and incident rules — 0.8.55
+# SecureScope reputation evidence and incident rules — 0.8.58
 
 SecureScope's primary `/api/v1/check` route uses the existing private backend
 VirusTotal client. The operational `extension/` keeps one account, inventory,
@@ -21,6 +21,24 @@ authenticated file check requests a fresh provider report; it does not silently
 substitute a previous cached verdict. Quota and provider errors remain Unknown.
 Saved history remains the original report snapshot rather than a fresh scan.
 Legacy ingestion may still use its existing cache.
+
+Manual checks now include the submitted page path by default. The toolbar's
+current-page action and QR checks use the same default. Queries and fragments
+remain stripped, and credentials are rejected. Home-page-only checking is an
+explicit choice, clearly labelled in the form. The immediate result shows the
+cleaned address actually sent; original page paths are not added to historical
+event metadata. Saved evidence includes the provider's report ID, analysis time
+and total engine count, so reports can be compared without silently substituting
+a domain/home-page report for a particular URL.
+
+The reported AMTSO mismatch was a comparison between the home-page report
+`https://www.amtso.org/` and the report for
+`https://www.amtso.org/check-desktop-phishing-page/`. A read-only provider lookup
+of the latter returned 12 malicious, 0 suspicious, 48 harmless and 33 undetected
+results (93 engines), with analysis time 11 November 2026 at 05:24:43 UTC.
+Those numbers are report evidence, not hard-coded production detections. Future
+provider updates may change them. Regression tests use a fixed snapshot, while
+production always displays the fetched report.
 
 The internal policy score remains available for incident prioritization and
 blocking. It is not a VirusTotal percentage or probability of infection.

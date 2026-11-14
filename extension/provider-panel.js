@@ -13,8 +13,13 @@ export function providerPanel(result, compact=false) {
  const evidence=result?.provider_evidence;
  if(!evidence||evidence.provider!=='VirusTotal')return '<p class="meta">The VirusTotal report was not retained for this saved scan. Run a new check to retrieve the report.</p>';
  const count=name=>Number.isSafeInteger(evidence.counts?.[name])&&evidence.counts[name]>=0?String(evidence.counts[name]):'Unavailable';
+ const total=Number.isSafeInteger(evidence.engine_total)&&evidence.engine_total>0?evidence.engine_total:null;
+ const malicious=evidence.counts?.malicious;
+ const ratio=total!==null&&Number.isSafeInteger(malicious)&&malicious>=0&&malicious<=total?`<div class="provider-ratio"><strong data-no-translate>${malicious} / ${total}</strong><span class="meta">Engines reporting malicious results / all engine results</span></div>`:'';
+ const time=evidence.analysis_at?`<p class="meta">Provider analysis time: <bdi data-no-translate>${esc(evidence.analysis_at)}</bdi></p>`:'';
+ const reference=/^[a-f0-9]{64}$/.test(evidence.report_id??'')?`<p class="meta code" data-no-translate>VirusTotal report ID: ${evidence.report_id}</p>`:'';
  const labels={malicious:'Malicious',suspicious:'Suspicious',harmless:'Harmless',undetected:'Undetected'};
- return `<section class="stack provider-evidence" aria-label="VirusTotal reputation evidence"><h3>VirusTotal report</h3><div class="risk-grid">${Object.entries(labels).map(([key,label])=>`<div class="risk-pill"><span>${label}</span><strong data-no-translate>${count(key)}</strong></div>`).join('')}</div><p class="meta">${evidence.status==='available'?'Provider report available.':'Provider report unavailable or incomplete. Unknown is not safe.'} ${evidence.cached?'Cached report.':''}</p>${!compact&&evidence.analysis_at?`<p class="meta">Provider analysis time: <bdi data-no-translate>${esc(evidence.analysis_at)}</bdi></p>`:''}<p class="meta">Results returned by VirusTotal. Undetected does not mean harmless.</p></section>`;
+ return `<section class="stack provider-evidence" aria-label="VirusTotal reputation evidence"><h3>VirusTotal report</h3>${ratio}<div class="risk-grid">${Object.entries(labels).map(([key,label])=>`<div class="risk-pill"><span>${label}</span><strong data-no-translate>${count(key)}</strong></div>`).join('')}</div><p class="meta">${evidence.status==='available'?'Provider report available.':'Provider report unavailable or incomplete. Unknown is not safe.'} ${evidence.cached?'Cached report.':''}</p>${time}${!compact?reference:''}<p class="meta">Results returned by VirusTotal. Undetected does not mean harmless.</p></section>`;
 }
 
 export const incidentRules=[
