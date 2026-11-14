@@ -44,7 +44,7 @@ try{
  await page.screenshot({path:path.join(output,'user-feedback.png'),fullPage:true});
  await page.locator('[data-action="logout"]').first().click();await login('feedback-head',process.env.EXTSECURE_TEST_HEAD_SECRET);
  await open('feedback');const review=page.locator('[data-form="feedback-review"]');await review.waitFor();
- await page.locator('[data-action="inspect-scan"]').click();await page.getByRole('heading',{name:'Risk result'}).waitFor();
+ await page.locator('[data-action="inspect-scan"]').click();await page.getByRole('heading',{name:'VirusTotal result'}).waitFor();
  assert((await page.locator('#main').innerText()).includes('Critical'));record('Administrator opens original scan evidence from the feedback workspace');
  await open('feedback');await review.waitFor();await review.locator('[name="outcome"]').selectOption('false_positive');
  await review.locator('[name="review_note"]').fill('Evidence reviewed. Perform a follow-up check before considering block release.');

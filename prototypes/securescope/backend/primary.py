@@ -55,11 +55,12 @@ def install_primary_routes(application):
     def capabilities(request:Request,response:Response):
         data=services.extension_capabilities(request,response).model_dump()
         return {**data,'api_provider':'SecureScope','scan_endpoint':'/api/v1/check','rdap_endpoint':'/api/v1/rdap',
-                'reputation_evidence_version':'extsecure-provider-evidence-v1','incident_rules_version':1}
+                'reputation_evidence_version':'extsecure-provider-evidence-v1','incident_rules_version':1,
+                'detector_report_mode':'virustotal-direct-v1'}
 
     @application.post('/api/v1/check',tags=['SecureScope'])
     async def check(payload:BrowserCheckRequest,request:Request):
-        response=await services.extension_scan(services.ExtensionScanRequest(target=payload.url),request)
+        response=await services.extension_scan(services.ExtensionScanRequest(target=payload.url),request,fresh=True)
         data=json.loads(response.body)
         reasons=[str(f.get('detail') or f.get('title'))[:200] for f in data.get('findings',[])][:10]
         if not reasons:

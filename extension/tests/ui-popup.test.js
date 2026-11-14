@@ -27,7 +27,8 @@ test('Toolbar popup exposes scanning, website access, account verification and r
 test('Popup results stay compact and offer the full evidence workspace',async()=>{
  const button={dataset:{action:'scan-active'},innerHTML:'Check current destination',isConnected:true,setAttribute(){},removeAttribute(){},closest:()=>null};
  await handlers.click({target:{closest:()=>button}});
- assert.match(app.innerHTML,/Risk result/);assert.match(app.innerHTML,/Download scan evidence/);assert.match(app.innerHTML,/Open evidence workspace/);
+ assert.match(app.innerHTML,/VirusTotal result/);assert.match(app.innerHTML,/Download scan evidence/);assert.match(app.innerHTML,/Open evidence workspace/);
+ assert.doesNotMatch(app.innerHTML,/class="score"|ExtSecure policy score/);
  assert.doesNotMatch(app.innerHTML,/data-form="ai-explain"/);
  if(process.env.EXTSECURE_UI_QA_OUTPUT){await fs.mkdir(process.env.EXTSECURE_UI_QA_OUTPUT,{recursive:true});await fs.writeFile(path.join(process.env.EXTSECURE_UI_QA_OUTPUT,'popup.html'),app.innerHTML);}
 });
@@ -41,13 +42,14 @@ test('Popup shows SecureScope registration evidence when the backend supplies it
  }finally{chrome.runtime.sendMessage=original;}
 });
 
-test('Compact popup keeps threat findings and the action visible outside optional details',async()=>{
+test('Compact popup never invents provider detections from internal risk findings',async()=>{
  const original=chrome.runtime.sendMessage;
  chrome.runtime.sendMessage=async message=>message.type==='SCAN_URL'?{ok:true,data:{id:'test-high',severity:'High',score:80,completeness:'complete',target_kind:'url',target_display:'example.com',suggested_action:'Do not proceed. Ask an administrator to investigate.',findings:[{title:'Synthetic malicious verdict',points:80,detail:'Synthetic provider evidence for a UI test.'}],lookup:{status:'complete'}}}:original(message);
  try{
   await handlers.click({target:{closest:()=>({dataset:{action:'scan-active'},isConnected:true,setAttribute(){},removeAttribute(){},closest:()=>null})}});
   const visible=app.innerHTML.split('<summary>Scan details</summary>')[0];
-  assert.match(visible,/Do not proceed/);assert.match(visible,/Synthetic malicious verdict/);assert.match(visible,/risk-high/);
+  assert.match(visible,/Unknown is not a safe result/);assert.match(visible,/risk-unknown/);
+  assert.match(app.innerHTML,/Synthetic malicious verdict/);assert.doesNotMatch(app.innerHTML,/80 points/);
   if(process.env.EXTSECURE_UI_QA_OUTPUT)await fs.writeFile(path.join(process.env.EXTSECURE_UI_QA_OUTPUT,'popup-threat.html'),app.innerHTML);
  }finally{chrome.runtime.sendMessage=original;}
 });

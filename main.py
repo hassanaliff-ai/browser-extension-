@@ -157,7 +157,7 @@ def _extension_record(monitor, target, verdict, actor, device_id=None, domain_ag
         return result
 
 
-async def extension_scan(body: ExtensionScanRequest, request: Request):
+async def extension_scan(body: ExtensionScanRequest, request: Request, *, fresh: bool = False):
     monitor = request.app.state.monitoring_app
     if monitor is None:
         raise HTTPException(503, 'Approved-account monitoring must be configured before extension scans')
@@ -173,7 +173,7 @@ async def extension_scan(body: ExtensionScanRequest, request: Request):
     age_task = asyncio.create_task(request.app.state.domain_age.async_lookup(body.target))
     cache = request.app.state.cache
     key = ('url', body.target)
-    result = cache.get(key)
+    result = None if fresh else cache.get(key)
     cached = result is not None
     if result is None:
         try:

@@ -94,3 +94,34 @@ def test_additive_cache_migration_preserves_legacy_rows():
     with engine.connect() as db:
         assert db.execute(text('SELECT verdict, malicious_count, provider_evidence FROM file_reputation_cache')).one()==('malicious',4,None)
     engine.dispose()
+
+def test_manual_native_checks_query_virustotal_each_time(extension_client):
+    client,monitor,application=extension_client
+    install_primary_routes(application)
+    lookup=AsyncMock(return_value=ScanResult('https://example.com/','url','harmless',0,0,60,5))
+    application.state.vt.scan_url=lookup
+    payload={'url':'https://example.com/','source':'manual','checked_at':0}
+    for _ in range(2):
+        response=client.post('/api/v1/check',json=payload)
+        assert response.status_code==201
+        assert response.json()['provider_evidence']['cached'] is False
+    assert lookup.await_count==2
+
+def test_manual_file_checks_query_provider_and_never_hide_rate_limit_with_cached_result(tmp_path):
+    import httpx
+    from tests.alba.test_file_lookup import _app,_admin_headers,_body
+    calls=[];digest='a'*64
+    def provider(request):
+        calls.append(request)
+        if len(calls)==3:return httpx.Response(429,headers={'Retry-After':'60'})
+        return httpx.Response(200,json={'data':{'id':digest,'type':'file','attributes':{'last_analysis_stats':{'malicious':0,'suspicious':0,'harmless':60,'undetected':5}}}})
+    api,transport=_app(tmp_path,provider)
+    with api,transport:
+        headers=_admin_headers(api)
+        for _ in range(2):
+            result=api.post('/api/admin/downloads/scan',json=_body(digest),headers=headers).json()
+            assert result['provider_evidence']['cached'] is False
+        assert len(calls)==2
+        result=api.post('/api/admin/downloads/scan',json=_body(digest),headers=headers).json()
+        assert len(calls)==3 and result['severity']=='Unknown'
+        assert result['file_lookup']['reason']=='rate_limited'

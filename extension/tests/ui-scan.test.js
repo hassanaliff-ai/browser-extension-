@@ -42,9 +42,10 @@ test('A submitted file check renders the real not-found explanation and cache st
  await snapshot('unknown-file');
 });
 test('The same result card displays a completed known file assessment',async()=>{
- result={...result,severity:'Low',score:0,completeness:'complete',file_lookup:{verdict:'clear'}};
+ result={...result,severity:'Low',score:0,completeness:'complete',file_lookup:{verdict:'clear'},provider_evidence:{provider:'VirusTotal',status:'available',counts:{malicious:0,suspicious:0,harmless:60,undetected:5}}};
  await submit('file-scan',{sha256:'b'.repeat(64)});
- assert.match(app.innerHTML,/file hash reputation lookup completed/);assert.match(app.innerHTML,/tag low/);
+ assert.match(app.innerHTML,/No detections reported/);assert.match(app.innerHTML,/tag low/);
+ assert.doesNotMatch(app.innerHTML,/class="score"|ExtSecure policy score/);
  assert.doesNotMatch(app.innerHTML,/VirusTotal has no report/);
  await snapshot('known-file');
 });
@@ -148,7 +149,7 @@ test('URL scan renders persisted SecureScope age in the real result handler',asy
  completeness:'complete',findings:[],signals:[{code:'new_domain',status:'detected',detail:'SecureScope RDAP: age 12 days.'}],domain_age:{status:'Known',age_days:12}};
  await submit('url-scan',{target:'https://example.com/'});
  assert.match(app.innerHTML,/SecureScope RDAP: age 12 days/);
- assert.match(app.innerHTML,/aria-label="Risk assessment"/);
+ assert.match(app.innerHTML,/aria-label="VirusTotal result"/);
 });
 
 test('RDAP evidence stays escaped and Unknown remains visible',async()=>{

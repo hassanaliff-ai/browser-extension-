@@ -1,4 +1,4 @@
-# SecureScope reputation evidence and incident rules — 0.8.54
+# SecureScope reputation evidence and incident rules — 0.8.55
 
 SecureScope's primary `/api/v1/check` route uses the existing private backend
 VirusTotal client. The operational `extension/` keeps one account, inventory,
@@ -14,8 +14,17 @@ shown exactly as supplied. Missing categories display Unavailable rather than an
 invented zero. The report analysis time is retained when supplied; cache hits
 are labelled. Undetected does not certify harmlessness.
 
-The 0–100 score is ExtSecure's policy score, not a VirusTotal percentage or
-probability of infection. For the authenticated browser integration, any malicious
+Detector screens show one VirusTotal result with engine counts and no separate
+0–100 score. The displayed result follows those counts, not ExtSecure's internal
+policy score. Each explicit website/QR check through `/api/v1/check` and each
+authenticated file check requests a fresh provider report; it does not silently
+substitute a previous cached verdict. Quota and provider errors remain Unknown.
+Saved history remains the original report snapshot rather than a fresh scan.
+Legacy ingestion may still use its existing cache.
+
+The internal policy score remains available for incident prioritization and
+blocking. It is not a VirusTotal percentage or probability of infection.
+For the authenticated browser integration, any malicious
 provider detection activates the malicious signal, and any suspicious detection
 activates the suspicious signal. Under the default policy, URL findings carry
 80/30 points and file findings 90/40 points respectively; combined findings cap
@@ -85,3 +94,10 @@ The JavaScript suite and a real Chromium fixture test cover scan, incident and
 compact-popup rendering, escaping and narrow-screen layout. Fixture screenshots
 and logs stay private. Tests do not submit malicious sites, rerun Basel's private
 evaluation or populate the production database with examples.
+
+Version 0.8.55 verification: 102 targeted backend tests, 313 JavaScript tests and
+10 Chromium checks passed. Repeated native checks invoke the provider each time;
+the file test also confirms that a subsequent HTTP 429 stays Unknown instead of
+reusing a cached successful report. Browser fixtures assert that no separate
+numerical score is rendered. The public API advertises
+`detector_report_mode: virustotal-direct-v1`.

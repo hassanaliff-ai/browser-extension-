@@ -39,7 +39,7 @@ try {
  assert.doesNotMatch(await page.locator('body').innerText(),/private-token/);
  assert.equal((await worker.evaluate(()=>qrRequests)).length,0);record('Real PNG QR decoded locally with private URL parameters removed and no API call');
  await page.getByRole('button',{name:'Check QR destination',exact:true}).click();
- await page.getByRole('heading',{name:'Risk result',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'VirusTotal result',exact:true}).waitFor();
  let requests=await worker.evaluate(()=>qrRequests);assert.equal(requests.length,1);assert.equal(requests[0].body.target,'https://example.com/');record('Explicit QR check uses real worker and existing URL scanner with origin privacy');
  assert.equal(context.pages().length,initialPages);assert(context.pages().every(p=>!p.url().startsWith('https://example.com')));record('QR reading and checking never open the destination');
  await page.screenshot({path:path.join(output,'qr-check.png'),fullPage:true});
@@ -58,7 +58,7 @@ try {
  await page.goto('chrome-extension://'+id+'/console.html#files');await page.reload();await page.locator('[data-form="file-scan"]').waitFor();
  await page.locator('[name="file"]').setInputFiles({name:'invoice.pdf.exe',mimeType:'application/octet-stream',buffer:Buffer.from('Harmless synthetic filename test')});
  await page.locator('[data-filename-warning]:not([hidden])').waitFor();assert.match(await page.locator('[data-filename-warning]').innerText(),/final extension is .exe/);record('Filename warning appears immediately on file selection');
- await page.getByRole('button',{name:'Check file hash',exact:true}).click();await page.getByRole('heading',{name:'Risk result',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Check file hash',exact:true}).click();await page.getByRole('heading',{name:'VirusTotal result',exact:true}).waitFor();
  assert.match(await page.locator('body').innerText(),/hash result does not cancel/);record('Filename warning survives a Low hash reputation result');
  requests=await worker.evaluate(()=>qrRequests);const fileRequest=requests.find(r=>r.url.endsWith('/downloads/scan'));
  assert.match(fileRequest.body.sha256,/^[a-f0-9]{64}$/);assert(!JSON.stringify(fileRequest.body).includes('invoice.pdf.exe'));record('Filename and file bytes are never sent to backend');

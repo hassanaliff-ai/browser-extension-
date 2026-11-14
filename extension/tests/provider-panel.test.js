@@ -1,10 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {providerPanel,incidentRulesPanel,incidentRules} from '../provider-panel.js';
+import {providerPanel,providerSummary,incidentRulesPanel,incidentRules} from '../provider-panel.js';
 import {scanEvidenceExport} from '../evidence-export.js';
-test('Provider counts remain separate from the ExtSecure score in popup and console',()=>{
+test('Detector shows VirusTotal counts with no separate numerical score',()=>{
  const result={score:80,provider_evidence:{provider:'VirusTotal',status:'available',counts:{malicious:1,suspicious:2,harmless:60,undetected:4},cached:true,analysis_at:'<script>bad</script>'}};
- for(const compact of [true,false]){const html=providerPanel(result,compact);assert.match(html,/Malicious/);assert.match(html,/Suspicious/);assert.match(html,/Harmless/);assert.match(html,/Undetected/);assert.match(html,/not a VirusTotal score out of 100/);assert.match(html,/Cached report/);assert(!html.includes('<script>'));}
+ for(const compact of [true,false]){const html=providerPanel(result,compact);assert.match(html,/Malicious/);assert.match(html,/Suspicious/);assert.match(html,/Harmless/);assert.match(html,/Undetected/);assert.doesNotMatch(html,/score|100/);assert.match(html,/Cached report/);assert(!html.includes('<script>'));}
+});
+test('Detector verdict follows provider counts rather than the policy score',()=>{
+ const report=counts=>({score:100,severity:'Critical',provider_evidence:{provider:'VirusTotal',status:'available',counts}});
+ assert.equal(providerSummary(report({malicious:0,suspicious:0})).label,'No detections reported');
+ assert.equal(providerSummary(report({malicious:1,suspicious:0})).label,'Malicious detections');
+ assert.equal(providerSummary(report({malicious:0,suspicious:1})).label,'Suspicious detections');
+ assert.equal(providerSummary({score:0,severity:'Low'}).label,'Unknown');
 });
 test('Missing or invalid engine counts are never invented as zero',()=>{
  const html=providerPanel({provider_evidence:{provider:'VirusTotal',status:'unavailable',counts:{malicious:null,suspicious:'4',harmless:-1,undetected:true}}});

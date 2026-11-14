@@ -695,11 +695,11 @@ def create_app(
                 'extension_name':None, 'extension_version':None})
         return payload, actor
 
-    def _scan_download(payload: DownloadScanCreate, db: Session, owner: str | None = None) -> dict:
+    def _scan_download(payload: DownloadScanCreate, db: Session, owner: str | None = None, *, fresh: bool = False) -> dict:
         registration = db.get(DeviceRegistration, payload.device_id)
         if registration and registration.blocked:
             raise HTTPException(403, 'This device is blocked. Contact an administrator.')
-        verdict = lookup_file_hash(db, payload.sha256, api_key=vt_api_key, client=vt_client)
+        verdict = lookup_file_hash(db, payload.sha256, api_key=vt_api_key, client=vt_client,force_refresh=fresh)
         scan_input = ScanCreate(
             device_id=payload.device_id,
             device_name=payload.device_name,
@@ -721,7 +721,7 @@ def create_app(
     def scan_download_hash(payload: DownloadScanCreate, request: Request, db: Session = Depends(session_scope)) -> dict:
         """Check a downloaded file by SHA-256 without sending file bytes."""
         payload, owner = personal_download(payload, request, db)
-        return _scan_download(payload, db, owner)
+        return _scan_download(payload, db, owner,fresh=request.scope['route'].path.startswith('/api/admin/'))
 
     @app.post("/api/admin/downloads/scan-file", status_code=201, dependencies=[Admin])
     @app.post("/api/downloads/scan-file", status_code=201, dependencies=[Ingest])
@@ -756,7 +756,7 @@ def create_app(
         except ValidationError:
             raise HTTPException(status_code=422, detail="Invalid device or extension information") from None
         payload, owner = personal_download(payload, request, db)
-        return _scan_download(payload, db, owner)
+        return _scan_download(payload, db, owner,fresh=request.scope['route'].path.startswith('/api/admin/'))
 
     @app.get('/api/my/scans', dependencies=[Admin])
     def personal_scans(actor: str = Depends(require_actor), db: Session = Depends(session_scope),

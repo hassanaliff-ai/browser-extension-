@@ -20,7 +20,7 @@ try {
   chrome.runtime.sendMessage=async m=>{
    let data={};
    if(m.type==='PREFERENCES')data={language:'en',timeZone:'UTC',animations:false};
-   if(m.type==='STATE')data={version:'0.8.54',capabilities:['device-enrollment','chrome-inventory','device-access-choice'],profile:{username:'fixture-head',role:'head_administrator',role_label:'Head administrator',inventory:{linked:true},views:['Overview','Scan a page','Incident cases']}};
+   if(m.type==='STATE')data={version:'0.8.55',capabilities:['device-enrollment','chrome-inventory','device-access-choice'],profile:{username:'fixture-head',role:'head_administrator',role_label:'Head administrator',inventory:{linked:true},views:['Overview','Scan a page','Incident cases']}};
    if(m.type==='HEALTH')data={status:'ready',api_origin:'https://api.example'};
    if(m.type==='ACTIVE_TAB')data={url:'https://reserved.example/',host:'reserved.example'};
    if(m.type==='SCAN_URL')data=scan;
@@ -37,10 +37,10 @@ try {
  await page.goto('chrome-extension://'+id+'/console.html#scan');
  const form=page.locator('[data-form="url-scan"]');await form.waitFor();
  await form.locator('[name="target"]').fill('https://reserved.example/');await form.locator('[type="submit"]').click();
- await page.getByRole('heading',{name:'VirusTotal reputation evidence'}).waitFor();
- assert.match(await page.locator('.provider-evidence').innerText(),/not a VirusTotal score out of 100/);
+ await page.getByRole('heading',{name:'VirusTotal report'}).waitFor();
+ assert.equal(await page.locator('.score').count(),0);
  assert.equal(await page.locator('.provider-evidence strong').first().innerText(),'3');
- checks.push('Scan UI shows exact engine counts separately from the policy score');
+ checks.push('Scan UI shows the VirusTotal report directly, without a separate numerical score');
  await page.screenshot({path:path.join(output,'scan-provider-evidence.png'),fullPage:true});
  await page.goto('chrome-extension://'+id+'/console.html#cases');
  await page.getByRole('heading',{name:'Investigation workspace'}).waitFor();
@@ -54,7 +54,7 @@ try {
  checks.push('Incident workspace fits a narrow viewport');
  await page.goto('chrome-extension://'+id+'/popup.html');
  await page.locator('[data-action="scan-active"]').click();
- await page.getByRole('heading',{name:'VirusTotal reputation evidence'}).waitFor();
+ await page.getByRole('heading',{name:'VirusTotal report'}).waitFor();
  assert.equal(await page.locator('.provider-evidence strong').first().innerText(),'3');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
  await page.screenshot({path:path.join(output,'popup-provider-evidence.png'),fullPage:true});

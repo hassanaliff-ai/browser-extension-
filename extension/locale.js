@@ -21,6 +21,10 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'VirusTotal result':'نتيجة VirusTotal','VirusTotal report':'تقرير VirusTotal',
+ 'Malicious detections':'نتائج خبيثة','Suspicious detections':'نتائج مشتبه بها',
+ 'No detections reported':'لم تسجل محركات الفحص مؤشرات خطورة',
+ 'Results returned by VirusTotal. Undetected does not mean harmless.':'نتائج أعادها VirusTotal. عدم التصنيف لا يعني أن الهدف غير ضار.',
  'VirusTotal reputation evidence':'أدلة السمعة من VirusTotal',
  'ExtSecure policy score (0-100)':'درجة سياسة ExtSecure (0-100)',
  'Malicious':'خبيث','Suspicious':'مشتبه به','Harmless':'غير ضار وفق المحرك','Undetected':'لم يصنفه المحرك',

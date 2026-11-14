@@ -179,6 +179,7 @@ def lookup_file_hash(
     now: datetime | None = None,
     minute_limit: int = 4,
     day_limit: int = 500,
+    force_refresh: bool = False,
 ) -> FileVerdict:
     """Look up an existing file report by hash; never upload file contents."""
     if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
@@ -188,7 +189,7 @@ def lookup_file_hash(
     sha256 = sha256.lower()
     now = _aware(now or utc_now())
     cached = db.get(FileReputationCache, sha256)
-    if cached and _aware(cached.expires_at) > now:
+    if cached and not force_refresh and _aware(cached.expires_at) > now:
         return FileVerdict(
             cached.verdict, cached.malicious_count,
             cached.suspicious_count,
