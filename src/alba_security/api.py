@@ -452,7 +452,7 @@ def create_app(
         authentication_audit(db, actor, 'signed_out')
         return {"signed_out": True}
 
-    def record_scan(payload: ScanCreate, db: Session, *, notify: bool = True, actor: str | None = None, domain_age: dict | None = None) -> dict:
+    def record_scan(payload: ScanCreate, db: Session, *, notify: bool = True, actor: str | None = None, domain_age: dict | None = None, provider_evidence: dict | None = None) -> dict:
         existing_device=db.scalar(select(Device).where(Device.id==payload.device_id).with_for_update().execution_options(populate_existing=True))
         if existing_device and existing_device.inventory_removed:
             raise HTTPException(403,'This device was removed. Reconnect through approved device enrollment.')
@@ -486,6 +486,10 @@ def create_app(
             result = assess(safe_signals, policy)
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+
+        if provider_evidence is not None and provider_evidence.get('status')=='unavailable':
+            # Domain age cannot substitute for a failed reputation lookup.
+            result=result.model_copy(update={'score':None,'severity':'Unknown'})
 
         now = utc_now()
         device = db.get(Device, payload.device_id)
@@ -568,6 +572,7 @@ def create_app(
                 "detected_codes": [item.code for item in result.findings],
                 "unknown_codes": result.unknown_codes,
                 **({"domain_age": stored_age} if stored_age is not None else {}),
+                **({'provider_evidence':provider_evidence} if provider_evidence is not None else {}),
                 "override_id": scan.override_id,
             },
             created_at=now,
@@ -610,7 +615,9 @@ def create_app(
                     details={**event_identity, "override_id": applied_override.id},
                     created_at=now,
                 ))
-        containment = contain_scan(db, scan, payload.target, admin_auth)
+        containment = contain_scan(db, scan, payload.target, admin_auth, provider_evidence)
+        from alba_security.reputation_evidence import ensure_review_case, incident_rule
+        case=ensure_review_case(db,scan,admin_auth,provider_evidence)
         if containment is None:
             existing_block = active_block(db, payload.target_kind, payload.target)
             if existing_block:
@@ -649,6 +656,9 @@ def create_app(
             db.commit()
         return {
             "id": scan.id,
+            'provider_evidence':provider_evidence,
+            'incident_rule':incident_rule(scan,provider_evidence),
+            'case_id':case.id if case else None,
             **({"domain_age": stored_age, "signals": scan.signals} if stored_age is not None else {}),
             "score": result.score,
             "severity": result.severity,
@@ -700,7 +710,9 @@ def create_app(
             target=payload.sha256,
             signals=[SignalInput(**item) for item in verdict.signals()],
         )
-        result = record_scan(scan_input, db, actor=owner)
+        from alba_security.reputation_evidence import unavailable_provider
+        evidence=verdict.provider_evidence or (unavailable_provider(verdict.reason) if verdict.verdict=='unknown' else None)
+        result = record_scan(scan_input, db, actor=owner, provider_evidence=evidence)
         result["file_lookup"] = verdict.public()
         return result
 
@@ -913,6 +925,7 @@ def create_app(
             "override_id": item.override_id, "created_at": _iso(item.created_at),
             "risk_policy_version": version or "legacy", "suggested_action": suggested_action(stored_result),
             "signals": item.signals, "unknown_codes": unknown_codes,
+            'provider_evidence':next((event.details.get('provider_evidence') for event in events if event.event_type=='scan_completed'),None),
             **next(({"domain_age": event.details["domain_age"]} for event in events if event.event_type == "scan_completed" and "domain_age" in event.details), {}),
             "findings": [{"code": row.signal_code, "title": row.title, "detail": row.detail,
                           "points": row.points, "severity": row.severity} for row in findings],

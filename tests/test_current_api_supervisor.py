@@ -4,6 +4,30 @@ from unittest.mock import Mock
 import pytest
 from scripts import current_api_supervisor as current
 
+def test_worker_refresh_rejects_unrecognized_or_expired_request(tmp_path,monkeypatch):
+    import json,time
+    monkeypatch.setattr(current,'STATE',tmp_path)
+    launch=Mock();monkeypatch.setattr(current.subprocess,'run',launch)
+    (tmp_path/'worker.json').write_text(json.dumps({'pid':123,'port':8769}))
+    for body in [{'pid':456,'expires_at':time.time()+60},{'pid':123,'expires_at':0}]:
+        (tmp_path/'restart-request.json').write_text(json.dumps(body));current.requested_refresh()
+        assert json.loads((tmp_path/'restart-result.json').read_text())['state']=='failed'
+    launch.assert_not_called()
+
+def test_worker_refresh_is_consumed_before_verified_stop(tmp_path,monkeypatch):
+    import json,time
+    monkeypatch.setattr(current,'STATE',tmp_path)
+    (tmp_path/'worker.json').write_text(json.dumps({'pid':123,'port':8769}))
+    (tmp_path/'restart-request.json').write_text(json.dumps({'pid':123,'expires_at':time.time()+60}))
+    def run(command,**kw):
+        assert not (tmp_path/'restart-request.json').exists()
+        assert kw['env']['EXTSECURE_REFRESH_PID']=='123'
+        assert 'Worker identity mismatch' in command[-1]
+        return Mock(returncode=0)
+    monkeypatch.setattr(current.subprocess,'run',run)
+    current.requested_refresh()
+    assert json.loads((tmp_path/'restart-result.json').read_text())['state']=='refreshed'
+
 
 def test_matching_live_policy_is_ready(monkeypatch):
     response=httpx.Response(200,json={'service':'TestAPI','website_access_policy':current.WEBSITE_ACCESS_POLICY})

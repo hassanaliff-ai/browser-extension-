@@ -112,7 +112,8 @@ def test_vt_failure_preserves_confirmed_new_domain(extension_client,monkeypatch)
  from unittest.mock import AsyncMock
  application.state.vt.scan_url=AsyncMock(side_effect=RateLimitError())
  result=client.post('/extension/scan',json={'target':'https://example.com/'}).json()
- assert result['score']==15 and result['completeness']=='partial'
+ assert result['score'] is None and result['severity']=='Unknown' and result['completeness']=='partial'
+ assert any(finding['code']=='new_domain' and finding['points']==15 for finding in result['findings'])
  assert result['lookup']['status']=='unavailable'
 
 

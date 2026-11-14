@@ -54,7 +54,8 @@ def install_primary_routes(application):
     @application.get('/extension/capabilities',tags=['Integration'])
     def capabilities(request:Request,response:Response):
         data=services.extension_capabilities(request,response).model_dump()
-        return {**data,'api_provider':'SecureScope','scan_endpoint':'/api/v1/check','rdap_endpoint':'/api/v1/rdap'}
+        return {**data,'api_provider':'SecureScope','scan_endpoint':'/api/v1/check','rdap_endpoint':'/api/v1/rdap',
+                'reputation_evidence_version':'extsecure-provider-evidence-v1','incident_rules_version':1}
 
     @application.post('/api/v1/check',tags=['SecureScope'])
     async def check(payload:BrowserCheckRequest,request:Request):
@@ -64,7 +65,7 @@ def install_primary_routes(application):
         if not reasons:
             reasons=['No confirmed threat finding in the available evidence; this does not prove safety.'] if data.get('severity')!='Unknown' else ['Threat evidence unavailable; Unknown is not safe.']
         data.update(api_provider='SecureScope',origin=payload.url,reasons=reasons,
-                    lookup_status='complete' if data.get('completeness')=='complete' else 'partial',
+                    lookup_status='unavailable' if data.get('lookup',{}).get('status')=='unavailable' else 'complete' if data.get('completeness')=='complete' else 'partial',
                     cached=data.get('lookup',{}).get('cached') is True)
         return JSONResponse(data,status_code=response.status_code,headers={'Cache-Control':'no-store'})
 

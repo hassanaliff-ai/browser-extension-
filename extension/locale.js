@@ -21,6 +21,18 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'VirusTotal reputation evidence':'أدلة السمعة من VirusTotal',
+ 'ExtSecure policy score (0-100)':'درجة سياسة ExtSecure (0-100)',
+ 'Malicious':'خبيث','Suspicious':'مشتبه به','Harmless':'غير ضار وفق المحرك','Undetected':'لم يصنفه المحرك',
+ 'Provider report available.':'تقرير مزود السمعة متاح.',
+ 'Provider report unavailable or incomplete. Unknown is not safe.':'تقرير المزود غير متاح أو غير مكتمل. النتيجة غير المعروفة لا تعني الأمان.',
+ 'Cached report.':'تقرير محفوظ مؤقتاً.',
+ 'These are engine counts, not a VirusTotal score out of 100. ExtSecure calculates its policy score separately. Undetected does not mean harmless.':'هذه أعداد نتائج المحركات وليست درجة VirusTotal من 100. يحسب ExtSecure درجة سياسته بشكل منفصل. عدم التصنيف لا يعني أن الهدف غير ضار.',
+ 'Incident categories and creation rules':'فئات الحوادث وقواعد إنشائها',
+ 'Category':'الفئة','Phishing finding':'مؤشر تصيد احتيالي','Malicious website':'موقع خبيث',
+ 'Malicious download':'تنزيل خبيث','Malicious IP reputation':'سمعة عنوان IP خبيثة',
+ 'Suspicious reputation':'سمعة مشتبه بها','Extension security findings':'مؤشرات أمن الإضافة',
+ 'Recent domain registration':'تسجيل نطاق حديث','Manual evidence review':'مراجعة يدوية للأدلة',
  'API update required':'يلزم تحديث واجهة API',
  'Change device access':'تغيير صلاحية الجهاز',
  'Allow ExtSecure activity on this device.':'السماح بنشاط ExtSecure على هذا الجهاز.',

@@ -69,11 +69,14 @@ def test_malicious_download_uses_server_lookup_and_cache(tmp_path):
         assert first.json()["score"] == 90
         assert first.json()["severity"] == "Critical"
         assert first.json()["file_lookup"]["verdict"] == "malicious"
+        assert first.json()['provider_evidence']['counts']=={'malicious':4,'suspicious':0,'harmless':30,'undetected':None}
         assert not first.json()["file_lookup"]["cache_hit"]
         assert requests[0].url == f"https://www.virustotal.com/api/v3/files/{digest}"
         assert requests[0].headers["x-apikey"] == "test-vt-key"
         second = api.post("/api/downloads/scan", json=_body(digest), headers=INGEST)
         assert second.json()["file_lookup"]["cache_hit"]
+        assert second.json()['provider_evidence']['cached'] is True
+        assert second.json()['provider_evidence']['counts']==first.json()['provider_evidence']['counts']
         assert len(requests) == 1
         admin_headers = _admin_headers(api)
         scans = api.get("/api/scans", headers=admin_headers).json()

@@ -139,8 +139,12 @@ class ExtensionScanRequest(BaseModel):
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path or '/', '', ''))
 
 
-def _extension_record(monitor, target, verdict, actor, device_id=None, domain_age=None):
+def _extension_record(monitor, target, verdict, actor, device_id=None, domain_age=None, provider_evidence=None):
     payload = _monitoring_payload(ScanRequest(target=target), verdict, domain_age)
+    if provider_evidence is not None:
+        from alba_security.reputation_evidence import provider_signals
+        from alba_security.risk import SignalInput
+        payload=payload.model_copy(update={'signals':[SignalInput(**item) for item in provider_signals('url',provider_evidence)]})
     payload = payload.model_copy(update={
         'device_id': 'user-'+hashlib.sha256(actor.encode()).hexdigest()[:32],
         'device_name': 'ExtSecure browser checks', 'extension_key': 'extsecure-browser',
@@ -149,7 +153,7 @@ def _extension_record(monitor, target, verdict, actor, device_id=None, domain_ag
     with monitor.state.session_factory() as db:
         from alba_security.inventory import scan_device_fields
         payload = payload.model_copy(update=scan_device_fields(db, device_id))
-        result = monitor.state.record_scan(payload, db, notify=True, actor=actor, domain_age=domain_age)
+        result = monitor.state.record_scan(payload, db, notify=True, actor=actor, domain_age=domain_age, provider_evidence=provider_evidence)
         return result
 
 
@@ -182,12 +186,15 @@ async def extension_scan(body: ExtensionScanRequest, request: Request):
                 age_task.cancel()
                 raise
             domain_age = await age_task
-            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor, getattr(request.state, 'inventory_device_id', None), domain_age)
+            from alba_security.reputation_evidence import unavailable_provider
+            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor, getattr(request.state, 'inventory_device_id', None), domain_age, unavailable_provider())
             record['lookup'] = {'status':'unavailable', 'reason':_ERROR_STATUS.get(type(error),(502,'Lookup unavailable'))[1]}
             return JSONResponse(record, headers={'Cache-Control':'no-store'})
         cache.set(key, result)
     domain_age = await age_task
-    record = await run_in_threadpool(_extension_record, monitor, body.target, result.verdict, actor, getattr(request.state, 'inventory_device_id', None), domain_age)
+    from alba_security.reputation_evidence import scan_provider_evidence
+    evidence=scan_provider_evidence(result,cached=cached)
+    record = await run_in_threadpool(_extension_record, monitor, body.target, result.verdict, actor, getattr(request.state, 'inventory_device_id', None), domain_age, evidence)
     record['lookup'] = {'status':'complete', 'cached':cached, 'malicious':result.malicious,
                         'suspicious':result.suspicious, 'harmless':result.harmless, 'undetected':result.undetected}
     return JSONResponse(record, status_code=201, headers={'Cache-Control':'no-store'})

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 import httpx
-from sqlalchemy import DateTime, Integer, String, select
+from sqlalchemy import DateTime, Integer, String, JSON, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -33,6 +33,7 @@ class FileReputationCache(Base):
     suspicious_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    provider_evidence: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class VirusTotalQuota(Base):
@@ -54,6 +55,7 @@ class FileVerdict:
     reason: str | None = None
     cache_hit: bool = False
     retry_after_seconds: int | None = None
+    provider_evidence: dict | None = None
 
     def signals(self) -> list[dict[str, str]]:
         if self.verdict == "malicious":
@@ -147,6 +149,7 @@ def _store_cache(db: Session, sha256: str, verdict: FileVerdict, now: datetime, 
     item.verdict = verdict.verdict
     item.malicious_count = verdict.malicious_count
     item.suspicious_count = verdict.suspicious_count
+    item.provider_evidence = verdict.provider_evidence
     item.checked_at = now
     item.expires_at = now + ttl
     try:
@@ -161,6 +164,7 @@ def _store_cache(db: Session, sha256: str, verdict: FileVerdict, now: datetime, 
         item.verdict = verdict.verdict
         item.malicious_count = verdict.malicious_count
         item.suspicious_count = verdict.suspicious_count
+        item.provider_evidence = verdict.provider_evidence
         item.checked_at = now
         item.expires_at = now + ttl
         db.commit()
@@ -190,6 +194,7 @@ def lookup_file_hash(
             cached.suspicious_count,
             reason="not_found" if cached.verdict == "unknown" else None,
             cache_hit=True,
+            provider_evidence={**cached.provider_evidence,'cached':True} if cached.provider_evidence else None,
         )
 
     api_key = api_key or os.getenv("VT_API_KEY")
@@ -254,10 +259,16 @@ def lookup_file_hash(
     except (KeyError, TypeError, ValueError):
         return FileVerdict("unknown", reason="invalid_response")
 
+    from alba_security.reputation_evidence import provider_evidence
+    attributes=data['attributes']
+    from app.services.virustotal import _build_result
+    parsed=_build_result(sha256,'hash',stats,attributes)
+    evidence=provider_evidence(stats,analysis_date=parsed.analysis_date,categories=parsed.categories)
     verdict = FileVerdict(
         "malicious" if malicious else "suspicious" if suspicious else "clear",
         malicious_count=malicious,
         suspicious_count=suspicious,
+        provider_evidence=evidence,
     )
     _store_cache(db, sha256, verdict, now, timedelta(hours=24))
     return verdict

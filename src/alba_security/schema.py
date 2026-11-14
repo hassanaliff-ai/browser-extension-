@@ -17,6 +17,10 @@ def ensure_schema(engine: Engine) -> None:
     """
     Base.metadata.create_all(engine)
     inspector = inspect(engine)
+    if 'file_reputation_cache' in inspector.get_table_names() and 'provider_evidence' not in {c['name'] for c in inspector.get_columns('file_reputation_cache')}:
+        with engine.begin() as connection:
+            conditional=' IF NOT EXISTS' if engine.dialect.name=='postgresql' else ''
+            connection.exec_driver_sql('ALTER TABLE file_reputation_cache ADD COLUMN'+conditional+' provider_evidence JSON')
     if 'monthly_reports' in inspector.get_table_names():
         retired = {'sent_at', 'delivery_outcomes'} & {c['name'] for c in inspector.get_columns('monthly_reports')}
         if retired:

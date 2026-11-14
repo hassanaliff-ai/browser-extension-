@@ -57,7 +57,7 @@ def block_record(row, db):
             'created_at': iso(row.created_at), 'updated_at': iso(row.updated_at)}
 
 
-def contain_scan(db, scan, target, directory):
+def contain_scan(db, scan, target, directory, evidence=None):
     if scan.severity not in {'High', 'Critical'}:
         return None
     category, fingerprint, host = block_identity(scan.target_kind, target)
@@ -83,7 +83,9 @@ def contain_scan(db, scan, target, directory):
     people = directory.operators(db)
     if not db.scalar(select(IncidentCase.id).where(IncidentCase.scan_id == scan.id)):
         owner = directory.username if directory.username in people or not people else sorted(people)[0]
-        case = IncidentCase(scan_id=scan.id, title=f'{scan.severity} threat containment investigation', assignee=owner)
+        from alba_security.reputation_evidence import incident_rule
+        rule=incident_rule(scan,evidence)
+        case = IncidentCase(scan_id=scan.id, title=rule['category_label']+' investigation', assignee=owner)
         db.add(case)
         db.flush()
         audit(db, 'case', case.id, 'system', 'created', scan_id=scan.id, assignee=owner, containment=True)

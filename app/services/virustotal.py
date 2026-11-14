@@ -52,6 +52,9 @@ class ScanResult:
     suspicious: int
     harmless: int
     undetected: int
+    engine_stats: dict | None = None
+    analysis_date: int | None = None
+    categories: tuple[str, ...] = ()
 
 
 MALICIOUS_THRESHOLD = 3
@@ -67,7 +70,18 @@ def verdict_from_stats(stats: dict[str, int]) -> str:
     return "harmless"
 
 
-def _build_result(target: str, scan_type: str, stats: dict[str, int]) -> ScanResult:
+def _build_result(target: str, scan_type: str, stats: dict[str, int], attributes=None) -> ScanResult:
+    if not isinstance(stats, dict) or any(type(v) is not int or not 0 <= v <= 2_147_483_647 for v in stats.values()):
+        raise UpstreamError('Invalid VirusTotal engine counts')
+    attributes=attributes or {}
+    categories=set()
+    results=attributes.get('last_analysis_results', {})
+    if isinstance(results, dict):
+        for item in list(results.values())[:1000]:
+            if not isinstance(item, dict) or item.get('category') not in {'malicious','suspicious'}:continue
+            label=str(item.get('result',''))[:200].lower()
+            for category in ('phishing','malware','ransomware'):
+                if category in label:categories.add(category)
     return ScanResult(
         target=target,
         scan_type=scan_type,
@@ -76,6 +90,7 @@ def _build_result(target: str, scan_type: str, stats: dict[str, int]) -> ScanRes
         suspicious=stats.get("suspicious", 0),
         harmless=stats.get("harmless", 0),
         undetected=stats.get("undetected", 0),
+        engine_stats=dict(stats), analysis_date=attributes.get('last_analysis_date'), categories=tuple(sorted(categories)),
     )
 
 
@@ -138,12 +153,14 @@ class VirusTotalClient:
             raise InvalidTargetError("URL must be absolute and use http or https.")
 
         url_id = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
+        attributes={}
         try:
             payload = await self._request("GET", f"/urls/{url_id}")
             stats = self._stats_from(payload, "last_analysis_stats")
+            attributes=payload['data']['attributes']
         except NotFoundError:
             stats = await self._submit_and_wait(url)
-        return _build_result(url, "url", stats)
+        return _build_result(url, "url", stats, attributes)
 
     async def _submit_and_wait(self, url: str) -> dict[str, int]:
         submitted = await self._request("POST", "/urls", data={"url": url})
@@ -171,7 +188,7 @@ class VirusTotalClient:
             raise InvalidTargetError("Hash must be a valid MD5, SHA-1, or SHA-256.")
         payload = await self._request("GET", f"/files/{file_hash}")
         stats = self._stats_from(payload, "last_analysis_stats")
-        return _build_result(file_hash, "hash", stats)
+        return _build_result(file_hash, "hash", stats, payload['data']['attributes'])
 
     async def scan_ip(self, ip: str) -> ScanResult:
         try:
@@ -180,4 +197,4 @@ class VirusTotalClient:
             raise InvalidTargetError("Target is not a valid IP address.") from exc
         payload = await self._request("GET", f"/ip_addresses/{ip}")
         stats = self._stats_from(payload, "last_analysis_stats")
-        return _build_result(ip, "ip", stats)
+        return _build_result(ip, "ip", stats, payload['data']['attributes'])

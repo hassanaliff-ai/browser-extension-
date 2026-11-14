@@ -342,10 +342,14 @@ def install_governance(app, session_scope, require_actor, directory):
 
     def case_record(row, db, include_notes=False):
         scan = db.get(Scan, row.scan_id)
+        from alba_security.reputation_evidence import stored_provider, incident_rule
+        evidence=stored_provider(db,row.scan_id)
         result = {'id': row.id, 'scan_id': row.scan_id, 'title': row.title, 'assignee': row.assignee,
                   'status': row.status, 'resolution': row.resolution, 'revision': row.revision,
                   'severity': scan.severity, 'created_at': iso(row.created_at), 'updated_at': iso(row.updated_at)}
+        result.update(incident_rule(scan,evidence))
         if include_notes:
+            result['provider_evidence']=evidence
             from alba_security.threat_blocks import ThreatBlock, block_record
             blocked = db.scalar(select(ThreatBlock).where(ThreatBlock.scan_id == row.scan_id))
             result['containment'] = block_record(blocked, db) if blocked else None
@@ -370,7 +374,7 @@ def install_governance(app, session_scope, require_actor, directory):
 
     @app.post('/api/cases', status_code=201)
     def create_case(payload: CaseCreate, actor: str = Admin, db: Session = Depends(session_scope)):
-        if db.get(Scan, payload.scan_id) is None:
+        if db.scalar(select(Scan).where(Scan.id==payload.scan_id).with_for_update()) is None:
             raise HTTPException(404, 'Scan not found')
         if payload.assignee not in directory.operators(db):
             raise HTTPException(422, 'Choose a configured administrator')

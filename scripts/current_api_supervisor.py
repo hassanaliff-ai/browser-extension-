@@ -13,6 +13,36 @@ PORT=8769
 ENTRYPOINT='prototypes.securescope.backend.primary:create_app'
 
 
+def requested_refresh():
+    """Run an explicit, bounded refresh in the existing limited service logon."""
+    request=STATE/'restart-request.json'
+    if not request.exists():return
+    try:
+        body=json.loads(request.read_text())
+        recorded=json.loads((STATE/'worker.json').read_text())
+        pid=body.get('pid')
+        if (type(pid) is not int or pid<=0 or recorded.get('pid')!=pid or
+                recorded.get('port')!=PORT or type(body.get('expires_at')) not in (int,float) or
+                not time.time()<body['expires_at']<=time.time()+300):
+            raise ValueError('Invalid or expired worker refresh request')
+        # Consume before acting: a crash cannot replay a request against a reused PID.
+        request.replace(STATE/'restart-consumed.json')
+        environment=dict(os.environ)
+        environment.update(EXTSECURE_REFRESH_PID=str(pid),EXTSECURE_REFRESH_PYTHON=sys.executable)
+        command="""$ErrorActionPreference='Stop';
+        $worker=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:EXTSECURE_REFRESH_PID);
+        if ($worker.CommandLine -notlike '*prototypes.securescope.backend.primary:create_app*--port*8769*' -or
+            $worker.ExecutablePath -ne $env:EXTSECURE_REFRESH_PYTHON) {throw 'Worker identity mismatch'};
+        Stop-Process -Id ([int]$env:EXTSECURE_REFRESH_PID) -ErrorAction Stop"""
+        result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',command],
+                              env=environment,capture_output=True,timeout=20,
+                              creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+        if result.returncode:raise RuntimeError('Verified worker refresh failed')
+        (STATE/'restart-result.json').write_text(json.dumps({'state':'refreshed','previous_pid':pid}))
+    except Exception as error:
+        (STATE/'restart-result.json').write_text(json.dumps({'state':'failed','error_type':type(error).__name__}))
+
+
 def ready():
     try:
         response=httpx.get(f'http://127.0.0.1:{PORT}/health',timeout=3,trust_env=False)
@@ -64,6 +94,7 @@ def main():
         try:msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
         except OSError:return
         try:
+            requested_refresh()
             while enabled():
                 try:
                     ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)

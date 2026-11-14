@@ -1,0 +1,87 @@
+# SecureScope reputation evidence and incident rules — 0.8.54
+
+SecureScope's primary `/api/v1/check` route uses the existing private backend
+VirusTotal client. The operational `extension/` keeps one account, inventory,
+scan-history and incident system. Its popup, Scan a page, downloaded-file results,
+saved scan details and Incident cases now share the same provider-evidence panel.
+Basel's bounded inline-link warnings and RDAP module remain in their existing
+places; inline checks remain local and do not claim VirusTotal coverage.
+
+## Provider evidence and the policy score
+
+VirusTotal's malicious, suspicious, harmless and undetected engine counts are
+shown exactly as supplied. Missing categories display Unavailable rather than an
+invented zero. The report analysis time is retained when supplied; cache hits
+are labelled. Undetected does not certify harmlessness.
+
+The 0–100 score is ExtSecure's policy score, not a VirusTotal percentage or
+probability of infection. For the authenticated browser integration, any malicious
+provider detection activates the malicious signal, and any suspicious detection
+activates the suspicious signal. Under the default policy, URL findings carry
+80/30 points and file findings 90/40 points respectively; combined findings cap
+at 100. Installed administrator policy weights remain authoritative. RDAP is
+separate evidence, not a provider detection count. Prior scans are not rescored.
+
+When reputation is unavailable, the result stays Unknown with no numerical score,
+even when registration-age evidence is known. No successful VirusTotal verdict
+is fabricated from an unavailable report or local inline rules. The legacy
+general-purpose client's verdict thresholds remain compatible with its existing
+public contract; the browser's evidence mapping is explicitly labelled
+`extsecure-provider-evidence-v1`.
+
+## Incident categories
+
+The existing Incident cases workspace exposes eight categories:
+
+1. Phishing findings require an explicit malicious/suspicious engine phishing label.
+2. Malicious websites require the linked URL's malicious reputation finding.
+3. Malicious downloads require a malicious hash finding.
+4. Malicious IP reputation follows a malicious IP scan signal.
+5. Suspicious reputation follows a suspicious finding.
+6. Extension security findings support manual investigation of recorded indicators.
+7. Recent domain registration supports manual review, not an infection diagnosis.
+8. Manual evidence review supports other scan-linked investigations.
+
+Malicious and suspicious findings create one case per scan. Existing containment
+investigations are reused; manual creation locks the source scan and reuses an
+existing case. Unknown and exception-only results do not automatically create
+cases. A repeated scan remains a distinct piece of evidence and may have its own
+investigation. High/Critical containment remains active until separately released;
+acknowledging an alert or resolving a case does not remove the block.
+
+No fabricated incidents are inserted into the shared database. The category guide
+is in the incident workspace. Demonstration results exist only in isolated test
+fixtures, with synthetic accounts and reserved example domains.
+
+## Storage and deployment
+
+Provider evidence is saved in the existing scan-completed security event, in the
+same transaction as scan findings, ownership and cases. History and cases read
+that saved evidence rather than querying a current report and rewriting history.
+Only counts, fixed categories, analysis time and provenance are retained; keys,
+raw vendor labels, URLs and report bodies are excluded from this evidence object.
+
+Migration `0013_provider_evidence_cache.sql` adds one nullable JSON column to the
+existing file cache so cached file results preserve their original counts. Old
+rows remain readable and their absent evidence is not invented. SQLite development
+upgrades use the same additive change. Existing scans, accounts and sessions remain.
+
+The supervisor supports an explicit, short-lived refresh request in its existing
+limited Windows task context. A recorded PID, port, executable and worker command
+must match before replacement. The request is consumed before stopping the worker,
+preventing replay against a reused PID. HTTPS hostname and API port are unchanged.
+
+After replacing files in an existing unpacked installation, reload ExtSecure at
+`chrome://extensions` and reopen its console. GitHub updates do not automatically
+reload extensions on another device.
+
+## Verification scope
+
+The full backend run passed 995 tests and 16 subtests, with 18 PostgreSQL-specific
+checks skipped because no disposable PostgreSQL test configuration was supplied.
+Subsequent targeted checks cover the final Unknown/RDAP guard, additive cache
+migration, saved counts, category rules, duplicate case reuse and supervisor refresh.
+The JavaScript suite and a real Chromium fixture test cover scan, incident and
+compact-popup rendering, escaping and narrow-screen layout. Fixture screenshots
+and logs stay private. Tests do not submit malicious sites, rerun Basel's private
+evaluation or populate the production database with examples.

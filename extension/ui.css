@@ -12,3 +12,11 @@
 [hidden]{display:none!important}
 
 .feedback-copy{white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Provider evidence is distinct from the policy score in every result view. */
+.provider-evidence .risk-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.provider-evidence .risk-pill{display:flex;flex-direction:column;gap:6px;min-width:0;margin:0;padding:12px}
+.provider-evidence .risk-pill span{font-size:12px;line-height:1.4}
+.provider-evidence .risk-pill strong{font-size:20px;line-height:1.2;overflow-wrap:anywhere}
+
+.popup{max-width:100vw}
