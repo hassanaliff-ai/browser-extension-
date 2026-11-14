@@ -21,6 +21,8 @@ export const getPreferences=()=>({...preferences});
 export function formatDate(value){if(!value)return '—';const date=new Date(value);if(!Number.isFinite(date.getTime()))return '—';return new Intl.DateTimeFormat(preferences.language==='ar'?'ar-SA-u-ca-gregory':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:preferences.timeZone}).format(date)+' · '+preferences.timeZone;}
 export const formatNumber=value=>Number.isFinite(value)?new Intl.NumberFormat(preferences.language).format(value):'—';
 const AR={
+ 'This website redirected to a different address. Review and approve the destination shown below.':'أعاد الموقع توجيهك إلى عنوان مختلف. راجع الوجهة المعروضة أدناه ووافق عليها.',
+ 'Automatic reopening stopped because this website keeps redirecting. Review the destination, then open it manually.':'توقف الفتح التلقائي لأن الموقع يكرر إعادة التوجيه. راجع الوجهة ثم افتحها يدوياً.',
  'VirusTotal result':'نتيجة VirusTotal','VirusTotal report':'تقرير VirusTotal',
  'Malicious detections':'نتائج خبيثة','Suspicious detections':'نتائج مشتبه بها',
  'No detections reported':'لم تسجل محركات الفحص مؤشرات خطورة',

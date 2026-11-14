@@ -11,6 +11,7 @@ globalThis.chrome={
  runtime:{id:'test-extension',getManifest:()=>({name:'ExtSecure',version:'0.7.0'}),getPlatformInfo:async()=>({os:'win'}),getURL:path=>'chrome-extension://test-extension/'+path,onMessage:{addListener:f=>listener=f},onStartup:event('startup'),onInstalled:event('installed')},
  tabs:{query:async()=>[{url:'https://example.com/private?token=x'}],create:async v=>calls.push(v),update:async(id,v)=>calls.push({tabId:id,...v}),onRemoved:event('removed')},
  webNavigation:{onBeforeNavigate:event('before'),onCommitted:event('committed'),onErrorOccurred:event('error')},
+ webRequest:{onBeforeRedirect:event('redirect')},
  alarms:{onAlarm:event('alarm'),create:async()=>{},clear:async()=>true},
  declarativeNetRequest:{getDynamicRules:async()=>structuredClone(dynamicRules),updateDynamicRules:async({removeRuleIds=[],addRules=[]})=>{dynamicRules=dynamicRules.filter(r=>!removeRuleIds.includes(r.id));dynamicRules.push(...structuredClone(addRules));},getSessionRules:async()=>structuredClone(sessionRules),isRegexSupported:async()=>({isSupported:true}),updateSessionRules:async({removeRuleIds=[],addRules=[]})=>{sessionRules=sessionRules.filter(r=>!removeRuleIds.includes(r.id));sessionRules.push(...structuredClone(addRules));}},
  action:{setBadgeText:async v=>calls.push(v),setBadgeBackgroundColor:async()=>{}}
@@ -174,7 +175,7 @@ test('Logout revokes the backend session and removes local state',async()=>{rese
 test('Scanning strips query and fragment before transmission and shows Unknown badge',async()=>{reset();store={session:{token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()}};responder=()=>({severity:'Unknown'});await handleMessage({type:'SCAN_URL',target:'https://example.com/private?secret=x#private'});const body=JSON.parse(calls[0].options.body);assert.equal(body.url,'https://example.com/');assert.equal(body.source,'manual');assert(Number.isInteger(body.checked_at));assert(calls[0].url.endsWith('/api/v1/check'));assert.equal(calls.at(-1).text,'?');});
 test('Console opens an extension URL, not a website',async()=>{reset();await handleMessage({type:'OPEN_CONSOLE'});assert.equal(calls[0].url,'chrome-extension://test-extension/console.html');});
 test('Network failures remain errors and cannot become a safe verdict',async()=>{reset();store={session:{token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()}};const previous=fetch;globalThis.fetch=async()=>{throw new Error('offline');};try{await assert.rejects(handleMessage({type:'API',path:'/api/overview'}),/No result has been marked safe/);}finally{globalThis.fetch=previous;}});
-test('Manifest has MV3 popup, worker, explicit navigation permissions and bundled scripts',async()=>{const manifest=JSON.parse(await fs.readFile(new URL('../manifest.json',import.meta.url)));assert.equal(manifest.manifest_version,3);assert.equal(manifest.background.type,'module');assert.equal(manifest.action.default_popup,'popup.html');assert.deepEqual(manifest.permissions,['storage','activeTab','declarativeNetRequest','webNavigation','alarms']);assert.equal(manifest.content_security_policy.extension_pages.includes("script-src 'self'"),true);assert.equal(manifest.host_permissions.includes('<all_urls>'),false);assert.deepEqual(manifest.web_accessible_resources[0].resources,['blocked.html']);});
+test('Manifest has MV3 popup, worker, explicit navigation permissions and bundled scripts',async()=>{const manifest=JSON.parse(await fs.readFile(new URL('../manifest.json',import.meta.url)));assert.equal(manifest.manifest_version,3);assert.equal(manifest.background.type,'module');assert.equal(manifest.action.default_popup,'popup.html');assert.deepEqual(manifest.permissions,['storage','activeTab','declarativeNetRequest','webNavigation','webRequest','alarms']);assert.equal(manifest.content_security_policy.extension_pages.includes("script-src 'self'"),true);assert.equal(manifest.host_permissions.includes('<all_urls>'),false);assert.deepEqual(manifest.web_accessible_resources[0].resources,['blocked.html']);});
 test('Downloaded-file findings update the toolbar badge',async()=>{reset();store={session:{token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()}};responder=()=>({severity:'Critical',target_kind:'download',containment:{id:'file:'+ 'a'.repeat(64),kind:'file',fingerprint:'a'.repeat(64),severity:'Critical',active:true}});await handleMessage({type:'API',path:'/api/admin/downloads/scan',method:'POST',body:{sha256:'a'.repeat(64)}});assert.equal(calls.at(-1).text,'!');});
 test('Revoked session clears local credentials when server denies the request',async()=>{reset();store={session:{token:'revoked-test-token',expires_at:new Date(Date.now()+60000).toISOString()}};const previous=fetch;globalThis.fetch=async()=>new Response('{}',{status:401});try{await assert.rejects(handleMessage({type:'API',path:'/api/overview'}),/Sign-in/);assert.deepEqual(store,{});}finally{globalThis.fetch=previous;}});
 test('Failed logout still removes all local session state',async()=>{reset();store={session:{token:'test-token',expires_at:new Date(Date.now()+60000).toISOString()}};const previous=fetch;globalThis.fetch=async()=>{throw new Error('offline');};try{await assert.rejects(handleMessage({type:'LOGOUT'}));assert.deepEqual(store,{});}finally{globalThis.fetch=previous;}});
@@ -187,6 +188,51 @@ test('Blocked destination metadata is private and only available in its top-leve
 test('Pending requests never install a rule or navigate',async()=>{reset();signed();responder=()=>({allowed:false});await assert.rejects(handleMessage({type:'OPEN_APPROVED'},blockedSender),/not been approved/);assert.equal(sessionRules.length,0);assert.equal(calls.some(c=>c.tabId===7),false);});
 test('Opening consumes approval before creating a tab-scoped rule and preserves original query locally',async()=>{reset();signed();responder=()=>({allowed:true,kind:'once'});const data=await handleMessage({type:'OPEN_APPROVED'},blockedSender);assert.equal(data.opened,true);assert.equal(calls[0].url.endsWith('/api/access/check'),true);assert.equal(calls[1].url.endsWith('/api/access/consume'),true);assert.equal(sessionRules.length,1);assert.deepEqual(sessionRules[0].condition.tabIds,[7]);assert.equal(calls.at(-1).url,'https://example.com/private?original=local-only');assert.equal(calls.at(-1).tabId,7);});
 test('Committed navigation removes the temporary permission; it cannot become a permanent whitelist',async()=>{reset();signed();responder=()=>({allowed:true,kind:'once'});await handleMessage({type:'OPEN_APPROVED'},blockedSender);hooks.committed({tabId:7,frameId:0,url:'https://example.com/private'});await flush();assert.equal(sessionRules.length,0);assert.equal(store['blocked:7'],undefined);});
+test('Reusable approval survives page commit and navigation errors without losing form permission',async()=>{
+ reset();signed();responder=()=>({allowed:true,kind:'temporary',expires_at:new Date(Date.now()+86400000).toISOString()});
+ await handleMessage({type:'OPEN_APPROVED'},blockedSender);
+ assert.deepEqual(sessionRules[0].condition.requestMethods,['get','post']);
+ hooks.committed({tabId:7,frameId:0,url:'https://example.com/private?new=1'});await flush();
+ assert.equal(sessionRules.length,1);
+ hooks.error({tabId:7,frameId:0});await flush();assert.equal(sessionRules.length,1);
+ assert(store['visit:7'].expires_at<=Date.now()+120000);
+ responder=()=>({allowed:false,kind:null});hooks.alarm({name:'visit:7'});
+ for(let i=0;i<100&&sessionRules.length;i++)await new Promise(resolve=>setTimeout(resolve,5));
+ assert.equal(sessionRules.length,0);assert.equal(store['visit:7'],undefined);
+});
+test('HTTP redirects replace the captured destination instead of reopening the old approved URL',async()=>{
+ reset();signed();hooks.before({tabId:7,frameId:0,url:'https://example.com/approved'});
+ hooks.redirect({tabId:7,frameId:0,redirectUrl:'https://other.example/login?private=kept-local'});
+ const state=await handleMessage({type:'BLOCKED_STATE'},blockedSender);
+ assert.equal(state.target,'https://other.example/login');
+ assert.equal(JSON.stringify(calls).includes('kept-local'),false);
+});
+test('Repeated automatic server redirects stop instead of creating an endless navigation loop',async()=>{
+ reset();signed();responder=()=>({allowed:true,kind:'temporary',expires_at:new Date(Date.now()+86400000).toISOString()});
+ for(let i=0;i<8;i++){
+  hooks.redirect({tabId:7,frameId:0,redirectUrl:'https://example.com/private'});
+  await handleMessage({type:'OPEN_APPROVED',automatic:true},blockedSender);
+ }
+ hooks.redirect({tabId:7,frameId:0,redirectUrl:'https://example.com/private'});
+ await assert.rejects(handleMessage({type:'OPEN_APPROVED',automatic:true},blockedSender),/keeps redirecting/);
+ assert.equal(sessionRules.length,0);
+});
+test('An approval renewal cannot restore permission after logout completes',async()=>{
+ reset();signed();responder=()=>({allowed:true,kind:'temporary',expires_at:new Date(Date.now()+86400000).toISOString()});
+ await handleMessage({type:'OPEN_APPROVED'},blockedSender);
+ const original=chrome.declarativeNetRequest.updateSessionRules;let release;
+ chrome.declarativeNetRequest.updateSessionRules=async options=>{
+  if(options.addRules?.length&&!release)await new Promise(resolve=>{release=resolve;});
+  return original(options);
+ };
+ try{
+  hooks.alarm({name:'visit:7'});
+  for(let i=0;i<100&&!release;i++)await new Promise(resolve=>setTimeout(resolve,5));
+  assert(release);const logout=handleMessage({type:'LOGOUT'});await flush();release();
+  await logout;await new Promise(resolve=>setTimeout(resolve,10));
+  assert.equal(store.session,undefined);assert.equal(sessionRules.length,0);
+ }finally{chrome.declarativeNetRequest.updateSessionRules=original;}
+});
 test('Navigation error, tab closure and expiry alarm each remove temporary access',async()=>{for(const eventName of ['error','removed','alarm']){reset();signed();responder=()=>({allowed:true,kind:'once'});await handleMessage({type:'OPEN_APPROVED'},blockedSender);if(eventName==='error')hooks.error({tabId:7,frameId:0});if(eventName==='removed')hooks.removed(7);if(eventName==='alarm')hooks.alarm({name:'visit:7'});await flush();assert.equal(sessionRules.length,0,eventName);}});
 test('Backend outage keeps navigation blocked',async()=>{reset();signed();const previous=fetch;globalThis.fetch=async()=>{throw new Error('offline');};try{await assert.rejects(handleMessage({type:'OPEN_APPROVED'},blockedSender));assert.equal(sessionRules.length,0);assert.equal(calls.some(c=>c.tabId===7),false);}finally{globalThis.fetch=previous;}});
 test('Expired session cannot consume permission or create a navigation rule',async()=>{reset();signed();store.session.expires_at='2000-01-01T00:00:00Z';await assert.rejects(handleMessage({type:'OPEN_APPROVED'},blockedSender),/Sign in/);assert.equal(sessionRules.length,0);assert.equal(calls.some(call=>call.options),false);});

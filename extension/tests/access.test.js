@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import {accessTarget,visitRule,navigationTarget} from '../access.js';
+import {accessTarget,visitRule,visitLease,navigationTarget} from '../access.js';
 import {normalizePreferences,setPreferences,formatDate,translate} from '../locale.js';
 import {safeApiPath,roleCanWrite,completedMonth} from '../core.js';
 test('Approval URLs drop private parameters without expanding path scope',()=>{
@@ -41,6 +41,21 @@ test('Static navigation gate covers main-frame HTTP and HTTPS while worker sleep
  const exempt=new RegExp(rules.find(r=>r.action.type==='allow').condition.regexFilter);
  assert.equal(exempt.test('http://127.0.0.1:8765/docs'),true);
  for(const url of ['http://localhost:9999/','http://localhost.evil:8765/','http://127.0.0.1:8765.evil/'])assert.equal(exempt.test(url),false);
+});
+test('Reusable approvals support same-address forms without widening URL or tab scope',()=>{
+ const rule=visitRule(42,'https://example.com/approved',true);
+ assert.deepEqual(rule.condition.requestMethods,['get','post']);
+ assert.deepEqual(rule.condition.tabIds,[42]);
+ const regex=new RegExp(rule.condition.regexFilter);
+ assert(regex.test('https://example.com/approved?local=1'));
+ for(const url of ['https://example.com/elsewhere','https://evil.example/approved','http://example.com/approved'])assert(!regex.test(url));
+});
+test('Reusable leases cannot exceed approval expiry, sign-in expiry or two minutes',()=>{
+ const now=Date.now(),session={expires_at:new Date(now+90000).toISOString()};
+ assert.equal(visitLease({kind:'whitelist',permanent:true,expires_at:null},session,now),now+90000);
+ assert.equal(visitLease({kind:'temporary',expires_at:new Date(now+30000).toISOString()},session,now),now+30000);
+ assert.equal(visitLease({kind:'temporary',expires_at:new Date(now+3600000).toISOString()},{expires_at:new Date(now+3600000).toISOString()},now),now+120000);
+ for(const expires_at of [null,'invalid',new Date(now-1).toISOString()])assert.throws(()=>visitLease({kind:'temporary',expires_at},session,now));
 });
 test('Preference validation keeps session and scoring data out of local settings',()=>{
  assert.deepEqual(normalizePreferences({language:'ar',timeZone:'Asia/Riyadh',token:'private'}),{language:'ar',timeZone:'Asia/Riyadh',theme:'light',tableSize:'standard',animations:true});

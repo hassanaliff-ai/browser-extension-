@@ -57,10 +57,14 @@ that URL's approval. Managers/administrators can revoke whitelist entries. Check
 and decisions are audited. Website approval does not lower risk scores or suppress
 alerts; the older security exceptions remain a separate notification workflow.
 
-For an opened visit, Chrome receives an exact-URL, GET-only, tab-scoped session
-rule. It is removed after navigation commits, errors, tab closure, sign-out or a
-thirty-second timeout. Whitelist visits are revalidated on each navigation;
-permanent browser allow rules are not cached. Offline, expired and revoked
+For a reusable approval, Chrome receives an exact-URL, tab-scoped session rule
+that supports reloads and same-address GET/POST forms. It is revalidated every
+minute and its lease is bounded by approval expiry, sign-in expiry and two minutes.
+Backend failure or revocation removes the rule at revalidation. One-time approvals
+remain GET-only and are removed on commit/error or after thirty seconds. Tab closure,
+sign-out and browser startup remove visit permissions. No rule authorizes a
+different host, scheme, port or path. High-severity threat rules take precedence.
+Permanent browser allow rules are not cached. Offline, expired and revoked
 sessions cannot create a new navigation permission.
 An expired or revoked session clears existing temporary permissions. Changing
 the destination or signing out during approval cancels the pending opening.
@@ -112,7 +116,8 @@ After loading/reloading the installed extension, check:
    then open the approved visit in the original tab.
 3. Reload during temporary approval: access remains valid. After expiry, request again.
 4. Approve a whitelist URL, revisit, revoke it and revisit again.
-5. Sign out, stop the backend or expire approval: the next visit stays blocked.
+5. Sign out or expire approval: permission is removed. Stop the backend and verify
+   that the next approval revalidation removes the temporary browser lease.
 6. Check a second tab, different path/host/scheme/port and a server redirect.
 7. Restart Chrome, test cached/history navigation and suspend the worker; the
    packaged gate remains enabled and stale visit permissions must not persist.

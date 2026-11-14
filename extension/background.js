@@ -290,9 +290,9 @@ export async function handleMessage(message,sender={}) {
   if (message.type === 'BLOCKED_STATE') {
     const context=await gate.context(sender),{target}=context;
     const session=await loadSession();
-    return {target,signed_in:!!session.token,role:session.profile?.role,...(session.token?await request('/api/access/check','POST',{target}):{allowed:false})};
+    return {target,redirected:context.redirected,signed_in:!!session.token,role:session.profile?.role,...(session.token?await request('/api/access/check','POST',{target}):{allowed:false})};
   }
-  if (message.type === 'OPEN_APPROVED') return gate.open(sender);
+  if (message.type === 'OPEN_APPROVED') return gate.open(sender,{automatic:message.automatic===true});
   if (message.type === 'SAVE_ACCOUNT_LOGO') {
     const session=await loadSession();
     const profile=await request('/api/admin/me');
