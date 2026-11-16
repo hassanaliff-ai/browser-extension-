@@ -87,6 +87,8 @@ def write_narrative(data: dict, *, language='en', purpose='scan explanation', cl
             + ('Arabic' if language == 'ar' else 'English') + '. Purpose: ' + purpose + '. '
             'Use only supplied counts, UTC dates, severity, scan completeness, finding categories and alert status. '
             'Describe scan events, not unique threats or infected devices. Do not invent trends, causes, behavior or breaches. '
+            'When total_scans is zero, explicitly say no scans were recorded in the period; this does not mean the environment is safe. '
+            'Report alerts and saved explanations using their own supplied counts, including zero, even when no scans were recorded. '
             'finding_counts is recorded detection evidence. explanations_total counts optional saved AI summaries; '
             'zero summaries does not mean missing evidence, failed provider checks or reduced reliability of the risk verdict. '
             'Do not discuss provider explanations, confidence, or instructions to retry checks in the summary. '

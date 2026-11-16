@@ -23,19 +23,22 @@ def main():
     log=ROOT/'.private/automatic-reports.jsonl';log.parent.mkdir(exist_ok=True)
     entry={'at':datetime.now(timezone.utc).isoformat(),'kind':args.kind}
     engine=None
+    stage='local_ai'
     try:
         import start_extsecure
         # Reports read PostgreSQL directly; public tunnel/API availability is irrelevant.
         if not start_extsecure.ensure_local_ai(dict(os.environ)):
             raise RuntimeError('The configured local report model could not start')
+        stage='database'
         engine=create_engine(os.environ['DATABASE_URL'],pool_pre_ping=True,
             connect_args={'application_name':'ExtSecure Report Scheduler'})
         with Session(engine,expire_on_commit=False) as db:
+            stage='generation'
             record,created=generate_scheduled_report(db,args.kind,language=os.getenv('REPORT_LANGUAGE','en'))
             entry.update(status='generated' if created else 'already_saved',report_id=record.id,period=record.period)
         result=0
     except Exception as error:
-        entry.update(status='failed',error_type=type(error).__name__)
+        entry.update(status='failed',stage=stage,error_type=type(error).__name__)
         result=1
     finally:
         if engine:engine.dispose()

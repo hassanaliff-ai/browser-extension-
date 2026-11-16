@@ -10,12 +10,16 @@ $taskMonths=('<January/>','<February/>','<March/>','<April/>','<May/>','<June/>'
 $taskStart=[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow,'Arab Standard Time').ToString('yyyy-MM-dd')+'T09:00:00+03:00'
 foreach ($taskKind in @('weekly','monthly')) {
  $taskCalendar=if ($taskKind -eq 'weekly') {'<ScheduleByWeek><WeeksInterval>1</WeeksInterval><DaysOfWeek><Sunday/></DaysOfWeek></ScheduleByWeek>'} else {"<ScheduleByMonth><DaysOfMonth><Day>1</Day></DaysOfMonth><Months>$taskMonths</Months></ScheduleByMonth>"}
+ # Retry a missed monthly report each day. The report period is unique, so
+ # successful runs do not generate another report or call the model again.
+ $recoveryStart=[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow,'Arab Standard Time').ToString('yyyy-MM-dd')+'T09:10:00+03:00'
+ $recoveryTrigger=if($taskKind -eq 'monthly'){"<CalendarTrigger><StartBoundary>$recoveryStart</StartBoundary><Enabled>true</Enabled><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger>"}else{''}
  $taskName="ExtSecure Automatic $taskKind LLM Report"
  $taskXml=@"
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
 <RegistrationInfo><Description>ExtSecure local LLM report generation at 09:00 KSA; generated reports remain reviewable drafts.</Description></RegistrationInfo>
-<Triggers><CalendarTrigger><StartBoundary>$taskStart</StartBoundary><Enabled>true</Enabled>$taskCalendar</CalendarTrigger></Triggers>
+<Triggers><CalendarTrigger><StartBoundary>$taskStart</StartBoundary><Enabled>true</Enabled>$taskCalendar</CalendarTrigger>$recoveryTrigger</Triggers>
 <Principals><Principal id="Author"><UserId>$taskSid</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
 <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><StartWhenAvailable>true</StartWhenAvailable><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><ExecutionTimeLimit>PT15M</ExecutionTimeLimit><RestartOnFailure><Interval>PT10M</Interval><Count>3</Count></RestartOnFailure></Settings>
 <Actions Context="Author"><Exec><Command>$taskCommand</Command><Arguments>&quot;$taskScript&quot; --kind $taskKind</Arguments><WorkingDirectory>$taskDirectory</WorkingDirectory></Exec></Actions>

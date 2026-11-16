@@ -17,6 +17,20 @@ def test_monthly_first_day_uses_closed_month_and_handles_january():
     assert scheduled_period('monthly',datetime(2027,1,1,6,tzinfo=timezone.utc))[0].period=='2026-12'
     with pytest.raises(ValueError):scheduled_period('weekly',datetime(2026,10,11))
 
+
+def test_empty_month_is_written_by_llm_and_retry_does_not_duplicate_it(system):
+    _,app,_,_=system
+    model=model_fixture(summary='No scans, alerts or explanations were recorded for this period. No recorded activity does not establish safety.')
+    with app.state.session_factory() as db:
+        first,created=generate_scheduled_report(db,'monthly',now=datetime(2026,11,1,6,tzinfo=timezone.utc),client=model,model='test-model')
+        assert created and first.period=='2026-10'
+        assert first.stats['total_scans']==0 and first.stats['alerts_total']==0 and first.stats['explanations_total']==0
+        assert first.narrative['summary'].startswith('No scans')
+        repeat,again=generate_scheduled_report(db,'monthly',now=datetime(2026,11,2,6,tzinfo=timezone.utc),client=model,model='test-model')
+        assert not again and repeat.id==first.id and model.responses.create.call_count==1
+        prompt=model.responses.create.call_args.kwargs
+        assert 'When total_scans is zero' in prompt['instructions']
+
 def test_scheduler_saves_once_and_does_not_call_llm_on_retry(system):
     _,app,_,_=system
     model=model_fixture()
