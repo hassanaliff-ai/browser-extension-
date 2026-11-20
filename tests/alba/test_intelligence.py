@@ -230,3 +230,19 @@ def test_explanation_deletion_follows_source_scan(system):
         for model in [Alert,Finding,SecurityEvent]:db.execute(delete(model).where(model.scan_id==record['id']))
         db.execute(delete(Scan).where(Scan.id==record['id']));db.commit()
         assert not db.scalar(select(ExplanationRecord))
+
+@pytest.mark.parametrize('language,summary', [
+    ('en', 'No scans were recorded in the period. One scan had a saved explanation.'),
+    ('ar', 'لم يتم تسجيل أي عمليات فحص خلال الفترة. بقيت بعض النتائج قيد المراجعة.'),
+])
+def test_period_report_rejects_zero_scan_claim_when_scans_exist(language, summary):
+    with pytest.raises(ReportGenerationError):
+        write_narrative({'total_scans': 19}, language=language,
+                        client=model_fixture(summary=summary), model='test-model')
+
+
+def test_period_report_accepts_no_flagged_scans_when_scans_exist():
+    summary = 'The period had 19 scan events. No scans were flagged as malicious.'
+    result = write_narrative({'total_scans': 19}, client=model_fixture(summary=summary),
+                             model='test-model')
+    assert result['summary'] == summary

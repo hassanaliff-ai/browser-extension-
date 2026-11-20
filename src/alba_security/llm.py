@@ -5,6 +5,15 @@ from pydantic import BaseModel, ConfigDict, Field
 from alba_security.reports import ReportConfigurationError, ReportGenerationError
 
 
+# Common explicit claims of an empty scan period in the supported report languages.
+_ZERO_SCAN_CLAIM = re.compile(
+    r"\b(?:no|zero|0)\s+(?:recorded\s+)?(?:scan events|scans|scanning activity)"
+    r"(?=\s*[,.;!?]|\s*$|\s+(?:(?:were|was)\s+)?(?:recorded|logged|performed|occurred)\b)"
+    r"|\bلم (?:يتم تسجيل|تسجل|يُسجّل) (?:أي )?(?:عمليات فحص|فحوصات|عمليات مسح)\b",
+    re.IGNORECASE,
+)
+
+
 class Narrative(BaseModel):
     model_config = ConfigDict(extra='forbid')
     summary: str = Field(min_length=20, max_length=2400)
@@ -81,13 +90,19 @@ def write_narrative(data: dict, *, language='en', purpose='scan explanation', cl
         'Choose evidence_codes only from supplied allowed codes and recommendation_codes only from supplied choices. '
         'Return one JSON object containing summary, evidence_codes, and recommendation_codes. Do not use markdown. Write 80–180 words in '+('Arabic' if language=='ar' else 'English')+'. Purpose: '+purpose+'.'
     )
-    if 'total_scans' in data:
+    scan_total = data.get('total_scans')
+    if scan_total is not None:
+        scan_instruction = (
+            'When total_scans is zero, explicitly say no scans were recorded in the period; this does not mean the environment is safe. '
+            if scan_total == 0 else
+            f'The period contains {scan_total} recorded scan events. Do not describe it as a period with no scans. '
+        )
         instructions = (
             'Write a factual administrator report of 50–110 words in '
             + ('Arabic' if language == 'ar' else 'English') + '. Purpose: ' + purpose + '. '
             'Use only supplied counts, UTC dates, severity, scan completeness, finding categories and alert status. '
             'Describe scan events, not unique threats or infected devices. Do not invent trends, causes, behavior or breaches. '
-            'When total_scans is zero, explicitly say no scans were recorded in the period; this does not mean the environment is safe. '
+            + scan_instruction +
             'Report alerts and saved explanations using their own supplied counts, including zero, even when no scans were recorded. '
             'finding_counts is recorded detection evidence. explanations_total counts optional saved AI summaries; '
             'zero summaries does not mean missing evidence, failed provider checks or reduced reliability of the risk verdict. '
@@ -117,6 +132,8 @@ def write_narrative(data: dict, *, language='en', purpose='scan explanation', cl
                 raise ValueError()
             if any(ord(c)<32 and c not in '\n\t' for c in narrative.summary) or re.search(r'https?://|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}', narrative.summary):
                 raise ValueError()
+            if scan_total is not None and scan_total > 0 and _ZERO_SCAN_CLAIM.search(narrative.summary):
+                raise ValueError('Summary contradicts the recorded scan total')
             source = getattr(client, 'provider_name', 'openai')
             source = source if isinstance(source, str) and source in {'openai', 'ollama'} else 'openai'
             return {**narrative.model_dump(), 'recommendations':[RECOMMENDATIONS[code][language=='ar'] for code in narrative.recommendation_codes], 'model':model,'source':source}
