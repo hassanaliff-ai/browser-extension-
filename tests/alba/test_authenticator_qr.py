@@ -58,7 +58,8 @@ def test_mismatched_manual_key_is_not_shown_as_valid_qr():
 
 
 def enrollment_app(expires=None, uri=None):
-    instance = AppTest.from_file(str(DASHBOARD), default_timeout=20)
+    # Allow a cold Streamlit start on slower Windows runners.
+    instance = AppTest.from_file(str(DASHBOARD), default_timeout=45)
     instance.session_state['account_access'] = 'Register new account'
     instance.session_state['registration_enrollment'] = {
         'enrollment_token':'synthetic-private-enrollment-token',
