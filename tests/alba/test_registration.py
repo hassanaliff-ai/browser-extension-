@@ -156,7 +156,7 @@ def test_accounts_requires_access_confirmation_before_approval(http):
 
 
 def test_registration_ui_finishes_with_approval_pending_and_no_session(http):
-    http[1].return_value = response({'enrollment_token':'temporary-enrollment-token-123456','expires_at':(utc_now()+timedelta(minutes=15)).isoformat(),'totp_secret':SECRET,'provisioning_uri':pyotp.TOTP(SECRET).provisioning_uri('demo', issuer_name='ExtSecure')},201)
+    http[1].return_value = response({'enrollment_token':'temporary-enrollment-token-123456','expires_at':(utc_now()+timedelta(minutes=15)).isoformat(),'totp_secret':SECRET,'provisioning_uri':pyotp.TOTP(SECRET).provisioning_uri(name='demo', issuer_name='ExtSecure')},201)
     instance = app()
     next(r for r in instance.radio if r.label == 'Account access').set_value('Register new account').run()
     for label,value in [('New username','new-admin'),('New password',PASSWORD),('Confirm password',PASSWORD)]: field(instance,label).input(value)
