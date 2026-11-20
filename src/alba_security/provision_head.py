@@ -31,7 +31,7 @@ def _private_directory(path: Path) -> None:
 
 
 def _write_private_qr(private: Path, username: str, secret: str) -> dict[str, str]:
-    uri = pyotp.TOTP(secret).provisioning_uri(username, issuer_name='ExtSecure')
+    uri = pyotp.TOTP(secret).provisioning_uri(name=username, issuer_name='ExtSecure')
     png = authenticator_qr_png(uri, secret=secret)
     _private_directory(private)
     image_path = private / 'Head of Administrator Authenticator QR.png'
@@ -87,7 +87,7 @@ def provision(env_path: Path) -> dict:
     password = secrets.token_urlsafe(24)
     secret = pyotp.random_base32()
     username = 'head-of-administrator'
-    uri = pyotp.TOTP(secret).provisioning_uri(username, issuer_name='ExtSecure')
+    uri = pyotp.TOTP(secret).provisioning_uri(name=username, issuer_name='ExtSecure')
     qr_files = _write_private_qr(private, username, secret)
     database = values.get('DATABASE_URL') or 'sqlite:///'+(env_path.parent/'extsecure.db').as_posix()
     changes = {

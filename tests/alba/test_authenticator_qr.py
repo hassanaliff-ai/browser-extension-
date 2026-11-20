@@ -27,7 +27,7 @@ def decode(png):
 
 @pytest.mark.parametrize('username', ['hasan', 'head-of-administrator', 'test.account-2026'])
 def test_scannable_qr_and_manual_setup_produce_identical_codes(username):
-    uri = pyotp.TOTP(SECRET).provisioning_uri(username, issuer_name='ExtSecure')
+    uri = pyotp.TOTP(SECRET).provisioning_uri(name=username, issuer_name='ExtSecure')
     decoded = decode(authenticator_qr_png(uri, secret=SECRET))
     assert decoded == uri
     scanned = pyotp.parse_uri(decoded)
@@ -39,10 +39,10 @@ def test_scannable_qr_and_manual_setup_produce_identical_codes(username):
 @pytest.mark.parametrize('uri', [
     'https://example.com/?secret='+SECRET,
     'otpauth://totp/ExtSecure:test?issuer=ExtSecure',
-    pyotp.HOTP(SECRET).provisioning_uri('test', initial_count=0, issuer_name='ExtSecure'),
-    pyotp.TOTP(SECRET).provisioning_uri('test', issuer_name='Other service'),
-    pyotp.TOTP(SECRET, digits=8).provisioning_uri('test', issuer_name='ExtSecure'),
-    pyotp.TOTP(SECRET, interval=60).provisioning_uri('test', issuer_name='ExtSecure'),
+    pyotp.HOTP(SECRET).provisioning_uri(name='test', initial_count=0, issuer_name='ExtSecure'),
+    pyotp.TOTP(SECRET).provisioning_uri(name='test', issuer_name='Other service'),
+    pyotp.TOTP(SECRET, digits=8).provisioning_uri(name='test', issuer_name='ExtSecure'),
+    pyotp.TOTP(SECRET, interval=60).provisioning_uri(name='test', issuer_name='ExtSecure'),
 ])
 def test_invalid_enrollment_is_rejected_without_leaking_details(uri):
     with pytest.raises(ValueError) as failure:
@@ -52,7 +52,7 @@ def test_invalid_enrollment_is_rejected_without_leaking_details(uri):
 
 
 def test_mismatched_manual_key_is_not_shown_as_valid_qr():
-    uri = pyotp.TOTP(SECRET).provisioning_uri('test', issuer_name='ExtSecure')
+    uri = pyotp.TOTP(SECRET).provisioning_uri(name='test', issuer_name='ExtSecure')
     with pytest.raises(ValueError, match='Restart enrollment'):
         authenticator_qr_png(uri, secret=pyotp.random_base32())
 
@@ -64,7 +64,7 @@ def enrollment_app(expires=None, uri=None):
         'enrollment_token':'synthetic-private-enrollment-token',
         'expires_at':expires or (utc_now()+timedelta(minutes=15)).isoformat(),
         'totp_secret':SECRET,
-        'provisioning_uri':uri or pyotp.TOTP(SECRET).provisioning_uri('test', issuer_name='ExtSecure'),
+        'provisioning_uri':uri or pyotp.TOTP(SECRET).provisioning_uri(name='test', issuer_name='ExtSecure'),
     }
     return instance.run()
 
