@@ -5,7 +5,7 @@ from alba_security.models import Scan, Alert, utc_now
 from alba_security.governance import IncidentCase, CaseNote, GovernanceAudit
 from alba_security.inventory import DeviceRegistration, BrowserCredential, digest
 from tests.alba.test_governance import scan
-from test_threat_containment import system
+from test_threat_containment import system, submit
 from tests.alba.test_roles import roles
 
 def incident(client, headers):
@@ -103,3 +103,49 @@ def test_deleted_incident_does_not_make_block_evidence_eligible_for_retention(sy
         for alert in db.scalars(select(Alert).where(Alert.scan_id==result['id'])):alert.status='resolved'
         db.commit()
     assert client.get('/api/privacy/retention-preview',headers=h).json()['eligible_scans']==0
+
+@pytest.mark.parametrize('kind,target,signal', [
+    ('url', 'https://incident-integrated.example/', 'malicious_url'),
+    ('download', 'f' * 64, 'malicious_file_hash'),
+])
+def test_linked_incident_deletion_preserves_device_and_threat_blocks(system, kind, target, signal):
+    client, app, headers, _ = system
+    admin = headers['hasan']
+    result = submit(client, kind=kind, target=target, code=signal)
+    threat = result['containment']
+    assert result['severity'] == 'Critical' and threat['active']
+    case_path = '/api/cases/' + threat['case_id']
+    row = client.get(case_path, headers=admin).json()
+    assert row['scan_id'] == result['id']
+    with app.state.session_factory() as db:
+        db.add(DeviceRegistration(device_id=row['device_id'], ip_address='127.0.0.1',
+                                  operating_system='Windows', added_by='hasan'))
+        db.add(BrowserCredential(token_hash=digest('integrated-incident-device'),
+                                 device_id=row['device_id']))
+        db.commit()
+
+    note = client.post(case_path + '/notes', headers=admin,
+                       json={'body': 'Reviewed the linked synthetic scan.'})
+    assert note.status_code == 201, note.text
+    row = note.json()
+    blocked = client.post(case_path + '/block-device', headers=admin,
+                          json=command(row, expected_device_revision=1))
+    assert blocked.status_code == 200, blocked.text
+    device = {**admin, 'X-ExtSecure-Device': 'integrated-incident-device'}
+    assert client.get('/api/overview', headers=device).status_code == 403
+    assert client.post(case_path + '/remove', headers=admin, json=command(row)).status_code == 409
+    removed = client.post(case_path + '/remove', headers=admin, json=command(blocked.json()))
+    assert removed.status_code == 200, removed.text
+    assert removed.json()['active_block_preserved']
+    assert client.get(case_path, headers=admin).status_code == 404
+    assert client.get('/api/overview', headers=device).status_code == 403
+    assert client.get('/api/scans/' + result['id'], headers=admin).status_code == 200
+    assert any(item['id'] == threat['id'] and item['active']
+               for item in client.get('/api/threat-blocks', headers=admin).json())
+    assert any(item['scan_id'] == result['id'] and item['status'] == 'open'
+               for item in client.get('/api/alerts', headers=admin).json())
+    with app.state.session_factory() as db:
+        assert db.get(IncidentCase, row['id']) is None
+        assert db.scalar(select(CaseNote.id).where(CaseNote.case_id == row['id'])) is None
+        assert db.scalar(select(GovernanceAudit.id).where(
+            GovernanceAudit.reference == row['id'], GovernanceAudit.action == 'removed'))

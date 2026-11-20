@@ -28,8 +28,22 @@ jobs:
       # No VT_API_KEY is set on purpose: the suite is fully mocked and
       # tests/conftest.py forces a dummy key.
       - name: Run tests
-        run: pytest
+        run: |
+          set +e
+          python -m pytest --tb=short 2>&1 | tee pytest.log
+          status=${PIPESTATUS[0]}
+          if (( status != 0 )); then
+            grep -E '^(ERROR |FAILED |E +[A-Za-z]+Error:|Interrupted:)' pytest.log | head -12 |
+              while IFS= read -r line; do
+                printf '::error::%s\n' "${line//%/%25}"
+              done
+          fi
+          exit "$status"
 
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
