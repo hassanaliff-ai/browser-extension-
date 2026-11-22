@@ -21,7 +21,8 @@ def main():
         print(json.dumps({'kind':args.kind,'period':payload.period,'window_utc':[v.isoformat() for v in bounds] if bounds else 'Previous completed UTC month','writes':False}))
         return 0
     log=ROOT/'.private/automatic-reports.jsonl';log.parent.mkdir(exist_ok=True)
-    entry={'at':datetime.now(timezone.utc).isoformat(),'kind':args.kind}
+    period,_=scheduled_period(args.kind)
+    entry={'at':datetime.now(timezone.utc).isoformat(),'kind':args.kind,'period':period.period}
     engine=None
     stage='local_ai'
     try:

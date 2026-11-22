@@ -42,9 +42,9 @@ test('A submitted file check renders the real not-found explanation and cache st
  await snapshot('unknown-file');
 });
 test('The same result card displays a completed known file assessment',async()=>{
- result={...result,severity:'Low',score:0,completeness:'complete',file_lookup:{verdict:'clear'},provider_evidence:{provider:'VirusTotal',status:'available',counts:{malicious:0,suspicious:0,harmless:60,undetected:5}}};
+ result={...result,severity:'High',score:74,completeness:'complete',file_lookup:{verdict:'clear'},provider_evidence:{provider:'VirusTotal',status:'available',counts:{malicious:0,suspicious:0,harmless:60,undetected:5}}};
  await submit('file-scan',{sha256:'b'.repeat(64)});
- assert.match(app.innerHTML,/Low risk/);assert.match(app.innerHTML,/tag low/);
+ assert.match(app.innerHTML,/VirusTotal classification[^>]*>No detections reported/);assert.match(app.innerHTML,/tag low/);
  assert.match(app.innerHTML,/does not guarantee safety/);
  assert.doesNotMatch(app.innerHTML,/class="score"|ExtSecure policy score/);
  assert.doesNotMatch(app.innerHTML,/VirusTotal has no report/);
@@ -163,4 +163,15 @@ test('RDAP evidence stays escaped and Unknown remains visible',async()=>{
  await submit('url-scan',{target:'https://example.com/'});
  assert(!app.innerHTML.includes('<script>alert(1)</script>'));
  assert.match(app.innerHTML,/&lt;script&gt;/);
+});
+
+
+test('VirusTotal classifications override display labels without releasing an active block',async()=>{
+ await navigate('scan');
+ result={...result,target_kind:'url',severity:'Low',file_lookup:undefined,lookup:{status:'complete'},containment:{active:true},provider_evidence:{provider:'VirusTotal',status:'available',counts:{malicious:3,suspicious:1,harmless:60,undetected:4},engine_total:68}};
+ await submit('url-scan',{target:'https://example.com/'});
+ assert.match(app.innerHTML,/VirusTotal classification[^>]*>Malicious detections/);
+ assert.match(app.innerHTML,/3 \/ 68/);
+ assert.match(app.innerHTML,/This threat is blocked/);
+ assert.deepEqual(result.provider_evidence.counts,{malicious:3,suspicious:1,harmless:60,undetected:4});
 });

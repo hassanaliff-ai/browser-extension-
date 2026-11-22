@@ -35,7 +35,7 @@ def scan_provider_evidence(result, *, cached=False):
     return provider_evidence(stats, cached=cached, analysis_date=result.analysis_date, categories=result.categories,report_id=result.report_id)
 
 def unavailable_provider(reason='unavailable'):
-    return {**provider_evidence({}),'reason':reason if reason in {'not_found','rate_limited','provider_auth_failed','lookup_failed','invalid_response','not_configured'} else 'unavailable'}
+    return {**provider_evidence({}),'reason':reason if reason in {'not_found','rate_limited','provider_auth_failed','lookup_failed','timeout','invalid_response','not_configured'} else 'unavailable'}
 
 def provider_signals(kind, evidence):
     suffix = 'file_hash' if kind in {'hash', 'download'} else kind

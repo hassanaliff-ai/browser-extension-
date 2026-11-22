@@ -187,8 +187,11 @@ async def extension_scan(body: ExtensionScanRequest, request: Request, *, fresh:
                 raise
             domain_age = await age_task
             from alba_security.reputation_evidence import unavailable_provider
-            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor, getattr(request.state, 'inventory_device_id', None), domain_age, unavailable_provider())
-            record['lookup'] = {'status':'unavailable', 'reason':_ERROR_STATUS.get(type(error),(502,'Lookup unavailable'))[1]}
+            reason_code = _LOOKUP_REASON_CODES.get(type(error), 'lookup_failed')
+            record = await run_in_threadpool(_extension_record, monitor, body.target, None, actor, getattr(request.state, 'inventory_device_id', None), domain_age, unavailable_provider(reason_code))
+            record['lookup'] = {'status':'unavailable', 'reason':_ERROR_STATUS.get(type(error),(502,'Lookup unavailable'))[1], 'reason_code':reason_code}
+            if reason_code == 'rate_limited':
+                record['lookup']['retry_after_seconds'] = 60
             return JSONResponse(record, headers={'Cache-Control':'no-store'})
         cache.set(key, result)
     domain_age = await age_task
@@ -199,6 +202,13 @@ async def extension_scan(body: ExtensionScanRequest, request: Request, *, fresh:
                         'suspicious':result.suspicious, 'harmless':result.harmless, 'undetected':result.undetected}
     return JSONResponse(record, status_code=201, headers={'Cache-Control':'no-store'})
 
+
+_LOOKUP_REASON_CODES = {
+    NotFoundError: 'not_found',
+    RateLimitError: 'rate_limited',
+    InvalidAPIKeyError: 'provider_auth_failed',
+    AnalysisTimeoutError: 'timeout',
+}
 
 _ERROR_STATUS: dict[type[VirusTotalError], tuple[int, str]] = {
     InvalidTargetError: (422, "The target is not valid for this scan type."),

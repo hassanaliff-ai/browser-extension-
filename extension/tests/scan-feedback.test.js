@@ -56,3 +56,11 @@ test('The new feedback is available in Arabic as well as English',()=>{
   for(const message of messages){assert.notEqual(translate(message),message);assert.match(translate(message),/[\u0600-\u06ff]/);}
  }finally{setPreferences({language:'en',timeZone:'UTC'});}
 });
+
+test('Saved unavailable URL reports distinguish missing results from timeout',()=>{
+ const saved=reason=>({target_kind:'url',severity:'Unknown',provider_evidence:{status:'unavailable',reason}});
+ assert.match(lookupFeedback(saved('not_found')).message,/no report for this exact address/);
+ assert.match(lookupFeedback(saved('timeout')).message,/did not finish in time/);
+ const limited=lookupFeedback({...saved('rate_limited'),lookup:{status:'unavailable',reason_code:'rate_limited',retry_after_seconds:60}});
+ assert.match(limited.message,/request limit/);assert.equal(limited.retry,60);
+});

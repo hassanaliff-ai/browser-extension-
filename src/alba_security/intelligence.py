@@ -251,7 +251,9 @@ def install_intelligence(app, session_scope, require_actor, directory):
     @app.get('/api/intelligence/report-schedule')
     def report_schedule(actor: str=Depends(require_actor)):
         import os
-        return {'enabled':os.getenv('REPORT_AUTOMATION_ENABLED') == '1',
+        from alba_security.report_status import report_schedule_status
+        enabled=os.getenv('REPORT_AUTOMATION_ENABLED') == '1'
+        return {'enabled':enabled, 'runs':report_schedule_status(enabled),
                 'time_zone':'Asia/Riyadh', 'time':'09:00', 'weekly_day':'Sunday',
                 'monthly_day':1, 'weekly_coverage':'Previous Sunday–Saturday UTC',
                 'monthly_coverage':'Previous completed UTC month',

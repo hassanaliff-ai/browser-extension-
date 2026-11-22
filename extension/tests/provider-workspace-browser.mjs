@@ -20,11 +20,13 @@ try {
   chrome.runtime.sendMessage=async m=>{
    let data={};
    if(m.type==='PREFERENCES')data={language:'en',timeZone:'UTC',animations:false};
-   if(m.type==='STATE')data={version:'0.8.56',capabilities:['device-enrollment','chrome-inventory','device-access-choice'],profile:{username:'fixture-head',role:'head_administrator',role_label:'Head administrator',inventory:{linked:true},views:['Overview','Scan a page','Incident cases']}};
+   if(m.type==='STATE')data={version:'0.8.56',capabilities:['device-enrollment','chrome-inventory','device-access-choice'],profile:{username:'fixture-head',role:'head_administrator',role_label:'Head administrator',inventory:{linked:true},views:['Overview','Scan a page','Incident cases','Reports']}};
    if(m.type==='HEALTH')data={status:'ready',api_origin:'https://api.example'};
    if(m.type==='ACTIVE_TAB')data={url:'https://reserved.example/',host:'reserved.example'};
    if(m.type==='SCAN_URL')data=scan;
    if(m.type==='API'){
+    if(m.path==='/api/intelligence/report-schedule')return {ok:true,data:{enabled:true,runs:{weekly:{},monthly:{last_success:{at:'2026-11-01T06:00:00Z'},last_attempt:{status:'failed',stage:'database',at:'2026-11-02T06:10:00Z'},next_scheduled_at:'2026-12-01T09:00:00+03:00'}}}};
+    if(m.path.startsWith('/api/reports/monthly/stats?'))return {ok:true,data:{total_scans:0,high_risk_scans:0,alerts_total:0,severity_counts:{Unknown:0}}};
     if(m.path==='/api/cases')data=[incident];
     else if(m.path==='/api/cases/fixture-case')data=incident;
     else if(m.path==='/api/scans')data=[scan];
@@ -39,12 +41,14 @@ try {
  await form.locator('[name="target"]').fill('https://reserved.example/');await form.locator('[type="submit"]').click();
  await page.getByRole('heading',{name:'VirusTotal report'}).waitFor();
  assert.equal(await page.locator('.score').count(),0);
+ assert.equal(await page.locator('[aria-label="VirusTotal classification"]').innerText(),'Malicious detections');
  assert.equal(await page.locator('.provider-evidence strong').first().innerText(),'3');
  checks.push('Scan UI shows the VirusTotal report directly, without a separate numerical score');
  await page.screenshot({path:path.join(output,'scan-provider-evidence.png'),fullPage:true});
  await page.goto('chrome-extension://'+id+'/console.html#cases');
  await page.getByRole('heading',{name:'Investigation workspace'}).waitFor();
  await page.getByText('Incident categories and creation rules',{exact:true}).click();
+ await page.getByRole('heading',{name:'Incident decision summary',exact:true}).waitFor();
  assert.match(await page.locator('#main').innerText(),/Phishing finding/);
  assert.equal(await page.locator('.provider-evidence strong').first().innerText(),'3');
  checks.push('Incidents show evidence, categories and investigation rules in the existing workspace');
@@ -52,6 +56,12 @@ try {
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
  checks.push('Incident workspace fits a narrow viewport');
+ await page.setViewportSize({width:1440,height:1000});
+ await page.goto('chrome-extension://'+id+'/console.html#reports');
+ await page.getByText('The report database was unavailable. Check the database connection.',{exact:true}).waitFor();
+ assert.equal(await page.getByText('Last successful run',{exact:true}).count(),2);
+ checks.push('Reports show the last successful run alongside a later failure');
+ await page.screenshot({path:path.join(output,'automatic-report-status.png'),fullPage:true});
  await page.setViewportSize({width:560,height:844});
  await page.goto('chrome-extension://'+id+'/popup.html');
  await page.locator('[data-action="scan-active"]').click();

@@ -94,3 +94,21 @@ def test_lan_package_points_csp_and_worker_to_the_same_primary_gateway(tmp_path)
   assert 'localhost:8001' not in policy
   assert '/api/v1/check' in release.read('background.js').decode()
   assert release.testzip() is None
+
+
+@pytest.mark.parametrize('error_name,reason',[
+ ('NotFoundError','not_found'),('RateLimitError','rate_limited'),
+ ('AnalysisTimeoutError','timeout'),('InvalidAPIKeyError','provider_auth_failed'),
+])
+def test_native_scan_preserves_the_actual_provider_failure_in_history(extension_client,error_name,reason):
+ from unittest.mock import AsyncMock
+ from app.services import virustotal
+ client,_,application=extension_client;stage(application)
+ application.state.vt.scan_url=AsyncMock(side_effect=getattr(virustotal,error_name)('private provider diagnostic'))
+ result=client.post('/api/v1/check',json=body()).json()
+ assert result['severity']=='Unknown' and result['lookup']['reason_code']==reason
+ assert result['lookup'].get('retry_after_seconds')==(60 if reason=='rate_limited' else None)
+ assert result['provider_evidence']['reason']==reason
+ saved=client.get('/monitor/api/scans/'+result['id']).json()
+ assert saved['provider_evidence']['reason']==reason
+ assert 'private provider diagnostic' not in str(result)

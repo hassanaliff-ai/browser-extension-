@@ -1,6 +1,6 @@
 import {escapeHtml as esc} from './core.js';
 import {send} from './transport.js';
-import {getPreferences} from './locale.js';
+import {formatDate,getPreferences} from './locale.js';
 import {validateReportPeriod} from './workspace-kit.js';
 const api=(path,method='GET',body)=>send({type:'API',path:'/api/intelligence/'+path,method,body});
 export function previousPeriod(kind){
@@ -26,10 +26,29 @@ export async function runExplanation(form){
  form.parentElement.querySelector('.ai-explanation-result').innerHTML=`<div class="notice warning">AI-assisted draft · Review against the original evidence. Original severity is unchanged.</div><p data-no-translate>${esc(result.summary)}</p><h3>Recommended actions</h3><ul>${result.recommendations.map(text=>`<li data-no-translate>${esc(text)}</li>`).join('')}</ul><p class="meta">${esc(result.context_scope)} · ${esc(result.model)}</p>`;
  form.querySelector('[name="context_file"]').value='';
 }
+const REPORT_FAILURE = {
+ local_ai:'Local AI was unavailable. Check that the configured model is running.',
+ database:'The report database was unavailable. Check the database connection.',
+ generation:'The report could not be saved. Retry after checking the local AI and report data.',
+};
+export function automaticReportStatus(schedule={}) {
+ const runs=schedule.runs;
+ if(!runs)return '<p class="meta">Automatic run history is unavailable from this backend.</p>';
+ const stamp=value=>typeof value==='string'?esc(formatDate(value)):'—';
+ const panels=['weekly','monthly'].map(kind=>{
+  const row=runs[kind]??{},attempt=row.last_attempt;
+  const failure=attempt?.status==='failed';
+  const text=failure?REPORT_FAILURE[attempt.stage]??'Automatic generation failed. Check the scheduler log or run the report again.':attempt?'Automatic attempt completed.':'No automatic attempts recorded.';
+  const retry=kind==='monthly'&&row.next_recovery_at?`<dt>Next recovery check</dt><dd>${stamp(row.next_recovery_at)}</dd>`:'';
+  return `<section class="panel stack"><h3>${kind==='weekly'?'Weekly automation':'Monthly automation'}</h3><dl><dt>Last successful run</dt><dd>${stamp(row.last_success?.at)}</dd><dt>Next scheduled run</dt><dd>${stamp(row.next_scheduled_at)}</dd>${retry}</dl><p class="${failure?'notice warning':'meta'}"><span>${esc(text)}</span>${attempt?.at?' · '+stamp(attempt.at):''}</p></section>`;
+ });
+ return `<div class="grid-even" aria-label="Automatic report status">${panels.join('')}</div>`;
+}
+
 export async function intelligenceReports(canGenerate=false){
  const rows=await api('reports');
  const schedule=await api('report-schedule');
- return `<div class="report-workspace"><section class="panel stack"><h2>Weekly and monthly AI reports</h2><p class="help-copy">Manual reports use completed UTC periods; manual weekly periods begin on Monday.</p><div class="notice ${schedule.enabled?'success':'warning'}">${schedule.enabled?'Automated LLM reports configured':'Automatic report schedule is not configured'} · Sunday and day 1 of each month · 09:00 KSA</div><p class="meta">Automatic weekly reports cover the previous Sunday–Saturday UTC week. Monthly reports cover the previous completed UTC month, including months with no recorded activity. No recorded activity does not prove safety. Missed monthly reports are retried daily while the host is available. Generated narratives remain reviewable drafts.</p>${canGenerate?`<form class="form inline-form" data-form="ai-report"><label class="field"><span>Report frequency</span><select name="kind"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label><label class="field"><span>Period start</span><input name="ai_period" type="date" required value="${previousPeriod('weekly')}"></label><div class="notice error form-error" role="alert" tabindex="-1" hidden></div><div class="form-submit"><button class="btn primary" type="submit">Generate period report</button></div></form>`:'<p>Administrators generate reports. Managers can review saved reports.</p>'}<p class="meta">Each saved snapshot includes every alert and AI explanation recorded during that period, plus an aggregate narrative. The downloadable archive contains all rows; identifiers and raw content are excluded from the model prompt.</p><div class="ai-period-result report-output" aria-live="polite"></div></section><section class="panel stack"><h2>Snapshot history</h2><div class="report-archive">${rows.map(row=>`<details><summary>${esc(row.kind)} · ${esc(row.period)} · ${esc(row.language)}</summary><p data-no-translate>${esc(row.narrative.summary)}</p><p class="meta">${esc(row.stats.alerts_total)} alerts · ${esc(row.stats.explanations_total)} explanations · UTC</p><ul>${row.narrative.recommendations.map(r=>`<li data-no-translate>${esc(r)}</li>`).join('')}</ul><button class="btn small" type="button" data-action="download-ai-report" data-id="${esc(row.id)}">Download complete report archive</button></details>`).join('')||'<p class="meta">No saved AI period reports.</p>'}</div></section></div>`;
+ return `<div class="report-workspace"><section class="panel stack"><h2>Weekly and monthly AI reports</h2><p class="help-copy">Manual reports use completed UTC periods; manual weekly periods begin on Monday.</p><div class="notice ${schedule.enabled?'success':'warning'}">${schedule.enabled?'Automated LLM reports configured':'Automatic report schedule is not configured'} · Sunday and day 1 of each month · 09:00 KSA</div><p class="meta">Automatic weekly reports cover the previous Sunday–Saturday UTC week. Monthly reports cover the previous completed UTC month, including months with no recorded activity. No recorded activity does not prove safety. Missed monthly reports are retried daily while the host is available. Generated narratives remain reviewable drafts.</p>${automaticReportStatus(schedule)}${canGenerate?`<form class="form inline-form" data-form="ai-report"><label class="field"><span>Report frequency</span><select name="kind"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label><label class="field"><span>Period start</span><input name="ai_period" type="date" required value="${previousPeriod('weekly')}"></label><div class="notice error form-error" role="alert" tabindex="-1" hidden></div><div class="form-submit"><button class="btn primary" type="submit">Generate period report</button></div></form>`:'<p>Administrators generate reports. Managers can review saved reports.</p>'}<p class="meta">Each saved snapshot includes every alert and AI explanation recorded during that period, plus an aggregate narrative. The downloadable archive contains all rows; identifiers and raw content are excluded from the model prompt.</p><div class="ai-period-result report-output" aria-live="polite"></div></section><section class="panel stack"><h2>Snapshot history</h2><div class="report-archive">${rows.map(row=>`<details><summary>${esc(row.kind)} · ${esc(row.period)} · ${esc(row.language)}</summary><p data-no-translate>${esc(row.narrative.summary)}</p><p class="meta">${esc(row.stats.alerts_total)} alerts · ${esc(row.stats.explanations_total)} explanations · UTC</p><ul>${row.narrative.recommendations.map(r=>`<li data-no-translate>${esc(r)}</li>`).join('')}</ul><button class="btn small" type="button" data-action="download-ai-report" data-id="${esc(row.id)}">Download complete report archive</button></details>`).join('')||'<p class="meta">No saved AI period reports.</p>'}</div></section></div>`;
 }
 export async function runPeriodReport(form){
  const data=new FormData(form),kind=data.get('kind'),period=validateReportPeriod(kind,data.get('ai_period'));

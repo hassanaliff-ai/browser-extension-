@@ -23,3 +23,13 @@ test('Sensitive incident controls are absent for managers while safety review re
   assert(safeApiPath('/api/cases/case-1/remove','POST'));assert(safeApiPath('/api/cases/case-1/safety','POST'));assert(safeApiPath('/api/cases/case-1/block-device','POST'));
   assert(!safeApiPath('/api/cases/case-1/remove','DELETE'));
 });
+
+
+test('Incident summary distinguishes file blocking and device access before deletion',()=>{
+ const c={notice:t=>t,details:(t,x)=>t+x,form:(action,x)=>action+x,check:t=>t,reason:()=>'',can:()=>true};
+ const file={...row,target_kind:'download',containment:{active:true}};
+ const html=incidentSafetyPanel(file,c);
+ assert.match(html,/<dt>File hash<\/dt><dd>Blocked<\/dd>/);
+ assert.match(html,/ExtSecure access allowed/);assert.match(html,/Both actions retain the scan/);
+ assert.match(incidentSafetyPanel({...file,containment:{active:false},device_protection:{registered:true,blocked:true}},c),/Block released.*ExtSecure access blocked/);
+});

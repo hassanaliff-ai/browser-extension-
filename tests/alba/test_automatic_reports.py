@@ -79,3 +79,29 @@ def test_critical_always_creates_open_alert_block_and_case(system,kind,target,si
     alerts=client.get('/api/alerts',headers=headers['hasan']).json()
     assert any(row['scan_id']==result['id'] and row['status']=='open' for row in alerts)
     assert client.get('/api/cases/'+result['containment']['case_id'],headers=headers['hasan']).status_code==200
+
+
+def test_report_run_status_retains_success_after_failure_and_excludes_private_log_details(system,tmp_path,monkeypatch):
+    import json
+    from alba_security import report_status
+    client,_,headers,_=system
+    log=tmp_path/'runs.jsonl'
+    rows=[
+        {'kind':'monthly','status':'generated','at':'2026-10-01T06:00:00Z','period':'2026-09'},
+        {'kind':'monthly','status':'failed','at':'2026-11-01T06:00:00Z','period':'2026-10','stage':'local_ai','error':'private diagnostic'},
+        {'kind':'weekly','status':'failed','at':'2026-11-01T06:00:00Z','stage':'private path'},
+    ]
+    log.write_text('\n'.join(json.dumps(row) for row in rows)+'\n{interrupted',encoding='utf-8')
+    monkeypatch.setattr(report_status,'LOG_PATH',log)
+    monkeypatch.setenv('REPORT_AUTOMATION_ENABLED','1')
+    response=client.get('/api/intelligence/report-schedule',headers=headers['hasan'])
+    assert response.status_code==200
+    runs=response.json()['runs']
+    assert runs['monthly']['last_attempt']['stage']=='local_ai'
+    assert runs['monthly']['last_success']['period']=='2026-09'
+    assert runs['weekly']['last_success'] is None and runs['weekly']['last_attempt']['stage'] is None
+    assert 'private' not in response.text
+    next_runs=report_status.report_schedule_status(True,path=log,now=datetime(2026,12,31,6,tzinfo=timezone.utc))
+    assert next_runs['monthly']['next_scheduled_at']=='2027-01-01T09:00:00+03:00'
+    assert next_runs['monthly']['next_recovery_at']=='2026-12-31T09:10:00+03:00'
+    assert next_runs['weekly']['next_scheduled_at']=='2027-01-03T09:00:00+03:00'

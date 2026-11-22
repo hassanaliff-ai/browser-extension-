@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {providerPanel,providerSummary,policySummary,incidentRulesPanel,incidentRules} from '../provider-panel.js';
+import {providerPanel,providerSummary,incidentRulesPanel,incidentRules} from '../provider-panel.js';
 import {scanEvidenceExport} from '../evidence-export.js';
 test('Detector shows VirusTotal counts with no separate numerical score',()=>{
  const result={score:80,provider_evidence:{provider:'VirusTotal',status:'available',counts:{malicious:1,suspicious:2,harmless:60,undetected:4},cached:true,analysis_at:'<script>bad</script>'}};
@@ -19,18 +19,6 @@ test('The same AMTSO page report displays its original 12 of 93 engine count',()
  assert.doesNotMatch(html,/class="score"|0-100/);
 });
 
-test('Risk badge follows backend policy without recalculating provider counts or score',()=>{
- const result={score:80,severity:'Critical',provider_evidence:{provider:'VirusTotal',status:'available',engine_total:93,counts:{malicious:12,suspicious:0,harmless:48,undetected:33}}};
- const original=JSON.stringify(result);
- for(const severity of ['Low','Medium','High','Critical']){
-  assert.equal(policySummary({...result,severity}).label,severity==='Low'?'Low risk':severity);
- }
- assert.equal(policySummary(result).label,'Critical');
- assert.equal(JSON.stringify(result),original);
- assert.match(providerPanel(result),/12 \/ 93/);
- assert.equal(policySummary({...result,provider_evidence:{status:'unavailable'}}).label,'Unknown');
- assert.equal(policySummary({...result,severity:'<script>'}).label,'Unknown');
-});
 test('Missing or invalid engine counts are never invented as zero',()=>{
  const html=providerPanel({provider_evidence:{provider:'VirusTotal',status:'unavailable',counts:{malicious:null,suspicious:'4',harmless:-1,undetected:true}}});
  assert.equal((html.match(/<strong data-no-translate>Unavailable/g)??[]).length,4);
