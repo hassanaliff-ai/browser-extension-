@@ -137,6 +137,9 @@ def prepare_period_report(db, payload, *, client=None, model=None, now=None, sch
     if existing:
         return existing
     totals,archive=aggregate_period(db,start,end)
+    # Release the read transaction before slower inference. A new
+    # transaction will save the snapshot and enforce the unique period key.
+    db.rollback()
     if scheduled_bounds is not None:
         totals['schedule']='Sunday 09:00 Asia/Riyadh; Sunday–Saturday UTC coverage'
     narrative=write_narrative(totals,language=payload.language,purpose=payload.kind+' alert and explanation report',client=client,model=model,evidence_codes=tuple(sorted(set(totals['evidence_counts']) | set(totals['finding_counts']))))
@@ -229,6 +232,8 @@ def install_intelligence(app, session_scope, require_actor, directory):
                 return explanation_data(existing)
             evidence=evidence_for(scan)
             codes=tuple(item['code'] for item in evidence['signals'])
+            # Keep only the copied evidence while the model runs.
+            db.rollback()
             narrative=write_narrative({'scan':evidence,'content_context':context,'scope':scope},language=payload.language,client=client,model=model,evidence_codes=codes)
         except ContentReadError as error:
             raise HTTPException(422,str(error)) from None
@@ -236,9 +241,9 @@ def install_intelligence(app, session_scope, require_actor, directory):
             raise HTTPException(503,str(error)) from None
         except ReportGenerationError as error:
             raise HTTPException(502,str(error)) from None
-        record=ExplanationRecord(scan_id=scan.id,language=payload.language,context_digest=digest,narrative=narrative,context_scope=scope)
+        record=ExplanationRecord(scan_id=scan_id,language=payload.language,context_digest=digest,narrative=narrative,context_scope=scope)
         db.add(record)
-        audit(db,'intelligence',scan.id,actor,'explanation_generated',scope=scope,language=payload.language)
+        audit(db,'intelligence',scan_id,actor,'explanation_generated',scope=scope,language=payload.language)
         try:
             db.commit()
         except IntegrityError:

@@ -246,3 +246,28 @@ def test_period_report_accepts_no_flagged_scans_when_scans_exist():
     result = write_narrative({'total_scans': 19}, client=model_fixture(summary=summary),
                              model='test-model')
     assert result['summary'] == summary
+
+
+@pytest.mark.parametrize('operation',['period-report','scan-explanation'])
+def test_local_model_request_releases_its_database_connection_before_inference(system, operation):
+    client,app,headers,_=system
+    if operation=='period-report':
+        path='/api/intelligence/reports/generate'
+        payload={'kind':'monthly','period':'2026-09'}
+        model=model_fixture()
+    else:
+        record=scan(client)
+        path='/api/intelligence/scans/'+record['id']+'/explain'
+        payload={}
+        model=model_fixture(codes=['malicious_url'])
+    response=model.responses.create.return_value
+    checked_out=[]
+    def slowly_generate(**_):
+        checked_out.append(app.state.engine.pool.checkedout())
+        return response
+    model.responses.create.side_effect=slowly_generate
+    app.state.intelligence_llm_client=model
+    app.state.intelligence_model='test-model'
+    request=client.post(path,headers=headers['hasan'],json=payload)
+    assert request.status_code==200,request.text
+    assert checked_out==[0], 'Slow inference must run with no open database transaction'
