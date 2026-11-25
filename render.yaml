@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: extsecure-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/start_cloud_api.py
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.0
+      - key: MONITORING_ENABLED
+        value: "1"
+      - key: REPORT_AUTOMATION_ENABLED
+        value: "0"
+      - key: DATABASE_URL
+        sync: false
+      - key: VT_API_KEY
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: ADMIN_TOTP_SECRET
+        sync: false
+      - key: ADMIN_ACCOUNT_ENCRYPTION_KEY
+        sync: false
+      - key: INGEST_TOKEN
+        generateValue: true
