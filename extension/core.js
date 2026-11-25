@@ -1,4 +1,4 @@
-export const API_ORIGIN = 'http://127.0.0.1:8765';
+export const API_ORIGIN = 'https://extsecure-api-htg7.onrender.com';
 export const WEBSITE_ACCESS_POLICY = 'administrator-self-review-v1';
 
 export function reviewableAccessRequests(rows, now=Date.now(), profile=null) {
@@ -17,7 +17,7 @@ export function accessReviewBody(request, form) {
   if(!['24','168'].includes(form.duration))throw new Error('Choose 24 hours, 7 days or Forever.');
   return {...body,decision:'temporary',duration_hours:Number(form.duration)};
 }
-export const VERSION = '0.8.62';
+export const VERSION = '0.8.63';
 export const WORKER_CAPABILITIES = Object.freeze(['device-enrollment','chrome-inventory','device-access-choice','local-inline-warnings']);
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;
 export const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Unknown'];

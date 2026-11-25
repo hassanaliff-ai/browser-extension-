@@ -23,3 +23,17 @@ test('Transient gateway status retries but authentication and other client error
 test('Malformed, unrelated and outdated services are never retried or called ready',async()=>{
  for(const [response,status,reason] of [[()=>new Response('<html>'), 'offline','invalid_response'],[()=>Response.json({status:'ok',service:'other'}),'offline','unexpected_service'],[()=>Response.json({status:'ok',service:'TestAPI'}),'update_required','website_access_policy_outdated']]){let count=0;const r=await probeApi(origin,policy,{fetcher:async()=>{count++;return response();}});assert.equal(count,1);assert.equal(r.status,status);assert.equal(r.reason,reason);}
 });
+
+test('Render cold start can recover on the sixth anonymous health probe',async()=>{
+ let count=0;const calls=[];
+ const r=await probeApi('https://extsecure-api-htg7.onrender.com',policy,{wait:async()=>{},fetcher:async(url,options)=>{calls.push(options);return ++count<6?new Response('',{status:503}):good();}});
+ assert.equal(r.status,'ready');assert.equal(r.attempts,6);
+ assert(calls.every(options=>options.method==='GET'&&options.credentials==='omit'&&!options.headers.Authorization&&!options.body));
+});
+
+test('Render wake retries stay bounded and never replay rejected authentication',async()=>{
+ for(const [status,expected] of [[503,6],[401,1],[403,1],[429,1]]){
+  let count=0;const r=await probeApi('https://extsecure-api-htg7.onrender.com',policy,{wait:async()=>{},fetcher:async()=>{count++;return new Response('',{status});}});
+  assert.equal(count,expected);assert.equal(r.status,'offline');
+ }
+});

@@ -14,7 +14,7 @@ Render hosts the API with HTTPS and Neon stores PostgreSQL data independently of
 
 ## Availability and AI
 
-Render Free can sleep after inactivity. Its first request can take about a minute. The current extension may show a connection timeout during that cold start. Wait for `/health` and retry. This service has no uptime guarantee.
+Render Free can sleep after inactivity. Its first request can take about a minute. Extension 0.8.63 retries only anonymous health probes up to six times for Render cold starts. Protected actions are never automatically replayed. If the first wake still times out, wait for `/health` and retry. This service has no uptime guarantee.
 
 Use Neon for persistent storage. Render Free local files disappear on restart and Render Free PostgreSQL expires after 30 days. Check both providers' current free quotas before deployment.
 
@@ -29,3 +29,18 @@ Sources reviewed 25 November 2026
 - https://render.com/docs/free
 - https://render.com/docs/blueprint-spec
 - https://neon.com/docs/introduction/plans
+
+## Live deployment — 25 November 2026
+
+- Public API: https://extsecure-api-htg7.onrender.com
+- Render Free in Virginia; external Neon PostgreSQL 18 in US East.
+- 40 tables, 1,327 rows and 8 reporting views were restored from a consistent private backup. Table and view results plus schema digests matched the backup snapshot.
+- Three registered accounts retained their encrypted authenticator secrets; the existing account encryption key was preserved. Personal passwords were not reset.
+- The API uses a separate non-superuser PostgreSQL runtime role. It cannot create roles, modify audit history or change migration history. The client-to-Neon connection negotiates TLS.
+- Public health/capability requests returned 200. An anonymous protected device request returned 401.
+- Extension 0.8.63 and its ZIP use this public cloud origin. Replace files in the existing unpacked directory and reload Chrome. Each device must install this update; old ts.net packages still address the laptop.
+- The local database is a pre-cutover copy. It is no longer the data source used by this release. Do not merge subsequent local and cloud writes without reviewing conflicts.
+- Personal password-and-authenticator sign-in must be verified by each user; deployment checks do not establish that an unknown personal password works.
+- Local Ollama and Windows report jobs remain laptop-dependent. This free API deployment does not host an LLM or run those local schedules.
+
+Secrets, database backups, migration verification and account data remain private and are not in GitHub.

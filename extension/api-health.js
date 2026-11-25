@@ -1,7 +1,8 @@
 // Only the anonymous, read-only health probe is retried. Never replay mutations.
 export async function probeApi(origin, policy, {fetcher=globalThis.fetch, wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)), timeout=12000}={}) {
   const metadata={api_origin:origin,checked_at:new Date().toISOString()};
-  for(let attempt=1;attempt<=2;attempt++) {
+  const attempts=/^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(origin)?6:2;
+  for(let attempt=1;attempt<=attempts;attempt++) {
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),timeout);
     let result;
@@ -19,7 +20,7 @@ export async function probeApi(origin, policy, {fetcher=globalThis.fetch, wait=m
     }catch(error){result={status:'offline',reason:controller.signal.aborted||['TimeoutError','AbortError'].includes(error.name)?'timeout':'network_error'};}
     finally{clearTimeout(timer);}
     const transient=['timeout','network_error'].includes(result.reason)||[502,503,504].includes(result.http_status);
-    if(!transient||attempt===2)return {...metadata,...result,attempts:attempt};
+    if(!transient||attempt===attempts)return {...metadata,...result,attempts:attempt};
     await wait(400);
   }
 }

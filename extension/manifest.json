@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ExtSecure",
-  "version": "0.8.62",
+  "version": "0.8.63",
   "description": "Browser security checks, explainable risk findings and controlled administrator workflows.",
   "minimum_chrome_version": "120",
   "permissions": [
@@ -45,9 +45,16 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["inline-links.js"],
-      "css": ["inline-links.css"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "inline-links.js"
+      ],
+      "css": [
+        "inline-links.css"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -68,6 +75,6 @@
   },
   "options_page": "console.html#settings",
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; img-src 'self' data:; connect-src http://127.0.0.1:8765 http://localhost:8765; style-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; img-src 'self' data:; connect-src https://extsecure-api-htg7.onrender.com; style-src 'self'"
   }
 }
