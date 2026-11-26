@@ -18,7 +18,10 @@ def configured_model():
 class LocalModelClient:
     provider_name = "ollama"
 
-    def __init__(self):
+    def __init__(self, *, timeout_seconds=150):
+        if not 10 <= timeout_seconds <= 600:
+            raise ValueError('Local model timeout must be bounded')
+        self.timeout_seconds = timeout_seconds
         self.responses = self
 
     def create(self, *, model, instructions, input, max_output_tokens, store=False, text=None):
@@ -36,7 +39,7 @@ class LocalModelClient:
             raise ReportGenerationError("The local AI model is busy. Retry shortly; no result was saved.")
         try:
             # Ignore proxy environment settings: prompts only go to this fixed loopback endpoint.
-            with httpx.Client(timeout=httpx.Timeout(150, connect=3), trust_env=False, follow_redirects=False) as client:
+            with httpx.Client(timeout=httpx.Timeout(self.timeout_seconds, connect=3), trust_env=False, follow_redirects=False) as client:
                 with client.stream("POST", LOCAL_ORIGIN + "/api/chat", json=payload) as response:
                     response.raise_for_status()
                     parts, size = [], 0

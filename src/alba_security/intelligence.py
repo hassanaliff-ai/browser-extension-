@@ -160,6 +160,8 @@ def prepare_period_report(db, payload, *, client=None, model=None, now=None, sch
 
 def install_intelligence(app, session_scope, require_actor, directory):
     from alba_security.governance import audit
+    from alba_security.cloud_reports import install_cloud_reports
+    install_cloud_reports(app, session_scope)
     capacities=defaultdict(deque)
     capacity_lock=Lock()
 
@@ -254,15 +256,17 @@ def install_intelligence(app, session_scope, require_actor, directory):
         return explanation_data(record)
 
     @app.get('/api/intelligence/report-schedule')
-    def report_schedule(actor: str=Depends(require_actor)):
+    def report_schedule(actor: str=Depends(require_actor), db: Session=Depends(session_scope)):
         import os
         from alba_security.report_status import report_schedule_status
-        enabled=os.getenv('REPORT_AUTOMATION_ENABLED') == '1'
-        return {'enabled':enabled, 'runs':report_schedule_status(enabled),
-                'time_zone':'Asia/Riyadh', 'time':'09:00', 'weekly_day':'Sunday',
+        from alba_security.cloud_reports import enabled as cloud_enabled, cloud_status
+        common={'time_zone':'Asia/Riyadh', 'time':'09:00', 'weekly_day':'Sunday',
                 'monthly_day':1, 'weekly_coverage':'Previous Sunday–Saturday UTC',
-                'monthly_coverage':'Previous completed UTC month',
-                'review_required':True}
+                'monthly_coverage':'Previous completed UTC month', 'review_required':True}
+        if cloud_enabled():
+            return {**common, **cloud_status(db)}
+        enabled=os.getenv('REPORT_AUTOMATION_ENABLED') == '1'
+        return {**common, 'enabled':enabled, 'runs':report_schedule_status(enabled)}
 
     @app.get('/api/intelligence/reports')
     def reports(actor: str=Depends(require_actor), db: Session=Depends(session_scope), limit: int=Query(30,ge=1,le=100)):
@@ -270,6 +274,13 @@ def install_intelligence(app, session_scope, require_actor, directory):
 
     @app.post('/api/intelligence/reports/generate')
     def generate(payload: PeriodRequest, request: Request, actor: str=Depends(require_actor), db: Session=Depends(session_scope)):
+        from alba_security.cloud_reports import enabled as cloud_enabled, queue_requested_report
+        if cloud_enabled():
+            try:
+                capacity(actor)
+                return queue_requested_report(db,payload,actor)
+            except ValueError as error:
+                raise HTTPException(422,str(error)) from None
         if request is not None and request.headers.get('prefer') == 'respond-async':
             try:
                 period_bounds(payload.kind, payload.period)

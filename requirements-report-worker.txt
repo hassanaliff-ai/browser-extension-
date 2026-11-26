@@ -1,0 +1,4 @@
+# No database driver, account secret, provider API key, or paid inference service.
+httpx==0.28.1
+pydantic>=2.11,<3
+SQLAlchemy>=2.0,<3

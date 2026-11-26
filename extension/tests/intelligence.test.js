@@ -41,3 +41,18 @@ test('The report screen distinguishes a failed run from an earlier successful ru
  assert.match(html,/No automatic attempts recorded/);
  assert.match(automaticReportStatus({enabled:true}),/history is unavailable/);
 });
+
+test('Cloud reporting clearly identifies its host and shows recovery for both periods',()=>{
+ const html=automaticReportStatus({mode:'github_actions',last_worker_contact:'2026-11-26T06:17:00Z',pending_periods:2,
+ runs:{weekly:{last_attempt:{status:'running'},next_recovery_at:'2026-11-26T07:17:00Z'},monthly:{last_attempt:{status:'failed',stage:'cloud_ai'}}}});
+ assert.match(html,/Laptop not required/);assert.match(html,/in progress/);assert.match(html,/Cloud inference did not complete/);
+ assert.match(html,/Next recovery check/);assert.match(html,/60 days/);assert.doesNotMatch(html,/Local AI was unavailable/);
+});
+test('Cloud activation is not described as verified until a worker actually connects',()=>{
+ assert.match(automaticReportStatus({mode:'github_actions',runs:{}}),/awaits its first verified/);
+});
+test('Cloud status escapes untrusted values and worker-only endpoints stay inaccessible to extension messages',()=>{
+ const html=automaticReportStatus({mode:'github_actions',pending_periods:'<script>',runs:{}});
+ assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);
+ for(const action of ['jobs','complete','failed'])assert.equal(safeApiPath('/api/intelligence/report-automation/'+action,'POST'),false);
+});
