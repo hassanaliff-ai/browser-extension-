@@ -1,4 +1,4 @@
-"""Free cloud report jobs: GitHub OIDC, aggregate-only inference, durable results.
+"""Private scheduled reports: GitHub triggers only; data stays on Render and Neon.
 
 The worker cannot log in, read individual evidence, or change incident decisions.
 Only the fixed main-branch workflow in the owner's public repository is trusted.
@@ -16,19 +16,17 @@ import threading
 import time
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
 
 import httpx
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from fastapi import Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from alba_security.governance import GovernanceAudit, audit
 from alba_security.intelligence import IntelligenceReport, aggregate_period
-from alba_security.llm import Narrative, write_narrative
+from alba_security.llm import RECOMMENDATIONS
 from alba_security.models import utc_now
 from alba_security.report_job import MonthlyReportRecord
 from alba_security.reports import aggregate_month
@@ -40,8 +38,6 @@ WORKFLOW = REPOSITORY + '/.github/workflows/cloud-reports.yml@refs/heads/main'
 ISSUER = 'https://token.actions.githubusercontent.com'
 AUDIENCE = 'extsecure-cloud-reports'
 JWKS_URL = ISSUER + '/.well-known/jwks'
-MODEL = 'qwen2.5:7b-instruct-q4_K_M'
-MODEL_DIGEST = '845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e'
 AREA = 'cloud_reports'
 ACTOR = 'system:github-reports'
 BOOTSTRAP = 'cloud_reports_initialized'
@@ -193,73 +189,103 @@ def _existing(db, kind, period, language):
 
 
 def _snapshot(db, kind, start, end, *, manual=False):
-    totals, archive = aggregate_period(db, start, end)
+    totals, archive = aggregate_period(db,start,end)
     monthly = None
     if kind == 'monthly':
         from alba_security.monthly_ml import analyze_month
-        monthly = aggregate_month(db, start.year, start.month)
-        monthly['machine_learning'] = analyze_month(db, start.year, start.month)
+        monthly = aggregate_month(db,start.year,start.month)
+        monthly['machine_learning'] = analyze_month(db,start.year,start.month)
         ml = monthly['machine_learning']
-        totals['machine_learning'] = {'status': ml['status'],
-            'active_training_days': int(ml.get('active_training_days', 0)),
-            'unusual_day_count': len(ml.get('unusual_days', []))}
+        totals['machine_learning'] = {'status':ml['status'],
+            'active_training_days':int(ml.get('active_training_days',0)),
+            'unusual_day_count':len(ml.get('unusual_days',[]))}
     if kind == 'weekly' and not manual:
-        totals['schedule'] = 'Sunday 09:00 Asia/Riyadh; Sunday–Saturday UTC coverage'
-    return totals, archive, monthly
+        totals['schedule']='Sunday 09:00 Asia/Riyadh; Sunday–Saturday UTC coverage'
+    return totals,archive,monthly
 
 
-def _secret():
-    value = os.getenv('ADMIN_ACCOUNT_ENCRYPTION_KEY') or os.getenv('INGEST_TOKEN')
-    if not value:
-        raise ValueError('Report signing is not configured')
-    return hmac.digest(value.encode(), b'ExtSecure cloud report snapshots v1', 'sha256')
+def statistical_narrative(stats, language):
+    n=stats['total_scans'];alerts=stats['alerts_total'];explanations=stats['explanations_total']
+    severity=stats['severity_counts'];coverage=stats['completeness_counts']
+    high=severity.get('High',0)+severity.get('Critical',0)
+    partial=coverage.get('partial',0);unknown=coverage.get('unknown',0)
+    opened=stats['alerts_by_status'].get('open',0)
+    if language=='ar':
+        text=(f"سُجلت {n} عملية فحص خلال الفترة المحددة بالتوقيت العالمي، منها {high} عالية أو حرجة. "
+              f"اكتمال الفحص: {coverage.get('complete',0)} مكتملة، و{partial} جزئية، و{unknown} غير معروفة. "
+              f"سُجل {alerts} تنبيهًا، منها {opened} مفتوحة عند إعداد التقرير، و{explanations} تفسيرات محفوظة بالذكاء الاصطناعي. "
+              'الأعداد تمثل أحداثًا مسجلة ولا تثبت عدد تهديدات فريدة أو أجهزة مصابة. ')
+        if not n:text+='لم تُسجل عمليات فحص؛ غياب النشاط المسجل لا يثبت الأمان. '
+        text+='أُعد هذا الملخص من الإحصاءات بقواعد ثابتة، دون استخدام نموذج لغوي.'
+    else:
+        text=(f"{n} scan events were recorded in the stated UTC period, including {high} High/Critical results. "
+              f"Assessment coverage: {coverage.get('complete',0)} complete, {partial} partial and {unknown} unknown. "
+              f"There were {alerts} alerts, including {opened} currently open, and {explanations} saved AI explanations. "
+              'Counts describe recorded events, not unique threats or infected devices. ')
+        if not n:text+='No scans were recorded; no recorded activity does not establish safety. '
+        text+='This summary uses fixed rules and verified statistics; no language model was used.'
+    ml=stats.get('machine_learning')
+    if ml:
+        if ml['status']=='ready':
+            text+=(f" مراجعة النشاط: {ml['unusual_day_count']} أيام غير معتادة تستلزم المراجعة." if language=='ar'
+                   else f" Activity review identified {ml['unusual_day_count']} unusual days requiring review.")
+        else:text+=(' تقييم النشاط بالتعلم الآلي غير متاح بسبب عدم كفاية السجل أو تعذر النموذج.' if language=='ar'
+                   else ' No ML assessment is available: history is insufficient or the model is unavailable.')
+    codes=['investigate']
+    if partial or unknown:codes.append('retry_unknown')
+    elif high:codes.append('verify_source')
+    return {'summary':text,'evidence_codes':sorted(stats['finding_counts']),
+        'recommendation_codes':codes,'recommendations':[RECOMMENDATIONS[c][language=='ar']for c in codes],
+        'model':None,'source':'verified_statistics','execution':'render','review_required':True}
 
 
-def _ticket(data):
-    body = _b64(_json(data))
-    return body + '.' + _b64(hmac.digest(_secret(), body.encode(), 'sha256'))
+def _candidates(db, now, initialized, language):
+    from alba_security.intelligence import period_bounds
+    result=[]
+    requested=db.scalars(select(GovernanceAudit).where(GovernanceAudit.area==AREA,
+        GovernanceAudit.action=='cloud_report_requested').order_by(GovernanceAudit.created_at).limit(10000)).all()
+    for row in requested:
+        d=row.details
+        try:
+            if d['language'] not in {'en','ar'}:continue
+            start,end=period_bounds(d['kind'],d['period'],now=now)
+            result.append((d['kind'],d['period'],start,end,d['language'],True))
+        except (ValueError,KeyError):continue
+    result.extend((k,p,s,e,language,False)for k,p,s,e in periods_due(now,initialized))
+    return result
 
 
-def _unticket(value, now):
-    if len(value) > 2500:
-        raise ValueError('Invalid report ticket')
-    body, signature = value.split('.')
-    if not hmac.compare_digest(_unb64(signature), hmac.digest(_secret(), body.encode(), 'sha256')):
-        raise ValueError('Invalid report ticket')
-    data = json.loads(_unb64(body))
-    if type(data.get('expires')) is not int or data['expires'] < now.timestamp():
-        raise ValueError('Expired report ticket')
-    if data.get('kind') not in {'weekly', 'monthly'} or data.get('language') not in {'en', 'ar'}:
-        raise ValueError('Invalid report ticket')
-    return data
-
-
-def _bounds(kind, period, *, manual=False):
-    start = datetime.fromisoformat(period + ('-01' if kind == 'monthly' else '')).replace(tzinfo=timezone.utc)
-    if kind == 'weekly':
-        if start.weekday() != (0 if manual else 6):
-            raise ValueError('Invalid report week boundary')
-        return start, start+timedelta(days=7)
-    return start, (start+timedelta(days=32)).replace(day=1)
-
-
-class Poll(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    limit: int = Field(2, ge=1, le=MAX_BATCH)
-
-
-class Complete(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    ticket: str = Field(min_length=50, max_length=2500, repr=False)
-    narrative: Narrative
-    model: str = Field(max_length=100)
-    model_digest: str = Field(max_length=64)
-
-
-class Failed(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    ticket: str = Field(min_length=50, max_length=2500, repr=False)
-    stage: str = Field(pattern='^(cloud_ai|validation|connection|generation)$')
+def process_due_reports(db, *, now=None):
+    now=now or utc_now();initialized=_initialized(db,now)
+    if not db.scalar(select(GovernanceAudit.id).where(GovernanceAudit.area==AREA,
+            GovernanceAudit.action==BOOTSTRAP).limit(1)):
+        audit(db,AREA,'schedule',ACTOR,BOOTSTRAP)
+    audit(db,AREA,'worker',ACTOR,'cloud_worker_checked',source='github_trigger',data_shared=False)
+    db.commit()
+    language=os.getenv('REPORT_LANGUAGE','en')
+    if language not in {'en','ar'}:raise ValueError('Unsupported report language')
+    seen=set();prepared=0
+    for kind,period,start,end,lang,manual in _candidates(db,now,initialized,language):
+        key=(kind,period,lang)
+        if key in seen or _existing(db,*key):continue
+        seen.add(key)
+        audit(db,AREA,kind+':'+period,ACTOR,'cloud_report_started',kind=kind,period=period,status='running')
+        totals,archive,monthly=_snapshot(db,kind,start,end,manual=manual)
+        narrative=statistical_narrative(totals,lang)
+        subject=f'ExtSecure {kind} security report — {period}'
+        body=narrative['summary']+'\n\n'+'\n'.join(narrative['recommendations'])+'\n\n'+json.dumps(totals,ensure_ascii=False,indent=2)
+        db.add(IntelligenceReport(kind=kind,period=period,language=lang,stats={**totals,'archive':archive},
+                                 narrative=narrative,subject=subject,body=body))
+        if monthly is not None and not db.scalar(select(MonthlyReportRecord).where(MonthlyReportRecord.period==period)):
+            db.add(MonthlyReportRecord(period=period,stats=monthly,subject=subject,body=body,summary_source='verified_statistics'))
+        audit(db,AREA,kind+':'+period,ACTOR,'cloud_report_saved',kind=kind,period=period,
+              status='generated',source='verified_statistics',data_shared=False,review_required=True)
+        try:db.commit()
+        except IntegrityError:
+            db.rollback()
+            if not _existing(db,*key):raise
+        prepared+=1
+        if prepared>=10:break
 
 
 def queue_requested_report(db, payload, actor, *, now=None):
@@ -275,7 +301,7 @@ def queue_requested_report(db, payload, actor, *, now=None):
               period=payload.period,language=payload.language)
         db.commit()
     return {'status':'queued','kind':payload.kind,'period':payload.period,'language':payload.language,
-            'source':'github_actions','review_required':True}
+            'source':'verified_statistics','review_required':True}
 
 
 def cloud_status(db, *, now=None):
@@ -303,8 +329,8 @@ def cloud_status(db, *, now=None):
             + (timedelta(hours=1) if now.minute >= 17 else timedelta())).isoformat()
     language = os.getenv('REPORT_LANGUAGE', 'en')
     pending = sum(_existing(db,k,p,language) is None for k,p,_,_ in periods_due(now, _initialized(db,now)))
-    return {'mode':'github_actions', 'enabled':True, 'runs':result, 'last_worker_contact':last_contact,
-        'pending_periods':pending, 'inference':'open model on GitHub-hosted runner',
+    return {'mode':'github_trigger', 'enabled':True, 'runs':result, 'last_worker_contact':last_contact,
+        'pending_periods':pending, 'inference':'disabled; deterministic statistics on Render', 'report_mode':'verified_statistics', 'llm_available':False, 'data_shared_with_github':False,
         'laptop_required':False, 'billing':'standard public-repository runners only',
         'availability_notice':'Best-effort free schedule; delayed runs are retried hourly. GitHub may disable schedules after 60 days without repository activity.',
         'worker_state':'verified' if last_contact else 'awaiting_first_run'}
@@ -324,107 +350,13 @@ def install_cloud_reports(app, session_scope):
         except Exception:
             raise HTTPException(401, 'Report workflow identity was not accepted') from None
 
-    @app.post('/api/intelligence/report-automation/jobs')
-    def jobs(payload: Poll, identity=Depends(authorize), db=Depends(session_scope)):
-        now = utc_now()
-        initialized = _initialized(db, now)
-        if not db.scalar(select(GovernanceAudit.id).where(GovernanceAudit.area == AREA,
-                GovernanceAudit.action == BOOTSTRAP).limit(1)):
-            audit(db, AREA, 'schedule', ACTOR, BOOTSTRAP)
-        audit(db, AREA, 'worker', ACTOR, 'cloud_worker_checked', source='github_actions')
-        language = os.getenv('REPORT_LANGUAGE', 'en')
-        if language not in {'en','ar'}:
-            raise HTTPException(503, 'Choose a supported report language')
-        result = []
-        candidates=[]
-        requested=db.scalars(select(GovernanceAudit).where(GovernanceAudit.area==AREA,
-            GovernanceAudit.action=='cloud_report_requested').order_by(GovernanceAudit.created_at).limit(10000)).all()
-        from alba_security.intelligence import period_bounds
-        for row in requested:
-            d=row.details
-            try:
-                if d['language'] not in {'en','ar'}:
-                    continue
-                start,end=period_bounds(d['kind'],d['period'],now=now)
-                candidates.append((d['kind'],d['period'],start,end,d['language'],True))
-            except (ValueError,KeyError):
-                continue
-        candidates.extend((k,p,s,e,language,False)for k,p,s,e in periods_due(now,initialized))
-        seen=set()
-        for kind, period, start, end, job_language, manual in candidates:
-            key=(kind,period,job_language)
-            if key in seen or _existing(db, kind, period, job_language):
-                continue
-            seen.add(key)
-            totals, _, _ = _snapshot(db, kind, start, end,manual=manual)
-            digest = hashlib.sha256(_json(totals)).hexdigest()
-            ticket = _ticket({'kind':kind, 'period':period, 'language':job_language, 'manual':manual,'digest':digest,
-                'expires':int((now+timedelta(hours=1)).timestamp())})
-            codes = sorted(set(totals['finding_counts']) | set(totals['evidence_counts']))
-            result.append({'kind':kind, 'period':period, 'language':job_language, 'stats':totals,
-                'evidence_codes':codes, 'ticket':ticket, 'model':MODEL, 'model_digest':MODEL_DIGEST})
-            audit(db, AREA, kind+':'+period, ACTOR, 'cloud_report_started', kind=kind,period=period,status='running')
-            if len(result) >= payload.limit:
-                break
-        db.commit()
-        return {'jobs':result, 'review_required':True, 'private_rows_shared':False}
-
-    @app.post('/api/intelligence/report-automation/complete')
-    def complete(payload: Complete, identity=Depends(authorize), db=Depends(session_scope)):
-        now = utc_now()
-        try:
-            ticket = _unticket(payload.ticket, now)
-            start,end = _bounds(ticket['kind'], ticket['period'],manual=ticket.get('manual',False))
-            if end > now or payload.model != MODEL or payload.model_digest != MODEL_DIGEST:
-                raise ValueError('Invalid report metadata')
+    @app.post('/api/intelligence/report-automation/tick',status_code=204,response_class=Response)
+    def tick(identity=Depends(authorize), db=Depends(session_scope)):
+        try:process_due_reports(db)
         except Exception:
-            raise HTTPException(422, 'Report metadata was not accepted') from None
-        existing = _existing(db, ticket['kind'], ticket['period'], ticket['language'])
-        if existing:
-            return {'status':'already_saved','report_id':existing.id}
-        totals, archive, monthly = _snapshot(db, ticket['kind'], start, end,manual=ticket.get('manual',False))
-        if not hmac.compare_digest(hashlib.sha256(_json(totals)).hexdigest(), ticket['digest']):
-            raise HTTPException(409, 'Report evidence changed; request a fresh snapshot')
-        raw = payload.narrative.model_dump_json()
-        fixed = SimpleNamespace(provider_name='ollama', responses=SimpleNamespace(create=lambda **_:SimpleNamespace(status='completed',output_text=raw)))
-        try:
-            codes = tuple(sorted(set(totals['finding_counts']) | set(totals['evidence_counts'])))
-            narrative = write_narrative(totals, language=ticket['language'], purpose=ticket['kind']+' alert and explanation report',
-                client=fixed, model=MODEL, evidence_codes=codes)
-        except Exception:
-            audit(db,AREA,ticket['kind']+':'+ticket['period'],ACTOR,'cloud_report_failed',
-                kind=ticket['kind'],period=ticket['period'],status='failed',stage='validation')
-            db.commit()
-            raise HTTPException(422, 'The report did not pass evidence validation') from None
-        narrative.update(execution='github_actions',model_digest=MODEL_DIGEST)
-        body = narrative['summary']+'\n\n'+'\n'.join(narrative['recommendations'])+'\n\n'+json.dumps(totals,ensure_ascii=False,indent=2)
-        subject = f"ExtSecure {ticket['kind']} security report — {ticket['period']}"
-        record = IntelligenceReport(kind=ticket['kind'],period=ticket['period'],language=ticket['language'],
-            stats={**totals,'archive':archive},narrative=narrative,subject=subject,body=body)
-        db.add(record)
-        if monthly is not None and not db.scalar(select(MonthlyReportRecord).where(MonthlyReportRecord.period == ticket['period'])):
-            db.add(MonthlyReportRecord(period=ticket['period'],stats=monthly,subject=subject,
-                body=body+'\n\n'+monthly['machine_learning'].get('limitation',''),summary_source='ollama'))
-        audit(db,AREA,ticket['kind']+':'+ticket['period'],ACTOR,'cloud_report_saved',kind=ticket['kind'],
-            period=ticket['period'],status='generated',source='github_actions',review_required=True)
-        try:
-            db.commit()
-        except IntegrityError:
             db.rollback()
-            existing = _existing(db,ticket['kind'],ticket['period'],ticket['language'])
-            if not existing:
-                raise
-            return {'status':'already_saved','report_id':existing.id}
-        return {'status':'generated','report_id':record.id,'review_required':True}
-
-    @app.post('/api/intelligence/report-automation/failed')
-    def failed(payload: Failed, identity=Depends(authorize), db=Depends(session_scope)):
-        try:
-            ticket = _unticket(payload.ticket, utc_now())
-        except Exception:
-            raise HTTPException(422, 'Report metadata was not accepted') from None
-        if not _existing(db,ticket['kind'],ticket['period'],ticket['language']):
-            audit(db,AREA,ticket['kind']+':'+ticket['period'],ACTOR,'cloud_report_failed',
-                kind=ticket['kind'],period=ticket['period'],status='failed',stage=payload.stage)
+            audit(db,AREA,'worker',ACTOR,'cloud_worker_failed',status='failed',stage='generation')
             db.commit()
-        return {'status':'recorded'}
+            raise HTTPException(503,'Scheduled report preparation needs retry') from None
+        # No report content, counters, dates, IDs or database records leave this route.
+        return Response(status_code=204,headers={'Cache-Control':'no-store'})

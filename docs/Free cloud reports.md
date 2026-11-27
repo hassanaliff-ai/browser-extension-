@@ -1,73 +1,61 @@
-# Free cloud reporting
+# Private automatic reports
 
-Weekly and monthly reports no longer need Windows or laptop Ollama. The GitHub
-`Cloud security reports` workflow runs a pinned Qwen2.5 7B model on a standard
-public-repository Ubuntu runner, then submits the draft to the existing Render
-API. Neon retains the report and the immutable run audit. No paid compute, AI API
-key or database password is supplied to GitHub. Do not change the job to a paid
-runner or make assumptions about private-repository billing.
+The owner requires project information to remain in the database. GitHub sends
+only an authenticated, empty trigger to Render. It receives HTTP 204 and no
+report content, counters, periods, identifiers or database records. The worker
+rejects any nonempty successful response and never prints response bodies.
 
-## Schedule and recovery
+Render reads the existing Neon database, prepares statistics and deterministic
+summaries, runs the existing monthly activity evaluation, and saves the results
+and run audit to Neon. These summaries are explicitly labelled
+`verified_statistics`: **no LLM is used for automatic cloud reports**. Historical
+local AI reports are retained and identified separately. Local Ollama and the
+older Windows tasks are not required by this automatic reporting path.
 
-- Sunday 09:00 Asia/Riyadh: previous Sunday–Saturday **UTC** week.
-- Day 1 at 09:00 Asia/Riyadh: previous completed **UTC** month.
-- Minute 17 each hour: retry missing reports and catch up after outages.
-- First activation bootstraps the latest closed week and month, including empty
-  periods. The initialization audit anchors subsequent catch-up, so missed periods
-  are not silently replaced by only the most recent period.
-- One workflow at a time and unique database period keys prevent duplicate saved
-  reports. Evidence changed during inference causes a fresh-snapshot retry.
-- Monthly preparation also saves the existing monthly ML activity review. Missing
-  training history remains `insufficient_history`, never a fabricated assessment.
+## Schedule
 
-Free scheduling is best effort, not an uptime or exact-time guarantee. GitHub may
-delay or drop scheduled triggers. Public-repository schedules are disabled after
-60 days without repository activity. Review the cloud worker contact and run
-status in Reports; re-enable a disabled workflow from Actions. Do not manufacture
-commits or bypass service quotas to hide this limitation. Render/Neon quotas and
-outages still apply. Paid services are not enabled as a fallback.
+- Sunday 09:00 Asia/Riyadh: previous Sunday–Saturday UTC week.
+- Day 1 at 09:00 Asia/Riyadh: previous completed UTC month.
+- Minute 17 each hour: retry missing periods and queued administrator requests.
+- First activation prepares the latest complete week and month, including empty
+  periods. The initialization audit anchors later catch-up.
+- Unique period keys prevent duplicate reports. Manual weekly requests retain
+  their existing Monday-based period convention.
+- Monthly ML results preserve insufficient history and unavailable states. They
+  are not interpreted as proof of safe activity. No incident decision or block
+  release is performed by the report scheduler.
 
-## Trust and privacy
+The workflow uses only standard runners for this public repository, with no
+paid inference, additional hosting or database credential on GitHub. Its identity
+is a short-lived GitHub OIDC token verified against the issuer, audience, fixed
+repository/owner IDs, main branch, workflow path and allowed events. It can trigger
+preparation, but cannot read accounts, scans or reports. Earlier inference-job
+data endpoints were removed. There are no reusable report access secrets.
 
-Render validates GitHub's short-lived RS256 OIDC token against the fixed issuer,
-audience, repository and owner IDs, main branch, exact workflow path and approved
-events. A token from a fork, pull request, different workflow or user session is
-rejected. It grants only aggregate report preparation and validated report writes.
-It cannot read individual scans or change accounts, approvals, incidents or blocks.
+Free scheduling is best effort. GitHub can delay or drop a trigger and disables
+public-repository schedules after 60 days without repository activity. Review the
+private scheduler status in Reports and re-enable a disabled workflow in Actions.
+Render/Neon quotas and outages still apply. Do not use artificial commits or paid
+services to hide these limits. `EXTSECURE_PRIVATE_REPORTS_ENABLED=false` as a
+GitHub repository variable pauses future triggers without exposing any data.
 
-Only fixed-category aggregate statistics enter the ephemeral inference job. Raw
-URLs, names, device IDs, page/file content, alert archives and credentials remain
-off the runner. The worker does not print prompts, summaries, HTTP bodies or job
-tickets and does not upload result artifacts. The backend signs a snapshot ticket,
-rechecks the counts and validates the narrative before saving. Numeric statistics
-are authoritative; LLM text remains a review-required draft. No incident is closed,
-block released or threat verdict changed by this reporting workflow.
-
-Render enables this integration automatically when its standard `RENDER=true`
-environment marker is present. `CLOUD_REPORT_AUTOMATION_ENABLED=0` disables the
-cloud endpoints and status; setting it to `1` explicitly enables them. The older
-`REPORT_AUTOMATION_ENABLED` setting controls local Windows scheduling only.
-`REPORT_LANGUAGE` is `en` or `ar` and defaults to English. The API address stays the
-same. A new extension package is needed to show the improved cloud-specific copy;
-older clients can still read the saved report history and schedule endpoint.
-
-The report model is Apache-2.0 Qwen2.5 7B, not a newly trained model. Its manifest
-digest and Ollama runtime archive are pinned and checked. No alternate provider
-or model is selected silently.
+The normal Render environment enables the trigger endpoint. Set
+`CLOUD_REPORT_AUTOMATION_ENABLED=0` to disable it explicitly. The earlier
+`REPORT_AUTOMATION_ENABLED` flag applies to local scheduling only. Reports use
+`REPORT_LANGUAGE=en` or `ar`, defaulting to English. The API origin is unchanged.
 
 ## Verification
 
-Run backend regression tests plus `tests/alba/test_cloud_reports.py`; run the
-extension's intelligence UI tests. After deployment, dispatch the workflow and
-verify a real model-generated report in Neon and the authenticated Reports view.
-Offline fixtures do not establish a successful cloud run. Keep real logs and
-database evidence private. Personal documents are not published.
+Backend tests verify real RSA signatures, rejected fork/PR identities, empty
+responses, database-only persistence, duplicate prevention, calendar boundaries,
+catch-up, privacy, failure handling and explicit non-LLM provenance. Worker tests
+verify no data is received or logged. The GitHub job must then be run against
+the deployed trigger and saved records checked privately in Neon. Fixtures alone
+do not establish successful live operation. Personal academic files stay local.
 
 Sources checked 26 November 2026:
 
 - https://docs.github.com/en/actions/reference/security/oidc
 - https://docs.github.com/en/actions/reference/runners/github-hosted-runners
 - https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
-- https://ollama.com/library/qwen2.5:7b-instruct-q4_K_M
-- https://github.com/ollama/ollama/releases/tag/v0.40.18
 - https://render.com/docs/environment-variables#render-environment-variables
