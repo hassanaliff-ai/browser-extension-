@@ -67,7 +67,7 @@ def trigger(*,opener=safe_open,pause=time.sleep):
             return
         except urllib.error.HTTPError as error:
             if error.code in {401,403,404,409,422,429}:
-                raise WorkerFailure('trigger_rejected')from None
+                raise WorkerFailure('trigger_rejected_'+str(error.code))from None
             if error.code not in {502,503,504}or attempt==4:
                 raise WorkerFailure('service_unavailable')from None
         except(urllib.error.URLError,TimeoutError):
